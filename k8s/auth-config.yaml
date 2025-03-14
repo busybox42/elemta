@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elemta-auth-config
+data:
+  auth.datasource.type: sqlite
+  auth.sqlite.path: /app/config/auth.db 

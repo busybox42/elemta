@@ -5,7 +5,6 @@ metadata:
 data:
   # General configuration
   elemta.conf: |
-    # Elemta configuration file
     [general]
     hostname = "mail.example.com"
     log_level = "info"
