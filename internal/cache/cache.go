@@ -76,6 +76,8 @@ func Factory(config Config) (Cache, error) {
 		return NewRedis(config), nil
 	case "memory":
 		return NewMemory(config), nil
+	case "memcached":
+		return NewMemcached(config), nil
 	default:
 		return nil, errors.New("unsupported cache type: " + config.Type)
 	}

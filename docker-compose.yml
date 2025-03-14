@@ -5,16 +5,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: elemta:latest
     container_name: elemta
     restart: unless-stopped
     ports:
       - "2525:2525"
     volumes:
-      - ./config:/app/config
       - elemta_queue:/app/queue
       - elemta_logs:/app/logs
-      - ./rules:/app/rules
+      - elemta_config:/app/config
+      - elemta_plugins:/app/plugins
     environment:
       - TZ=UTC
     networks:
@@ -28,4 +27,8 @@ volumes:
   elemta_queue:
     driver: local
   elemta_logs:
+    driver: local
+  elemta_config:
+    driver: local
+  elemta_plugins:
     driver: local 

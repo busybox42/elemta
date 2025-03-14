@@ -42,3 +42,11 @@ tmp/
 *~
 .*.swp
 .*.swo
+build/
+
+# Python test scripts
+test_smtp.py
+test_smtp_auth.py
+
+# Configuration files
+elemta.conf

@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  elemta-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: elemta-test
+    restart: unless-stopped
+    ports:
+      - "2526:2525"
+    volumes:
+      - elemta_test_queue:/app/queue
+      - elemta_test_logs:/app/logs
+      - elemta_test_plugins:/app/plugins
+    environment:
+      - TZ=UTC
+    networks:
+      - elemta_test_network
+
+networks:
+  elemta_test_network:
+    driver: bridge
+
+volumes:
+  elemta_test_queue:
+    driver: local
+  elemta_test_logs:
+    driver: local
+  elemta_test_plugins:
+    driver: local 

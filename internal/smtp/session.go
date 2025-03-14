@@ -4,12 +4,16 @@ package smtp
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+
+	"encoding/base64"
 
 	"github.com/google/uuid"
 )
@@ -24,17 +28,20 @@ const (
 )
 
 type Session struct {
-	conn    net.Conn
-	reader  *bufio.Reader
-	writer  *bufio.Writer
-	state   State
-	message *Message
-	config  *Config
-	logger  *slog.Logger
-	Context *Context
+	conn          net.Conn
+	reader        *bufio.Reader
+	writer        *bufio.Writer
+	state         State
+	message       *Message
+	config        *Config
+	logger        *slog.Logger
+	Context       *Context
+	authenticated bool
+	username      string
+	authenticator Authenticator
 }
 
-func NewSession(conn net.Conn, config *Config) *Session {
+func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Session {
 	remoteAddr := conn.RemoteAddr().String()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
@@ -44,14 +51,17 @@ func NewSession(conn net.Conn, config *Config) *Session {
 	)
 
 	return &Session{
-		conn:    conn,
-		reader:  bufio.NewReader(conn),
-		writer:  bufio.NewWriter(conn),
-		state:   INIT,
-		message: NewMessage(),
-		config:  config,
-		logger:  logger,
-		Context: NewContext(),
+		conn:          conn,
+		reader:        bufio.NewReader(conn),
+		writer:        bufio.NewWriter(conn),
+		state:         INIT,
+		message:       NewMessage(),
+		config:        config,
+		logger:        logger,
+		Context:       NewContext(),
+		authenticated: false,
+		username:      "",
+		authenticator: authenticator,
 	}
 }
 
@@ -90,9 +100,35 @@ func (s *Session) Handle() error {
 			s.write("250-8BITMIME\r\n")
 			s.write("250-PIPELINING\r\n")
 			s.write("250-ENHANCEDSTATUSCODES\r\n")
+
+			// Advertise AUTH if authentication is enabled
+			if s.authenticator != nil && s.authenticator.IsEnabled() {
+				methods := s.authenticator.GetSupportedMethods()
+				if len(methods) > 0 {
+					authMethods := make([]string, len(methods))
+					for i, method := range methods {
+						authMethods[i] = string(method)
+					}
+					s.write("250-AUTH " + strings.Join(authMethods, " ") + "\r\n")
+				}
+			}
+
 			s.write("250 HELP\r\n")
 
+		case strings.HasPrefix(cmd, "AUTH "):
+			if err := s.handleAuth(cmd); err != nil {
+				s.logger.Error("authentication error", "error", err)
+				s.write("535 5.7.8 Authentication failed\r\n")
+			}
+
 		case strings.HasPrefix(cmd, "MAIL FROM:"):
+			// Check if authentication is required but not authenticated
+			if s.authenticator != nil && s.authenticator.IsRequired() && !s.authenticated {
+				s.logger.Warn("authentication required", "state", s.state)
+				s.write("530 5.7.0 Authentication required\r\n")
+				continue
+			}
+
 			if s.state != INIT {
 				s.logger.Warn("bad sequence", "state", s.state)
 				s.write("503 Bad sequence\r\n")
@@ -317,19 +353,16 @@ func (s *Session) saveMessage() error {
 		}
 	}
 
-	if err := os.MkdirAll(s.config.QueueDir, 0755); err != nil {
+	// Use the QueueManager to enqueue the message with normal priority
+	qm := NewQueueManager(s.config)
+	if err := qm.EnqueueMessage(s.message, PriorityNormal); err != nil {
+		s.logger.Error("failed to enqueue message", "error", err)
 		return err
 	}
 
-	s.message.status = StatusQueued
-	if err := s.message.Save(s.config); err != nil {
-		s.message.status = StatusFailed
-		return err
-	}
-
-	s.logger.Info("message saved successfully",
+	s.logger.Info("message queued successfully",
 		"id", s.message.id,
-		"status", s.message.status)
+		"priority", PriorityNormal)
 	return nil
 }
 
@@ -340,4 +373,130 @@ func extractAddress(cmd string) string {
 		return ""
 	}
 	return cmd[start+1 : end]
+}
+
+// handleAuth handles the AUTH command
+func (s *Session) handleAuth(cmd string) error {
+	if s.authenticated {
+		s.write("503 5.5.1 Already authenticated\r\n")
+		return nil
+	}
+
+	if !s.authenticator.IsEnabled() {
+		s.write("503 5.5.1 Authentication not enabled\r\n")
+		return nil
+	}
+
+	parts := strings.Fields(cmd)
+	if len(parts) < 2 {
+		s.write("501 5.5.4 Syntax error in parameters\r\n")
+		return nil
+	}
+
+	method := AuthMethod(parts[1])
+	switch method {
+	case AuthMethodPlain:
+		return s.handleAuthPlain(cmd)
+	case AuthMethodLogin:
+		return s.handleAuthLogin()
+	default:
+		s.write("504 5.5.4 Authentication mechanism not supported\r\n")
+		return nil
+	}
+}
+
+// handleAuthPlain handles PLAIN authentication
+func (s *Session) handleAuthPlain(cmd string) error {
+	parts := strings.Fields(cmd)
+	var authData string
+
+	if len(parts) == 3 {
+		// AUTH PLAIN <base64-data>
+		authData = parts[2]
+	} else {
+		// AUTH PLAIN
+		s.write("334 \r\n")
+		line, err := s.reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		authData = strings.TrimSpace(line)
+	}
+
+	// Decode base64 data
+	data, err := base64.StdEncoding.DecodeString(authData)
+	if err != nil {
+		s.write("501 5.5.2 Invalid base64 encoding\r\n")
+		return nil
+	}
+
+	// PLAIN format: \0username\0password
+	parts = strings.Split(string(data), "\x00")
+	if len(parts) != 3 {
+		s.write("501 5.5.2 Invalid PLAIN authentication data\r\n")
+		return nil
+	}
+
+	// parts[0] is the authorization identity (ignored)
+	// parts[1] is the username
+	// parts[2] is the password
+	username := parts[1]
+	password := parts[2]
+
+	return s.authenticate(username, password)
+}
+
+// handleAuthLogin handles LOGIN authentication
+func (s *Session) handleAuthLogin() error {
+	// Send username challenge
+	s.write("334 " + base64.StdEncoding.EncodeToString([]byte("Username:")) + "\r\n")
+	line, err := s.reader.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	usernameB64 := strings.TrimSpace(line)
+	usernameBytes, err := base64.StdEncoding.DecodeString(usernameB64)
+	if err != nil {
+		s.write("501 5.5.2 Invalid base64 encoding\r\n")
+		return nil
+	}
+	username := string(usernameBytes)
+
+	// Send password challenge
+	s.write("334 " + base64.StdEncoding.EncodeToString([]byte("Password:")) + "\r\n")
+	line, err = s.reader.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	passwordB64 := strings.TrimSpace(line)
+	passwordBytes, err := base64.StdEncoding.DecodeString(passwordB64)
+	if err != nil {
+		s.write("501 5.5.2 Invalid base64 encoding\r\n")
+		return nil
+	}
+	password := string(passwordBytes)
+
+	return s.authenticate(username, password)
+}
+
+// authenticate performs the actual authentication
+func (s *Session) authenticate(username, password string) error {
+	authenticated, err := s.authenticator.Authenticate(context.Background(), username, password)
+	if err != nil {
+		s.logger.Error("authentication error", "username", username, "error", err)
+		s.write("454 4.7.0 Temporary authentication failure\r\n")
+		return err
+	}
+
+	if !authenticated {
+		s.logger.Warn("authentication failed", "username", username)
+		s.write("535 5.7.8 Authentication credentials invalid\r\n")
+		return fmt.Errorf("authentication failed for user %s", username)
+	}
+
+	s.authenticated = true
+	s.username = username
+	s.logger.Info("authentication successful", "username", username)
+	s.write("235 2.7.0 Authentication successful\r\n")
+	return nil
 }

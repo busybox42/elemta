@@ -22,7 +22,7 @@ This document provides instructions for deploying Elemta using Docker and Docker
 
 3. Check the logs:
    ```bash
-   docker-compose logs -f
+   docker logs elemta
    ```
 
 4. Stop the containers:
@@ -42,8 +42,12 @@ The Elemta server is configured using the `config/elemta.conf` file. This file i
     "listen_addr": ":2525",
     "queue_dir": "./queue",
     "max_size": 26214400,
-    "dev_mode": false,
-    "allowed_relays": ["127.0.0.1", "::1"]
+    "dev_mode": true,
+    "allowed_relays": ["127.0.0.1", "::1", "192.168.65.1"],
+    "max_workers": 5,
+    "max_retries": 3,
+    "max_queue_time": 3600,
+    "retry_schedule": [60, 300, 900]
 }
 ```
 
@@ -68,6 +72,8 @@ The Docker Compose configuration includes volumes for persistent storage:
 
 - `elemta_queue`: Stores the email queue
 - `elemta_logs`: Stores the server logs
+- `elemta_config`: Stores the configuration files
+- `elemta_plugins`: Stores custom plugins
 
 These volumes are managed by Docker and will persist across container restarts.
 
@@ -85,8 +91,20 @@ ports:
 ## Security Considerations
 
 - The Elemta server runs as a non-root user inside the container
-- The server is configured to only allow relaying from localhost by default
+- The server is configured to only allow relaying from localhost and Docker network by default
 - Consider using a reverse proxy with TLS termination for secure SMTP connections
+
+## Testing the Deployment
+
+You can test your Docker deployment using the provided Python scripts:
+
+```bash
+# Test basic SMTP functionality
+python3 test_smtp.py
+
+# Test SMTP authentication (if enabled)
+python3 test_smtp_auth.py
+```
 
 ## Troubleshooting
 
@@ -95,7 +113,7 @@ ports:
 Check the logs for errors:
 
 ```bash
-docker-compose logs elemta
+docker logs elemta
 ```
 
 ### Cannot connect to the server
@@ -111,7 +129,7 @@ telnet localhost 2525
 Check the queue directory for stuck messages:
 
 ```bash
-docker-compose exec elemta ls -la /app/queue
+docker exec -it elemta ls -la /app/queue
 ```
 
 ## Advanced Usage
@@ -135,6 +153,15 @@ docker run -d \
   -v $(pwd)/config:/app/config \
   -v elemta_queue:/app/queue \
   -v elemta_logs:/app/logs \
-  -v $(pwd)/rules:/app/rules \
   elemta:latest
-``` 
+```
+
+### Using Docker Compose for Testing
+
+Elemta includes a separate Docker Compose configuration for testing:
+
+```bash
+docker-compose -f docker-compose.test.yml up -d
+```
+
+This will start a separate instance of Elemta on port 2526 for testing purposes. 

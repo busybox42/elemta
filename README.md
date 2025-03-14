@@ -1,190 +1,131 @@
-# Elemta
+# Elemta SMTP Server
 
-Elemta is a lightweight, high-performance SMTP server with advanced filtering capabilities, designed for modern email infrastructure.
+Elemta is a high-performance SMTP server written in Go, designed to be extensible and secure.
 
 ## Features
 
-- **Lightweight SMTP Server**: Fast and efficient email handling
-- **Pluggable Caching System**: Supports Redis and in-memory caching
-- **Flexible Logging**: Console, file, and Elasticsearch logging options
-- **Multiple Data Sources**: SQLite, MySQL, and PostgreSQL support
-- **Development Mode**: Test email functionality without sending actual emails
-- **Docker Support**: Easy deployment with Docker and Docker Compose
-- **Configurable Rules**: Create custom rules for email filtering
+- **Lightweight**: Elemta is designed to be lightweight and efficient, making it suitable for both small and large deployments.
+- **Flexible**: Supports various storage backends, including file system, MySQL, PostgreSQL, and SQLite.
+- **Secure**: Implements modern security practices to protect your email infrastructure.
+- **Extensible**: Provides a plugin system for adding custom functionality.
+- **Authentication**: Supports PLAIN and LOGIN authentication methods with configurable backends.
+- **TLS Support**: Secure your SMTP connections with TLS, including Let's Encrypt integration.
+- **Advanced Queue Management**: Prioritized message queue with configurable retry logic and worker pools.
+- **Development Mode**: Test your email functionality without sending actual emails.
 
-## Quick Start
+## Code Structure
 
-### Using Docker
+The codebase is organized into several packages:
 
-The easiest way to get started with Elemta is using Docker:
+### `/cmd`
 
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/elemta.git
-cd elemta
+Contains the main application entry points.
 
-# Start the container
-docker-compose up -d
+### `/internal`
 
-# Check the logs
-docker-compose logs -f
-```
+Contains packages that are specific to this application and not meant to be imported by other applications.
 
-### Building from Source
+- `/internal/datasource`: Database access (SQLite, MySQL, PostgreSQL)
+- `/internal/queue`: Email queue management
+- `/internal/smtp`: SMTP server implementation
 
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/elemta.git
-cd elemta
+### `/docs`
 
-# Build the application
-go build -o bin/elemta ./cmd/elemta
-
-# Run the server
-./bin/elemta
-```
+Contains detailed documentation for various components of the system.
 
 ## Configuration
 
-Elemta is configured using a JSON configuration file located at `config/elemta.conf`:
+Elemta is configured using a JSON configuration file. The server will look for a configuration file in the following locations:
+
+1. The path specified by the `-config` command-line flag
+2. `./elemta.conf`
+3. `./config/elemta.conf`
+4. `../config/elemta.conf`
+5. `$HOME/.elemta.conf`
+6. `/etc/elemta/elemta.conf`
+
+If no configuration file is found, default values will be used.
+
+### Example Configuration
 
 ```json
 {
-    "hostname": "mail.example.com",
-    "listen_addr": ":2525",
-    "queue_dir": "./queue",
-    "max_size": 26214400,
-    "dev_mode": false,
-    "allowed_relays": ["127.0.0.1", "::1"]
+  "hostname": "mail.example.com",
+  "listen_addr": ":2525",
+  "queue_dir": "./queue",
+  "max_size": 26214400,
+  "dev_mode": true,
+  "allowed_relays": ["127.0.0.1", "::1", "192.168.65.1"],
+  "max_workers": 5,
+  "max_retries": 3,
+  "max_queue_time": 3600,
+  "retry_schedule": [60, 300, 900],
+  "auth": {
+    "enabled": true,
+    "required": false,
+    "datasource_type": "sqlite",
+    "datasource_path": "./auth.db"
+  },
+  "tls": {
+    "enabled": true,
+    "listen_addr": ":465",
+    "cert_file": "/path/to/cert.pem",
+    "key_file": "/path/to/key.pem"
+  }
 }
 ```
 
-### Configuration Options
+## Building and Running
 
-- `hostname`: The hostname to use in SMTP responses
-- `listen_addr`: The address and port to listen on
-- `queue_dir`: Directory to store the email queue
-- `max_size`: Maximum message size in bytes
-- `dev_mode`: Enable development mode (emails are not actually sent)
-- `allowed_relays`: IP addresses allowed to relay emails
+### Prerequisites
+
+- Go 1.21 or later
+- Docker (optional, for containerized deployment)
+
+### Building
+
+```bash
+go build -o elemta ./cmd/elemta
+```
+
+### Running with Docker
+
+```bash
+# Build and start the container
+docker-compose up -d
+
+# Check the logs
+docker logs elemta
+```
 
 ## Testing
 
-### Running Tests
+You can test the SMTP server using the provided Python scripts:
 
 ```bash
-# Run all tests
-go test ./...
+# Test basic SMTP functionality
+python3 test_smtp.py
 
-# Run tests with verbose output
-go test ./... -v
-
-# Run tests with coverage
-go test ./... -cover
+# Test SMTP authentication
+python3 test_smtp_auth.py
 ```
 
-### Integration Tests
+## Queue Management System
 
-For integration tests with MySQL and PostgreSQL, you need to set up the appropriate environment variables:
+Elemta includes a robust queue management system for reliable email delivery:
 
-```bash
-# MySQL integration tests
-export MYSQL_TEST_DSN="user:password@tcp(localhost:3306)/elemta_test?parseTime=true"
-go test ./internal/datasource -run TestMySQLDataSource
+- **Message Prioritization**: Messages can be assigned different priority levels (Low, Normal, High, Critical)
+- **Configurable Retry Logic**: Customize retry intervals and maximum attempts
+- **Worker Pool**: Limit concurrent deliveries to prevent resource exhaustion
+- **Automatic Cleanup**: Old messages are automatically removed from the queue
+- **Delivery Tracking**: Track delivery attempts and errors for each message
 
-# PostgreSQL integration tests
-export POSTGRES_TEST_DSN="postgres://user:password@localhost:5432/elemta_test?sslmode=disable"
-go test ./internal/datasource -run TestPostgreSQLDataSource
-```
+For more details, see the [Queue Management Documentation](docs/queue_management.md).
 
-### Testing SMTP Functionality
+## Docker Deployment
 
-You can test the SMTP functionality using the provided scripts:
+For detailed instructions on deploying Elemta with Docker, see the [Docker Deployment Documentation](docs/docker_deployment.md).
 
-```bash
-# Make the scripts executable
-chmod +x test_smtp.sh test_gmail.sh
+## SMTP Server
 
-# Test local SMTP
-./test_smtp.sh
-
-# Test sending to Gmail (update with your email)
-./test_gmail.sh
-```
-
-## Documentation
-
-Detailed documentation is available in the `docs` directory:
-
-- [SMTP Server](docs/smtp_server.md): Configuration and usage of the SMTP server
-- [Caching System](docs/caching.md): Using the pluggable caching system
-- [Logging System](docs/logging.md): Configuring and using the logging system
-- [Datasource System](docs/datasource.md): Working with different database backends
-- [Docker Deployment](docs/docker_deployment.md): Deploying Elemta with Docker
-
-## Caching System
-
-Elemta includes a flexible caching system with support for:
-
-- In-memory cache
-- Redis cache
-
-Configure the cache in your application code:
-
-```go
-import "github.com/yourusername/elemta/internal/cache"
-
-// Create a cache manager
-manager := cache.NewManager(&cache.Config{
-    Type:     "redis",
-    Address:  "localhost:6379",
-    Password: "",
-    DB:       0,
-})
-
-// Get a cache instance
-c := manager.GetCache()
-
-// Use the cache
-c.Set("key", "value", 60)
-value, found := c.Get("key")
-```
-
-## Logging System
-
-The logging system supports multiple outputs:
-
-- Console logging
-- File logging
-- Elasticsearch logging
-
-Configure logging in your application:
-
-```go
-import "github.com/yourusername/elemta/internal/logging"
-
-// Create a logger
-logger := logging.NewLogger(&logging.Config{
-    Console: &logging.ConsoleConfig{
-        Enabled: true,
-        Level:   "info",
-    },
-    File: &logging.FileConfig{
-        Enabled: true,
-        Path:    "./logs/elemta.log",
-        Level:   "debug",
-    },
-})
-
-// Use the logger
-logger.Info("Server started")
-logger.Error("Something went wrong", errors.New("error details"))
-```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+For detailed information about the SMTP server functionality, see the [SMTP Server Documentation](docs/smtp_server.md).
