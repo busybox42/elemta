@@ -50,3 +50,10 @@ test_smtp_auth.py
 
 # Configuration files
 elemta.conf
+
+# Backup directory
+backup/
+
+# Test output files
+*_test_output.txt
+*_output.txt
