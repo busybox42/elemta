@@ -11,10 +11,6 @@ bin/
 coverage.html
 
 # Runtime data
-queue/
-*/queue/
-logs/
-*/logs/
 *.log
 *.db
 *.sqlite
@@ -42,7 +38,6 @@ tmp/
 *~
 .*.swp
 .*.swo
-build/
 
 # Python test scripts
 test_smtp.py
@@ -57,3 +52,9 @@ backup/
 # Test output files
 *_test_output.txt
 *_output.txt
+# Queue, logs, and build directories
+queue/*
+!queue/.gitkeep
+logs/*
+!logs/.gitkeep
+!build/.gitkeep
