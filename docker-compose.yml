@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  elemta:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: elemta:latest
+    container_name: elemta
+    restart: unless-stopped
+    ports:
+      - "2525:2525"
+    volumes:
+      - ./config:/app/config
+      - elemta_queue:/app/queue
+      - elemta_logs:/app/logs
+      - ./rules:/app/rules
+    environment:
+      - TZ=UTC
+    networks:
+      - elemta_network
+
+networks:
+  elemta_network:
+    driver: bridge
+
+volumes:
+  elemta_queue:
+    driver: local
+  elemta_logs:
+    driver: local 
