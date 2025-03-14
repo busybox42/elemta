@@ -12,7 +12,9 @@ coverage.html
 
 # Runtime data
 queue/
+*/queue/
 logs/
+*/logs/
 *.log
 *.db
 *.sqlite
@@ -30,3 +32,13 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+
+# Temporary files
+tmp/
+*/tmp/
+*.tmp
+*.bak
+*.backup
+*~
+.*.swp
+.*.swo
