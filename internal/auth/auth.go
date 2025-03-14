@@ -19,7 +19,7 @@ var (
 	ErrInvalidPassword        = errors.New("invalid password format")
 )
 
-// Auth provides authentication functionality using SQLite datasource
+// Auth provides authentication functionality using various datasources
 type Auth struct {
 	ds datasource.DataSource
 }
@@ -70,6 +70,42 @@ func NewWithSQLite(dbPath string) (*Auth, error) {
 	}, nil
 }
 
+// NewWithLDAP creates a new Auth instance with an LDAP datasource
+func NewWithLDAP(host string, port int, bindDN, bindPassword, userDN, groupDN string, options map[string]interface{}) (*Auth, error) {
+	// Create LDAP datasource
+	config := datasource.Config{
+		Type:     "ldap",
+		Name:     "auth-ldap",
+		Host:     host,
+		Port:     port,
+		Username: bindDN,
+		Password: bindPassword,
+		Options:  options,
+	}
+
+	// Add user and group DNs to options if not already present
+	if config.Options == nil {
+		config.Options = make(map[string]interface{})
+	}
+
+	if _, ok := config.Options["user_dn"]; !ok && userDN != "" {
+		config.Options["user_dn"] = userDN
+	}
+
+	if _, ok := config.Options["group_dn"]; !ok && groupDN != "" {
+		config.Options["group_dn"] = groupDN
+	}
+
+	ds := datasource.NewLDAP(config)
+	if err := ds.Connect(); err != nil {
+		return nil, fmt.Errorf("failed to connect to LDAP datasource: %w", err)
+	}
+
+	return &Auth{
+		ds: ds,
+	}, nil
+}
+
 // Close closes the underlying datasource connection
 func (a *Auth) Close() error {
 	if a.ds != nil {
@@ -113,7 +149,12 @@ func (a *Auth) Authenticate(ctx context.Context, username, password string) (boo
 		return false, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Compare the provided password with the stored hash
+	// For LDAP, we'll use the datasource's Authenticate method directly
+	if a.ds.Type() == "ldap" {
+		return a.ds.Authenticate(ctx, username, password)
+	}
+
+	// For other datasources, compare the provided password with the stored hash
 	err = ComparePasswords(user.Password, password)
 	if err != nil {
 		return false, ErrInvalidCredentials
@@ -143,10 +184,17 @@ func (a *Auth) CreateUser(ctx context.Context, username, password, email, fullNa
 		return fmt.Errorf("failed to check if user exists: %w", err)
 	}
 
-	// Hash the password
-	hashedPassword, err := HashPassword(password)
-	if err != nil {
-		return err
+	// Hash the password if not using LDAP
+	// LDAP will handle the password differently
+	var hashedPassword string
+	if a.ds.Type() != "ldap" {
+		hashedPassword, err = HashPassword(password)
+		if err != nil {
+			return err
+		}
+	} else {
+		// For LDAP, we'll use the plain password as the datasource will handle it
+		hashedPassword = password
 	}
 
 	// Create the user
@@ -196,14 +244,19 @@ func (a *Auth) UpdatePassword(ctx context.Context, username, currentPassword, ne
 		return fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Hash the new password
-	hashedPassword, err := HashPassword(newPassword)
-	if err != nil {
-		return err
+	// Hash the new password if not using LDAP
+	if a.ds.Type() != "ldap" {
+		hashedPassword, err := HashPassword(newPassword)
+		if err != nil {
+			return err
+		}
+		user.Password = hashedPassword
+	} else {
+		// For LDAP, we'll use the plain password as the datasource will handle it
+		user.Password = newPassword
 	}
 
 	// Update the user
-	user.Password = hashedPassword
 	user.UpdatedAt = time.Now().Unix()
 
 	if err := a.ds.UpdateUser(ctx, user); err != nil {
@@ -228,14 +281,19 @@ func (a *Auth) AdminUpdatePassword(ctx context.Context, username, newPassword st
 		return fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Hash the new password
-	hashedPassword, err := HashPassword(newPassword)
-	if err != nil {
-		return err
+	// Hash the new password if not using LDAP
+	if a.ds.Type() != "ldap" {
+		hashedPassword, err := HashPassword(newPassword)
+		if err != nil {
+			return err
+		}
+		user.Password = hashedPassword
+	} else {
+		// For LDAP, we'll use the plain password as the datasource will handle it
+		user.Password = newPassword
 	}
 
 	// Update the user
-	user.Password = hashedPassword
 	user.UpdatedAt = time.Now().Unix()
 
 	if err := a.ds.UpdateUser(ctx, user); err != nil {
@@ -300,4 +358,12 @@ func (a *Auth) GetUser(ctx context.Context, username string) (datasource.User, e
 	}
 
 	return user, nil
+}
+
+// GetDataSourceType returns the type of the underlying datasource
+func (a *Auth) GetDataSourceType() string {
+	if a.ds == nil {
+		return ""
+	}
+	return a.ds.Type()
 }

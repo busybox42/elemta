@@ -10,6 +10,93 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// MockLDAP is a mock implementation of the DataSource interface for testing LDAP functionality
+type MockLDAP struct {
+	users map[string]datasource.User
+}
+
+func NewMockLDAP() *MockLDAP {
+	return &MockLDAP{
+		users: make(map[string]datasource.User),
+	}
+}
+
+func (m *MockLDAP) Connect() error {
+	return nil
+}
+
+func (m *MockLDAP) Close() error {
+	return nil
+}
+
+func (m *MockLDAP) IsConnected() bool {
+	return true
+}
+
+func (m *MockLDAP) Name() string {
+	return "mock-ldap"
+}
+
+func (m *MockLDAP) Type() string {
+	return "ldap"
+}
+
+func (m *MockLDAP) Authenticate(ctx context.Context, username, password string) (bool, error) {
+	user, exists := m.users[username]
+	if !exists {
+		return false, datasource.ErrNotFound
+	}
+
+	// In a real LDAP server, this would do a bind operation
+	// For our mock, we'll just compare the passwords directly
+	return user.Password == password, nil
+}
+
+func (m *MockLDAP) GetUser(ctx context.Context, username string) (datasource.User, error) {
+	user, exists := m.users[username]
+	if !exists {
+		return datasource.User{}, datasource.ErrNotFound
+	}
+	return user, nil
+}
+
+func (m *MockLDAP) CreateUser(ctx context.Context, user datasource.User) error {
+	if _, exists := m.users[user.Username]; exists {
+		return datasource.ErrAlreadyExists
+	}
+	m.users[user.Username] = user
+	return nil
+}
+
+func (m *MockLDAP) UpdateUser(ctx context.Context, user datasource.User) error {
+	if _, exists := m.users[user.Username]; !exists {
+		return datasource.ErrNotFound
+	}
+	m.users[user.Username] = user
+	return nil
+}
+
+func (m *MockLDAP) DeleteUser(ctx context.Context, username string) error {
+	if _, exists := m.users[username]; !exists {
+		return datasource.ErrNotFound
+	}
+	delete(m.users, username)
+	return nil
+}
+
+func (m *MockLDAP) ListUsers(ctx context.Context, filter map[string]interface{}, limit, offset int) ([]datasource.User, error) {
+	// Simplified implementation for testing
+	users := make([]datasource.User, 0, len(m.users))
+	for _, user := range m.users {
+		users = append(users, user)
+	}
+	return users, nil
+}
+
+func (m *MockLDAP) Query(ctx context.Context, query string, args ...interface{}) (interface{}, error) {
+	return nil, nil
+}
+
 func TestAuth(t *testing.T) {
 	// Create a temporary directory for the test database
 	tempDir, err := os.MkdirTemp("", "elemta-auth-test")
@@ -227,6 +314,140 @@ func TestAuth(t *testing.T) {
 	})
 }
 
+func TestAuthWithLDAP(t *testing.T) {
+	// Create a mock LDAP datasource
+	mockLDAP := NewMockLDAP()
+
+	// Create an Auth instance with the mock LDAP datasource
+	auth, err := New(Config{
+		DataSource: mockLDAP,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create Auth instance: %v", err)
+	}
+
+	ctx := context.Background()
+
+	// Test user creation with LDAP
+	t.Run("CreateUserLDAP", func(t *testing.T) {
+		err := auth.CreateUser(ctx, "ldapuser", "ldappass", "ldap@example.com", "LDAP User", false)
+		if err != nil {
+			t.Fatalf("Failed to create LDAP user: %v", err)
+		}
+
+		// Verify the user was created with the correct password (not hashed for LDAP)
+		user, err := auth.GetUser(ctx, "ldapuser")
+		if err != nil {
+			t.Fatalf("Failed to get LDAP user: %v", err)
+		}
+
+		if user.Password != "ldappass" {
+			t.Fatalf("Expected password to be stored as-is for LDAP, got: %s", user.Password)
+		}
+
+		// Try to create the same user again, should fail
+		err = auth.CreateUser(ctx, "ldapuser", "ldappass", "ldap@example.com", "LDAP User", false)
+		if err == nil {
+			t.Fatal("Expected error when creating duplicate LDAP user, got nil")
+		}
+	})
+
+	// Test LDAP authentication
+	t.Run("AuthenticateLDAP", func(t *testing.T) {
+		// Test with correct credentials
+		authenticated, err := auth.Authenticate(ctx, "ldapuser", "ldappass")
+		if err != nil {
+			t.Fatalf("LDAP authentication failed with error: %v", err)
+		}
+		if !authenticated {
+			t.Fatal("Expected LDAP authentication to succeed, but it failed")
+		}
+
+		// Test with incorrect password
+		authenticated, err = auth.Authenticate(ctx, "ldapuser", "wrongpass")
+		if err != nil {
+			t.Fatalf("LDAP authentication check failed with error: %v", err)
+		}
+		if authenticated {
+			t.Fatal("Expected LDAP authentication to fail with wrong password, but it succeeded")
+		}
+	})
+
+	// Test password update with LDAP
+	t.Run("UpdatePasswordLDAP", func(t *testing.T) {
+		// Update password
+		err := auth.UpdatePassword(ctx, "ldapuser", "ldappass", "newldappass")
+		if err != nil {
+			t.Fatalf("Failed to update LDAP password: %v", err)
+		}
+
+		// Verify the password was updated correctly (not hashed for LDAP)
+		user, err := auth.GetUser(ctx, "ldapuser")
+		if err != nil {
+			t.Fatalf("Failed to get LDAP user after password update: %v", err)
+		}
+
+		if user.Password != "newldappass" {
+			t.Fatalf("Expected updated password to be stored as-is for LDAP, got: %s", user.Password)
+		}
+
+		// Test authentication with new password
+		authenticated, err := auth.Authenticate(ctx, "ldapuser", "newldappass")
+		if err != nil {
+			t.Fatalf("LDAP authentication with new password failed with error: %v", err)
+		}
+		if !authenticated {
+			t.Fatal("Expected LDAP authentication with new password to succeed, but it failed")
+		}
+	})
+
+	// Test admin password update with LDAP
+	t.Run("AdminUpdatePasswordLDAP", func(t *testing.T) {
+		// Update password as admin
+		err := auth.AdminUpdatePassword(ctx, "ldapuser", "adminldappass")
+		if err != nil {
+			t.Fatalf("Failed to update LDAP password as admin: %v", err)
+		}
+
+		// Verify the password was updated correctly (not hashed for LDAP)
+		user, err := auth.GetUser(ctx, "ldapuser")
+		if err != nil {
+			t.Fatalf("Failed to get LDAP user after admin password update: %v", err)
+		}
+
+		if user.Password != "adminldappass" {
+			t.Fatalf("Expected admin-updated password to be stored as-is for LDAP, got: %s", user.Password)
+		}
+
+		// Test authentication with new password
+		authenticated, err := auth.Authenticate(ctx, "ldapuser", "adminldappass")
+		if err != nil {
+			t.Fatalf("LDAP authentication with admin-set password failed with error: %v", err)
+		}
+		if !authenticated {
+			t.Fatal("Expected LDAP authentication with admin-set password to succeed, but it failed")
+		}
+	})
+
+	// Test user deletion with LDAP
+	t.Run("DeleteUserLDAP", func(t *testing.T) {
+		// Delete the LDAP user
+		err := auth.DeleteUser(ctx, "ldapuser")
+		if err != nil {
+			t.Fatalf("Failed to delete LDAP user: %v", err)
+		}
+
+		// Verify the user was deleted
+		exists, err := auth.UserExists(ctx, "ldapuser")
+		if err != nil {
+			t.Fatalf("Failed to check if LDAP user exists: %v", err)
+		}
+		if exists {
+			t.Fatal("Expected LDAP user to be deleted, but it still exists")
+		}
+	})
+}
+
 func TestHashPassword(t *testing.T) {
 	t.Run("ValidPassword", func(t *testing.T) {
 		password := "securepassword123"
@@ -365,6 +586,57 @@ func TestNewWithSQLite(t *testing.T) {
 		_, err := NewWithSQLite(invalidPath)
 		if err == nil {
 			t.Fatal("Expected error with invalid path, got nil")
+		}
+	})
+}
+
+func TestGetDataSourceType(t *testing.T) {
+	// Test with SQLite
+	t.Run("SQLiteType", func(t *testing.T) {
+		tempDir, err := os.MkdirTemp("", "elemta-auth-test")
+		if err != nil {
+			t.Fatalf("Failed to create temp directory: %v", err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		dbPath := filepath.Join(tempDir, "auth-test.db")
+
+		auth, err := NewWithSQLite(dbPath)
+		if err != nil {
+			t.Fatalf("Failed to create Auth instance: %v", err)
+		}
+		defer auth.Close()
+
+		dsType := auth.GetDataSourceType()
+		if dsType != "sqlite" {
+			t.Fatalf("Expected datasource type 'sqlite', got: %s", dsType)
+		}
+	})
+
+	// Test with LDAP
+	t.Run("LDAPType", func(t *testing.T) {
+		mockLDAP := NewMockLDAP()
+
+		auth, err := New(Config{
+			DataSource: mockLDAP,
+		})
+		if err != nil {
+			t.Fatalf("Failed to create Auth instance: %v", err)
+		}
+
+		dsType := auth.GetDataSourceType()
+		if dsType != "ldap" {
+			t.Fatalf("Expected datasource type 'ldap', got: %s", dsType)
+		}
+	})
+
+	// Test with nil datasource
+	t.Run("NilDataSource", func(t *testing.T) {
+		auth := &Auth{ds: nil}
+
+		dsType := auth.GetDataSourceType()
+		if dsType != "" {
+			t.Fatalf("Expected empty datasource type, got: %s", dsType)
 		}
 	})
 }
