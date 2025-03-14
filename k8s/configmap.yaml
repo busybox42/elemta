@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elemta-config
+data:
+  # General configuration
+  elemta.conf: |
+    # Elemta configuration file
+    [general]
+    hostname = "mail.example.com"
+    log_level = "info"
+    
+    [smtp]
+    enabled = true
+    address = "0.0.0.0:2525"
+    
+    [auth]
+    enabled = true
+    required = true
+    
+  # Authentication configuration
+  auth.datasource.type: "sqlite"  # Options: sqlite, ldap
+  
+  # SQLite configuration
+  auth.sqlite.path: "/app/config/auth.db"
+  
+  # LDAP configuration
+  auth.ldap.host: "ldap.example.com"
+  auth.ldap.port: "389"
+  auth.ldap.user_dn: "ou=users,dc=example,dc=com"
+  auth.ldap.group_dn: "ou=groups,dc=example,dc=com" 

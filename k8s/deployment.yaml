@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elemta
+  labels:
+    app: elemta
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elemta
+  template:
+    metadata:
+      labels:
+        app: elemta
+    spec:
+      containers:
+      - name: elemta
+        image: elemta:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 2525
+          name: smtp
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+        volumeMounts:
+        - name: queue-volume
+          mountPath: /app/queue
+        - name: logs-volume
+          mountPath: /app/logs
+        - name: config-volume
+          mountPath: /app/config
+        - name: plugins-volume
+          mountPath: /app/plugins
+        env:
+        - name: TZ
+          value: "UTC"
+        # Add environment variables for authentication configuration
+        - name: AUTH_DATASOURCE_TYPE
+          valueFrom:
+            configMapKeyRef:
+              name: elemta-config
+              key: auth.datasource.type
+        # For SQLite authentication
+        - name: AUTH_SQLITE_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: elemta-config
+              key: auth.sqlite.path
+              optional: true
+        # For LDAP authentication
+        - name: AUTH_LDAP_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: elemta-config
+              key: auth.ldap.host
+              optional: true
+        - name: AUTH_LDAP_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: elemta-config
+              key: auth.ldap.port
+              optional: true
+        - name: AUTH_LDAP_USER_DN
+          valueFrom:
+            configMapKeyRef:
+              name: elemta-config
+              key: auth.ldap.user_dn
+              optional: true
+        - name: AUTH_LDAP_GROUP_DN
+          valueFrom:
+            configMapKeyRef:
+              name: elemta-config
+              key: auth.ldap.group_dn
+              optional: true
+        - name: AUTH_LDAP_BIND_DN
+          valueFrom:
+            secretKeyRef:
+              name: elemta-secrets
+              key: auth.ldap.bind_dn
+              optional: true
+        - name: AUTH_LDAP_BIND_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elemta-secrets
+              key: auth.ldap.bind_password
+              optional: true
+        livenessProbe:
+          tcpSocket:
+            port: 2525
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 2525
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: queue-volume
+        persistentVolumeClaim:
+          claimName: elemta-queue-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: elemta-logs-pvc
+      - name: config-volume
+        configMap:
+          name: elemta-config
+      - name: plugins-volume
+        persistentVolumeClaim:
+          claimName: elemta-plugins-pvc 

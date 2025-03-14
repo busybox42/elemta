@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/busybox42/elemta/internal/datasource"
@@ -104,6 +106,53 @@ func NewWithLDAP(host string, port int, bindDN, bindPassword, userDN, groupDN st
 	return &Auth{
 		ds: ds,
 	}, nil
+}
+
+// NewFromEnv creates a new Auth instance using environment variables
+func NewFromEnv() (*Auth, error) {
+	// Get datasource type from environment
+	dsType := os.Getenv("AUTH_DATASOURCE_TYPE")
+	if dsType == "" {
+		dsType = "sqlite" // Default to SQLite if not specified
+	}
+
+	switch dsType {
+	case "sqlite":
+		// Get SQLite path from environment
+		sqlitePath := os.Getenv("AUTH_SQLITE_PATH")
+		if sqlitePath == "" {
+			sqlitePath = "/app/config/auth.db" // Default path
+		}
+		return NewWithSQLite(sqlitePath)
+
+	case "ldap":
+		// Get LDAP configuration from environment
+		host := os.Getenv("AUTH_LDAP_HOST")
+		if host == "" {
+			return nil, errors.New("LDAP host not specified in environment")
+		}
+
+		portStr := os.Getenv("AUTH_LDAP_PORT")
+		port := 389 // Default LDAP port
+		if portStr != "" {
+			var err error
+			port, err = strconv.Atoi(portStr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid LDAP port: %w", err)
+			}
+		}
+
+		bindDN := os.Getenv("AUTH_LDAP_BIND_DN")
+		bindPassword := os.Getenv("AUTH_LDAP_BIND_PASSWORD")
+		userDN := os.Getenv("AUTH_LDAP_USER_DN")
+		groupDN := os.Getenv("AUTH_LDAP_GROUP_DN")
+
+		options := make(map[string]interface{})
+		return NewWithLDAP(host, port, bindDN, bindPassword, userDN, groupDN, options)
+
+	default:
+		return nil, fmt.Errorf("unsupported datasource type: %s", dsType)
+	}
 }
 
 // Close closes the underlying datasource connection

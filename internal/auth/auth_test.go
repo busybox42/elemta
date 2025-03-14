@@ -448,6 +448,108 @@ func TestAuthWithLDAP(t *testing.T) {
 	})
 }
 
+func TestNewFromEnv(t *testing.T) {
+	// Create a temporary directory for the test database
+	tempDir, err := os.MkdirTemp("", "elemta-auth-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "auth-test.db")
+
+	// Test SQLite configuration from environment variables
+	t.Run("SQLiteFromEnv", func(t *testing.T) {
+		// Set environment variables
+		os.Setenv("AUTH_DATASOURCE_TYPE", "sqlite")
+		os.Setenv("AUTH_SQLITE_PATH", dbPath)
+		defer func() {
+			os.Unsetenv("AUTH_DATASOURCE_TYPE")
+			os.Unsetenv("AUTH_SQLITE_PATH")
+		}()
+
+		// Create Auth instance from environment
+		auth, err := NewFromEnv()
+		if err != nil {
+			t.Fatalf("Failed to create Auth instance from environment: %v", err)
+		}
+		defer auth.Close()
+
+		// Verify the datasource type
+		if auth.GetDataSourceType() != "sqlite" {
+			t.Fatalf("Expected datasource type 'sqlite', got: %s", auth.GetDataSourceType())
+		}
+	})
+
+	// Test LDAP configuration from environment variables
+	t.Run("LDAPFromEnv", func(t *testing.T) {
+		// Set environment variables
+		os.Setenv("AUTH_DATASOURCE_TYPE", "ldap")
+		os.Setenv("AUTH_LDAP_HOST", "ldap.example.com")
+		os.Setenv("AUTH_LDAP_PORT", "389")
+		os.Setenv("AUTH_LDAP_BIND_DN", "cn=admin,dc=example,dc=com")
+		os.Setenv("AUTH_LDAP_BIND_PASSWORD", "admin_password")
+		os.Setenv("AUTH_LDAP_USER_DN", "ou=users,dc=example,dc=com")
+		os.Setenv("AUTH_LDAP_GROUP_DN", "ou=groups,dc=example,dc=com")
+		defer func() {
+			os.Unsetenv("AUTH_DATASOURCE_TYPE")
+			os.Unsetenv("AUTH_LDAP_HOST")
+			os.Unsetenv("AUTH_LDAP_PORT")
+			os.Unsetenv("AUTH_LDAP_BIND_DN")
+			os.Unsetenv("AUTH_LDAP_BIND_PASSWORD")
+			os.Unsetenv("AUTH_LDAP_USER_DN")
+			os.Unsetenv("AUTH_LDAP_GROUP_DN")
+		}()
+
+		// This test will fail because we can't actually connect to the LDAP server
+		// In a real environment, we would mock the LDAP connection
+		// For now, we'll just verify that the function tries to create an LDAP datasource
+		_, err := NewFromEnv()
+		if err == nil {
+			t.Fatal("Expected error when connecting to non-existent LDAP server, got nil")
+		}
+		// The error should be about connecting to the LDAP server, not about missing configuration
+		if err.Error() == "LDAP host not specified in environment" {
+			t.Fatal("Expected error about LDAP connection, got error about missing host")
+		}
+	})
+
+	// Test default SQLite configuration when no environment variables are set
+	t.Run("DefaultSQLite", func(t *testing.T) {
+		// Clear environment variables
+		os.Unsetenv("AUTH_DATASOURCE_TYPE")
+		os.Unsetenv("AUTH_SQLITE_PATH")
+
+		// This test will likely fail because the default SQLite path doesn't exist
+		// In a real environment, we would ensure the path exists
+		// For now, we'll just verify that the function tries to create a SQLite datasource
+		_, err := NewFromEnv()
+		if err == nil {
+			t.Fatal("Expected error when connecting to non-existent SQLite database, got nil")
+		}
+		// The error should be about connecting to the SQLite database, not about missing configuration
+		if err.Error() == "datasource is required" {
+			t.Fatal("Expected error about SQLite connection, got error about missing datasource")
+		}
+	})
+
+	// Test invalid datasource type
+	t.Run("InvalidDatasourceType", func(t *testing.T) {
+		// Set environment variables
+		os.Setenv("AUTH_DATASOURCE_TYPE", "invalid")
+		defer os.Unsetenv("AUTH_DATASOURCE_TYPE")
+
+		// Create Auth instance from environment
+		_, err := NewFromEnv()
+		if err == nil {
+			t.Fatal("Expected error with invalid datasource type, got nil")
+		}
+		if err.Error() != "unsupported datasource type: invalid" {
+			t.Fatalf("Expected error about unsupported datasource type, got: %v", err)
+		}
+	})
+}
+
 func TestHashPassword(t *testing.T) {
 	t.Run("ValidPassword", func(t *testing.T) {
 		password := "securepassword123"
