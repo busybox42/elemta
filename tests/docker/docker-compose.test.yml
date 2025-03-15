@@ -1,10 +1,10 @@
-version: '3.8'
+version: '3'
 
 services:
   elemta-test:
     build:
-      context: .
-      dockerfile: Dockerfile.test
+      context: ../../
+      dockerfile: tests/docker/Dockerfile.test
     container_name: elemta-test
     restart: unless-stopped
     ports:
@@ -24,8 +24,5 @@ networks:
 
 volumes:
   elemta_test_queue:
-    driver: local
   elemta_test_logs:
-    driver: local
-  elemta_test_plugins:
-    driver: local 
+  elemta_test_plugins: 

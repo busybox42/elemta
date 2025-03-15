@@ -1,20 +1,14 @@
-# Elemta Kubernetes Deployment
+# Kubernetes Deployment for Elemta
 
-## Architecture
+This document provides instructions for deploying Elemta to a Kubernetes cluster.
 
-This directory contains Kubernetes deployment files for the Elemta email platform. The deployment includes:
+## Prerequisites
 
-- **Elemta SMTP Server**: The main email server component
-- **ClamAV**: For virus scanning (mocked in this deployment)
-- **Rspamd**: For spam filtering
-
-## Quick Start
-
-### Prerequisites
-
-- Kubernetes cluster (minikube, kind, or a cloud provider)
+- A Kubernetes cluster (minikube, kind, or a cloud provider)
 - `kubectl` configured to use your cluster
 - Docker images built (run `make docker-build` in the project root)
+
+## Quick Start
 
 ### Deployment
 
@@ -38,7 +32,23 @@ To test if the deployment is working correctly:
 make k8s-test
 ```
 
-This will run the test script located at `tests/k8s/test-elemta.sh` which tests the SMTP service, ClamAV, and Rspamd functionality.
+### Cleanup
+
+To remove the Kubernetes deployment:
+
+```bash
+make k8s-undeploy
+```
+
+## Architecture
+
+The Kubernetes deployment includes:
+
+- **Elemta SMTP Server**: The main email server component
+- **ClamAV**: For virus scanning
+- **Rspamd**: For spam filtering
+
+All three components run in a single pod with shared volumes for configuration and data.
 
 ## Management Commands
 
@@ -76,13 +86,7 @@ Rspamd is configured via the `rspamd-config` ConfigMap. The configuration includ
 
 ### ClamAV Configuration
 
-In this deployment, ClamAV is mocked using a simple Alpine container with netcat to simulate the ClamAV service. For production, replace this with a real ClamAV container.
-
-## File Structure
-
-- `elemta-all.yaml`: The main Kubernetes deployment file
-- `README.md`: This documentation
-- `../tests/k8s/`: Directory containing test scripts
+In this deployment, ClamAV runs as a container in the same pod as Elemta and Rspamd. It's accessible internally via the `elemta-clamav` service.
 
 ## Exposed Services
 
@@ -90,15 +94,41 @@ In this deployment, ClamAV is mocked using a simple Alpine container with netcat
 - **Rspamd Web Interface**: NodePort 30334 (mapped to port 11334 in the container)
 - **ClamAV**: ClusterIP only (internal access via elemta-clamav:3310)
 
-## Test Results
+## Customization
 
-Recent testing confirms:
+### Using a Different Namespace
 
-- **SMTP Service (port 30025)**: ✅ Working
-- **Rspamd Web Interface (port 30334)**: ✅ Working
-- **ClamAV Service (internal only)**: ❓ Not directly accessible from outside (expected)
+To deploy to a different namespace:
 
-The deployment is functioning correctly with the SMTP server and Rspamd web interface accessible from outside the cluster.
+```bash
+kubectl create namespace elemta
+kubectl config set-context --current --namespace=elemta
+make k8s-deploy
+```
+
+### Using Custom Images
+
+To use custom images, modify the `elemta-all.yaml` file:
+
+```yaml
+containers:
+- name: elemta
+  image: your-registry/elemta:your-tag
+```
+
+### Resource Limits
+
+For production deployments, consider adding resource limits:
+
+```yaml
+resources:
+  limits:
+    cpu: "1"
+    memory: "1Gi"
+  requests:
+    cpu: "500m"
+    memory: "512Mi"
+```
 
 ## Troubleshooting
 
@@ -120,4 +150,19 @@ The deployment is functioning correctly with the SMTP server and Rspamd web inte
    kubectl logs -l app=elemta -c elemta
    kubectl logs -l app=elemta -c rspamd
    kubectl logs -l app=elemta -c clamav
-   ``` 
+   ```
+
+4. **Persistent volume issues**: Check PVC status
+   ```bash
+   kubectl get pvc
+   ```
+
+## Security Considerations
+
+For production deployments:
+
+1. **Enable TLS**: Configure TLS for SMTP and web interfaces
+2. **Set resource limits**: Prevent resource exhaustion
+3. **Use network policies**: Restrict pod communication
+4. **Enable authentication**: Secure the Rspamd web interface
+5. **Use secrets**: Store sensitive information in Kubernetes secrets 

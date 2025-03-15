@@ -6,11 +6,25 @@ data:
   elemta.conf: |
     [general]
     hostname = "mail.example.com"
-    log_level = "info"
+    log_level = "debug"
 
     [smtp]
     enabled = true
     address = "0.0.0.0:25"
 
     [auth]
-    enabled = false 
+    enabled = false
+
+    [antivirus]
+    clamav_enabled = true
+    clamav_address = "tcp://elemta-clamav:3310"
+    clamav_timeout = 30
+    clamav_scan_limit = 26214400
+
+    [antispam]
+    rspamd_enabled = true
+    rspamd_address = "http://elemta-rspamd:11333"
+    rspamd_timeout = 30
+    rspamd_scan_limit = 26214400
+    rspamd_threshold = 1.0
+    rspamd_reject_spam = true 

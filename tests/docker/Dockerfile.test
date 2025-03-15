@@ -7,13 +7,13 @@ WORKDIR /app
 RUN apk add --no-cache git
 
 # Copy go.mod and go.sum
-COPY go.mod go.sum ./
+COPY ../../go.mod ../../go.sum ./
 
 # Download dependencies
 RUN go mod download
 
 # Copy source code
-COPY . .
+COPY ../../ .
 
 # Build the application
 RUN go build -o /app/elemta-bin ./cmd/elemta
@@ -37,7 +37,7 @@ WORKDIR /app
 COPY --from=builder /app/elemta-bin /app/elemta
 
 # Create a custom config file
-RUN echo '{"hostname": "mail.evil-admin.com", "listen_addr": ":2525", "queue_dir": "./queue", "max_size": 26214400, "dev_mode": false, "allowed_relays": ["127.0.0.1", "::1", "192.168.65.1"], "max_workers": 5, "max_retries": 3, "max_queue_time": 3600, "retry_schedule": [60, 300, 900]}' > /app/config/elemta.conf
+RUN echo '{"hostname": "mail.evil-admin.com", "listen_addr": ":2525", "queue_dir": "./queue", "max_size": 26214400, "dev_mode": false, "allowed_relays": ["127.0.0.1", "::1", "192.168.65.1"], "max_workers": 5, "max_retries": 3, "max_queue_time": 3600, "retry_schedule": [60, 300, 900], "antivirus": {"clamav": {"enabled": false}}, "antispam": {"rspamd": {"enabled": false}}}' > /app/config/elemta.conf
 RUN chown elemta:elemta /app/config/elemta.conf
 
 # Copy example plugins
@@ -50,4 +50,4 @@ USER elemta
 EXPOSE 2525
 
 # Set the entry point
-ENTRYPOINT ["/app/elemta"] 
+ENTRYPOINT ["/app/elemta", "server"] 

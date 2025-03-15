@@ -100,15 +100,23 @@ docker logs elemta
 
 ## Testing
 
-You can test the SMTP server using the provided Python scripts:
+You can test the SMTP server using various methods:
 
 ```bash
-# Test basic SMTP functionality
-python3 test_smtp.py
+# Run all Python tests
+make python-test
 
-# Test SMTP authentication
-python3 test_smtp_auth.py
+# Run unit tests
+make unit-test
+
+# Run Docker tests
+make docker-test
+
+# Run Kubernetes tests
+make k8s-test
 ```
+
+For detailed testing instructions, see the [Testing Documentation](docs/testing.md).
 
 ## Queue Management System
 
@@ -125,6 +133,10 @@ For more details, see the [Queue Management Documentation](docs/queue_management
 ## Docker Deployment
 
 For detailed instructions on deploying Elemta with Docker, see the [Docker Deployment Documentation](docs/docker_deployment.md).
+
+## Kubernetes Deployment
+
+For detailed instructions on deploying Elemta to Kubernetes, see the [Kubernetes Deployment Documentation](docs/kubernetes_deployment.md).
 
 ## SMTP Server
 

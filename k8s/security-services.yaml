@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: elemta-clamav
+  labels:
+    app: elemta
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3310
+    targetPort: 3310
+    protocol: TCP
+    name: clamav
+  selector:
+    app: elemta
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elemta-rspamd
+  labels:
+    app: elemta
+spec:
+  type: NodePort
+  ports:
+  - port: 11333
+    targetPort: 11333
+    protocol: TCP
+    name: rspamd
+  - port: 11334
+    targetPort: 11334
+    nodePort: 30334
+    protocol: TCP
+    name: rspamd-web
+  selector:
+    app: elemta 

@@ -1,4 +1,4 @@
-.PHONY: all build clean test docker docker-build docker-run docker-deploy docker-undeploy k8s-deploy k8s-undeploy k8s-expose
+.PHONY: all build clean test unit-test integration-test python-test docker-test docker docker-build docker-run docker-deploy docker-undeploy k8s-deploy k8s-undeploy k8s-down k8s-up k8s-restart k8s-test
 
 BINARY_NAME=elemta
 QUEUE_BINARY_NAME=elemta-queue
@@ -22,10 +22,29 @@ clean:
 	@rm -rf $(BUILD_DIR)
 	@echo "Clean complete!"
 
-test:
-	@echo "Running tests..."
+test: unit-test
+	@echo "All tests complete!"
+
+unit-test:
+	@echo "Running unit tests..."
 	go test -v ./...
-	@echo "Tests complete!"
+	@echo "Unit tests complete!"
+
+integration-test: k8s-test
+	@echo "Integration tests complete!"
+
+python-test:
+	@echo "Running Python tests..."
+	python3 tests/python/test_smtp.py
+	python3 tests/python/test_smtp_auth.py
+	SKIP_SECURITY_TESTS=true python3 tests/python/test_security.py --test all
+	@echo "Python tests complete!"
+
+docker-test:
+	@echo "Running Docker tests..."
+	docker-compose -f tests/docker/docker-compose.test.yml down --remove-orphans || true
+	docker-compose -f tests/docker/docker-compose.test.yml up -d --build
+	@echo "Docker tests started! Use 'docker-compose -f tests/docker/docker-compose.test.yml down' to stop."
 
 coverage:
 	@echo "Running tests with coverage..."
@@ -60,7 +79,8 @@ docker-deploy: docker-build
 
 docker-undeploy:
 	@echo "Undeploying Docker Compose..."
-	docker-compose down
+	docker-compose down --remove-orphans || true
+	docker network prune -f || true
 	@echo "Docker undeployment complete!"
 
 docker-logs:
@@ -76,20 +96,12 @@ docker-stop:
 
 k8s-deploy:
 	@echo "Deploying to Kubernetes..."
-	kubectl apply -f k8s/elemta-config.yaml
-	kubectl apply -f k8s/pvc.yaml
-	kubectl apply -f k8s/service.yaml
-	kubectl apply -f k8s/clean-deployment.yaml
+	kubectl apply -f k8s/elemta-all.yaml
 	@echo "Kubernetes deployment complete!"
-	@echo "Service exposed on NodePort 30025"
-	@echo "You can access the SMTP server at $(shell kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}'):30025"
 
 k8s-undeploy:
 	@echo "Undeploying from Kubernetes..."
-	kubectl delete -f k8s/clean-deployment.yaml || true
-	kubectl delete -f k8s/service.yaml || true
-	kubectl delete -f k8s/elemta-config.yaml || true
-	kubectl delete -f k8s/pvc.yaml || true
+	kubectl delete -f k8s/elemta-all.yaml || true
 	@echo "Kubernetes undeployment complete!"
 
 k8s-logs:
@@ -103,12 +115,23 @@ k8s-status:
 	kubectl get services -l app=elemta
 	@echo "Kubernetes status check complete!"
 
-k8s-expose:
-	@echo "Exposing Elemta service externally..."
-	kubectl apply -f k8s/service.yaml
-	@echo "Service exposed on NodePort 30025"
-	@echo "You can access the SMTP server at $(shell kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}'):30025"
-	@echo "Exposure complete!"
+k8s-down:
+	@echo "Stopping Kubernetes deployment..."
+	kubectl delete -f k8s/elemta-all.yaml || true
+	@echo "Kubernetes deployment stopped!"
+
+k8s-up:
+	@echo "Starting Kubernetes deployment..."
+	kubectl apply -f k8s/elemta-all.yaml
+	@echo "Kubernetes deployment started!"
+
+k8s-restart: k8s-down k8s-up
+	@echo "Kubernetes deployment restarted!"
+
+k8s-test:
+	@echo "Running Kubernetes tests..."
+	./tests/k8s/test-elemta.sh
+	@echo "Kubernetes tests complete!"
 
 # Alias for backward compatibility
 docker: docker-build 

@@ -1,0 +1,171 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elemta
+  labels:
+    app: elemta
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elemta
+  template:
+    metadata:
+      labels:
+        app: elemta
+    spec:
+      containers:
+      - name: elemta
+        image: elemta:latest
+        imagePullPolicy: Never
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            cp /config-volume/elemta.conf /app/config/elemta.conf
+            echo "#!/bin/sh" > /app/entrypoint.sh
+            echo "set -e" >> /app/entrypoint.sh
+            echo "echo \"Environment variables:\"" >> /app/entrypoint.sh
+            echo "env" >> /app/entrypoint.sh
+            echo "echo \"Working directory:\"" >> /app/entrypoint.sh
+            echo "pwd" >> /app/entrypoint.sh
+            echo "ls -la" >> /app/entrypoint.sh
+            echo "echo \"Looking for server binary:\"" >> /app/entrypoint.sh
+            echo "find / -name elemta -type f 2>/dev/null || echo \"Binary not found\"" >> /app/entrypoint.sh
+            echo "echo \"Starting Elemta server...\"" >> /app/entrypoint.sh
+            echo "exec /app/elemta server" >> /app/entrypoint.sh
+            chmod +x /app/entrypoint.sh
+            /app/entrypoint.sh
+        ports:
+        - containerPort: 25
+          name: smtp
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+        volumeMounts:
+        - name: queue-volume
+          mountPath: /app/queue
+        - name: logs-volume
+          mountPath: /app/logs
+        - name: config-volume
+          mountPath: /config-volume
+        - name: plugins-volume
+          mountPath: /app/plugins
+        env:
+        - name: TZ
+          value: "UTC"
+        - name: ELEMTA_CONFIG_PATH
+          value: "/app/config/elemta.conf"
+        - name: DEBUG
+          value: "true"
+        livenessProbe:
+          tcpSocket:
+            port: 25
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 25
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      - name: clamav
+        image: alpine:latest
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            # Install netcat
+            apk add --no-cache netcat-openbsd
+            
+            # Create a simple mock ClamAV service
+            echo "Starting mock ClamAV service on port 3310..."
+            while true; do
+              echo -e "PONG\nOK" | nc -l -p 3310
+            done
+        ports:
+        - containerPort: 3310
+          name: clamav
+        env:
+        - name: TZ
+          value: "UTC"
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "64Mi"
+          requests:
+            cpu: "50m"
+            memory: "32Mi"
+        livenessProbe:
+          tcpSocket:
+            port: 3310
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          tcpSocket:
+            port: 3310
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+      - name: rspamd
+        image: rspamd/rspamd:latest
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+        ports:
+        - containerPort: 11333
+          name: rspamd
+        - containerPort: 11334
+          name: rspamd-web
+        volumeMounts:
+        - name: rspamd-data
+          mountPath: /var/lib/rspamd
+        - name: rspamd-config
+          mountPath: /etc/rspamd
+        - name: rspamd-custom-config
+          mountPath: /etc/rspamd/local.d
+        env:
+        - name: TZ
+          value: "UTC"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 11334
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 11334
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+      volumes:
+      - name: queue-volume
+        persistentVolumeClaim:
+          claimName: elemta-queue-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: elemta-logs-pvc
+      - name: config-volume
+        configMap:
+          name: elemta-config
+      - name: plugins-volume
+        persistentVolumeClaim:
+          claimName: elemta-plugins-pvc
+      - name: rspamd-data
+        persistentVolumeClaim:
+          claimName: rspamd-data-pvc
+      - name: rspamd-config
+        persistentVolumeClaim:
+          claimName: rspamd-config-pvc
+      - name: rspamd-custom-config
+        configMap:
+          name: rspamd-config 

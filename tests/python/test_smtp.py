@@ -5,17 +5,13 @@ from email.mime.multipart import MIMEMultipart
 
 # SMTP server details
 smtp_server = "localhost"
-smtp_port = 2525
-
-# Authentication details
-username = "testuser"
-password = "testpass"
+smtp_port = 2526
 
 # Email details
 sender_email = "sender@example.com"
 receiver_email = "recipient@example.com"
-subject = "Test Email with Authentication"
-message_text = "This is a test email sent through the Elemta SMTP server with authentication."
+subject = "Test Email from Elemta SMTP Server"
+message_text = "This is a test email sent through the Elemta SMTP server."
 
 # Create a multipart message
 message = MIMEMultipart()
@@ -31,17 +27,11 @@ try:
     print(f"Connecting to {smtp_server}:{smtp_port}...")
     server = smtplib.SMTP(smtp_server, smtp_port)
     
-    # Print server capabilities
-    print("Server capabilities:")
-    server.ehlo()
+    # Start TLS if needed (not needed for our test)
+    # server.starttls()
     
-    # Try authentication
-    print(f"Attempting to authenticate as {username}...")
-    try:
-        server.login(username, password)
-        print("Authentication successful!")
-    except smtplib.SMTPException as e:
-        print(f"Authentication failed: {e}")
+    # Authentication if needed (not needed for our test)
+    # server.login("username", "password")
     
     # Send email
     print("Sending email...")
