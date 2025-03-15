@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"path/filepath"
 
 	"github.com/busybox42/elemta/internal/plugin"
 )
@@ -27,7 +29,7 @@ func NewServer(config *Config) (*Server, error) {
 
 		// Load plugins
 		if err := pluginManager.LoadPlugins(); err != nil {
-			return nil, fmt.Errorf("failed to load plugins: %w", err)
+			log.Printf("Warning: failed to load plugins: %v", err)
 		}
 
 		// Load specific plugins if specified
@@ -67,6 +69,8 @@ func NewServer(config *Config) (*Server, error) {
 	scannerManager := NewScannerManager(config, server)
 	if err := scannerManager.Initialize(context.Background()); err != nil {
 		log.Printf("Warning: Error initializing scanner manager: %v", err)
+		// Continue even if scanner initialization fails
+		// This prevents the server from crashing if scanners are misconfigured
 	}
 
 	return server, nil
@@ -76,6 +80,21 @@ func NewServer(config *Config) (*Server, error) {
 func (s *Server) Start() error {
 	if s.running {
 		return fmt.Errorf("server already running")
+	}
+
+	// Ensure queue directory exists
+	if s.config.QueueDir != "" {
+		if err := os.MkdirAll(s.config.QueueDir, 0755); err != nil {
+			return fmt.Errorf("failed to create queue directory: %w", err)
+		}
+
+		// Create subdirectories for different queue types
+		for _, dir := range []string{"active", "deferred", "held", "failed", "data"} {
+			queueSubDir := filepath.Join(s.config.QueueDir, dir)
+			if err := os.MkdirAll(queueSubDir, 0755); err != nil {
+				return fmt.Errorf("failed to create queue subdirectory %s: %w", dir, err)
+			}
+		}
 	}
 
 	var err error

@@ -11,6 +11,16 @@ import (
 	"time"
 )
 
+// QueueType represents different queue types for message processing
+type QueueType string
+
+const (
+	QueueTypeActive   QueueType = "active"   // Messages actively being processed
+	QueueTypeDeferred QueueType = "deferred" // Messages waiting for retry
+	QueueTypeHeld     QueueType = "held"     // Messages held for manual review
+	QueueTypeFailed   QueueType = "failed"   // Messages that have permanently failed
+)
+
 // Priority levels for messages
 type Priority int
 
@@ -21,14 +31,34 @@ const (
 	PriorityCritical Priority = 3
 )
 
+// Additional message status constants
+const (
+	StatusDeferred MessageStatus = "deferred"
+	StatusHeld     MessageStatus = "held"
+)
+
+// Message status constants
+// const (
+// 	StatusQueued     = "queued"
+// 	StatusDelivering = "delivering"
+// 	StatusDelivered  = "delivered"
+// 	StatusFailed     = "failed"
+// 	StatusDeferred   = "deferred"
+// 	StatusHeld       = "held"
+// )
+
 // QueuedMessage extends MessageInfo with additional queue-specific fields
 type QueuedMessage struct {
 	MessageInfo
-	Priority   Priority    `json:"priority"`
-	RetryCount int         `json:"retry_count"`
-	NextRetry  time.Time   `json:"next_retry"`
-	LastError  string      `json:"last_error"`
-	Attempts   []time.Time `json:"attempts"`
+	Priority    Priority          `json:"priority"`
+	QueueType   QueueType         `json:"queue_type"`
+	RetryCount  int               `json:"retry_count"`
+	NextRetry   time.Time         `json:"next_retry"`
+	LastError   string            `json:"last_error"`
+	Attempts    []time.Time       `json:"attempts"`
+	HoldReason  string            `json:"hold_reason,omitempty"`
+	FailReason  string            `json:"fail_reason,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"` // For storing metadata like SPF/DKIM results
 }
 
 // QueueManager handles message queuing, prioritization, and retry logic
@@ -39,6 +69,22 @@ type QueueManager struct {
 	activeMu   sync.Mutex
 	activeJobs map[string]bool
 	workerPool chan struct{}
+
+	// Queue statistics
+	stats   QueueStats
+	statsMu sync.RWMutex
+}
+
+// QueueStats tracks statistics about the queue
+type QueueStats struct {
+	ActiveCount    int       `json:"active_count"`
+	DeferredCount  int       `json:"deferred_count"`
+	HeldCount      int       `json:"held_count"`
+	FailedCount    int       `json:"failed_count"`
+	TotalProcessed int       `json:"total_processed"`
+	TotalDelivered int       `json:"total_delivered"`
+	TotalFailed    int       `json:"total_failed"`
+	LastUpdated    time.Time `json:"last_updated"`
 }
 
 // NewQueueManager creates a new queue manager
@@ -52,19 +98,54 @@ func NewQueueManager(config *Config) *QueueManager {
 		logger:     logger,
 		activeJobs: make(map[string]bool),
 		workerPool: make(chan struct{}, config.MaxWorkers),
+		stats: QueueStats{
+			LastUpdated: time.Now(),
+		},
 	}
 }
 
 // Start begins queue processing
 func (qm *QueueManager) Start() {
 	qm.running = true
-	go qm.processQueue()
+
+	// Create queue directories if they don't exist
+	qm.ensureQueueDirectories()
+
+	// Start queue processors for different queue types
+	go qm.processActiveQueue()
+	go qm.processDeferredQueue()
 	go qm.cleanupQueue()
+	go qm.updateQueueStats()
 }
 
 // Stop halts queue processing
 func (qm *QueueManager) Stop() {
 	qm.running = false
+}
+
+// ensureQueueDirectories creates the necessary queue directories
+func (qm *QueueManager) ensureQueueDirectories() {
+	baseDir := qm.config.QueueDir
+
+	// Create base queue directory
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		qm.logger.Error("Failed to create base queue directory", "error", err)
+		return
+	}
+
+	// Create subdirectories for each queue type
+	for _, qType := range []QueueType{QueueTypeActive, QueueTypeDeferred, QueueTypeHeld, QueueTypeFailed} {
+		qDir := filepath.Join(baseDir, string(qType))
+		if err := os.MkdirAll(qDir, 0755); err != nil {
+			qm.logger.Error("Failed to create queue directory", "type", qType, "error", err)
+		}
+	}
+
+	// Create data directory for message content
+	dataDir := filepath.Join(baseDir, "data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		qm.logger.Error("Failed to create message data directory", "error", err)
+	}
 }
 
 // EnqueueMessage adds a message to the queue with specified priority
@@ -74,9 +155,14 @@ func (qm *QueueManager) EnqueueMessage(msg *Message, priority Priority) error {
 		return fmt.Errorf("failed to create queue directory: %w", err)
 	}
 
-	// Save message data
-	msgPath := filepath.Join(qm.config.QueueDir, msg.id)
-	if err := os.WriteFile(msgPath, msg.data, 0644); err != nil {
+	// Save message data to the data directory
+	dataDir := filepath.Join(qm.config.QueueDir, "data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return fmt.Errorf("failed to create data directory: %w", err)
+	}
+
+	msgDataPath := filepath.Join(dataDir, msg.id)
+	if err := os.WriteFile(msgDataPath, msg.data, 0644); err != nil {
 		return fmt.Errorf("failed to write message data: %w", err)
 	}
 
@@ -90,16 +176,18 @@ func (qm *QueueManager) EnqueueMessage(msg *Message, priority Priority) error {
 			CreatedAt: msg.created,
 			UpdatedAt: time.Now(),
 		},
-		Priority:   priority,
-		RetryCount: 0,
-		NextRetry:  time.Now(),
-		Attempts:   []time.Time{},
+		Priority:    priority,
+		QueueType:   QueueTypeActive, // Start in active queue
+		RetryCount:  0,
+		NextRetry:   time.Now(),
+		Attempts:    []time.Time{},
+		Annotations: make(map[string]string),
 	}
 
-	// Save metadata
+	// Save metadata to the active queue
 	if err := qm.saveQueuedMessage(queuedMsg); err != nil {
 		// Try to clean up message file if metadata save fails
-		os.Remove(msgPath)
+		os.Remove(msgDataPath)
 		return fmt.Errorf("failed to save message metadata: %w", err)
 	}
 
@@ -120,7 +208,7 @@ func (qm *QueueManager) processQueue() {
 	for qm.running {
 		<-ticker.C
 
-		messages, err := qm.getQueuedMessages()
+		messages, err := qm.getQueuedMessagesFromDir(qm.config.QueueDir)
 		if err != nil {
 			qm.logger.Error("failed to get queued messages", "error", err)
 			continue
@@ -158,145 +246,558 @@ func (qm *QueueManager) processQueue() {
 	}
 }
 
-// cleanupQueue periodically removes old messages that have exceeded max queue time
+// cleanupQueue periodically removes old messages from the queue
 func (qm *QueueManager) cleanupQueue() {
-	ticker := time.NewTicker(1 * time.Hour)
+	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 
-	for qm.running {
-		<-ticker.C
-
-		messages, err := qm.getQueuedMessages()
-		if err != nil {
-			qm.logger.Error("failed to get queued messages for cleanup", "error", err)
-			continue
+	for {
+		if !qm.running {
+			return
 		}
 
-		now := time.Now()
-		maxAge := time.Duration(qm.config.MaxQueueTime) * time.Second
+		select {
+		case <-ticker.C:
+			qm.logger.Info("starting queue cleanup")
 
-		for _, msg := range messages {
-			age := now.Sub(msg.CreatedAt)
-			if age > maxAge {
-				qm.logger.Info("removing expired message from queue",
-					"id", msg.ID,
-					"age_hours", age.Hours(),
-					"max_age_hours", maxAge.Hours())
+			// Get all messages from all queues
+			var allMessages []*QueuedMessage
 
-				// Remove message and metadata files
-				msgPath := filepath.Join(qm.config.QueueDir, msg.ID)
-				metaPath := msgPath + ".json"
+			for _, qType := range []QueueType{QueueTypeActive, QueueTypeDeferred, QueueTypeHeld, QueueTypeFailed} {
+				qDir := filepath.Join(qm.config.QueueDir, string(qType))
+				messages, err := qm.getQueuedMessagesFromDir(qDir)
+				if err != nil {
+					qm.logger.Error("failed to get messages for cleanup", "queue", qType, "error", err)
+					continue
+				}
+				allMessages = append(allMessages, messages...)
+			}
 
-				os.Remove(msgPath)
-				os.Remove(metaPath)
+			// Check for messages that have been in the queue too long
+			maxAge := time.Duration(qm.config.MaxQueueTime) * time.Second
+			now := time.Now()
+
+			for _, msg := range allMessages {
+				// Skip messages in the failed queue
+				if msg.QueueType == QueueTypeFailed {
+					continue
+				}
+
+				age := now.Sub(msg.CreatedAt)
+				if age > maxAge {
+					qm.logger.Info("removing expired message from queue",
+						"id", msg.ID,
+						"age", age.String(),
+						"max_age", maxAge.String())
+
+					// Move to failed queue
+					msg.QueueType = QueueTypeFailed
+					msg.Status = StatusFailed
+					msg.FailReason = fmt.Sprintf("Message expired after %s", age.String())
+					msg.UpdatedAt = now
+
+					if err := qm.moveMessage(msg, msg.QueueType, QueueTypeFailed); err != nil {
+						qm.logger.Error("failed to move expired message to failed queue",
+							"id", msg.ID,
+							"error", err)
+					}
+
+					// Update stats
+					qm.statsMu.Lock()
+					qm.stats.TotalFailed++
+					qm.statsMu.Unlock()
+				}
+			}
+
+			qm.logger.Info("queue cleanup completed")
+		}
+	}
+}
+
+// processMessage processes a single message from the queue
+func (qm *QueueManager) processMessage(msg *QueuedMessage) {
+	qm.logger.Info("processing message",
+		"id", msg.ID,
+		"from", msg.From,
+		"to", msg.To,
+		"retry_count", msg.RetryCount)
+
+	// Update stats
+	qm.statsMu.Lock()
+	qm.stats.TotalProcessed++
+	qm.statsMu.Unlock()
+
+	// Load message data
+	dataPath := filepath.Join(qm.config.QueueDir, "data", msg.ID)
+	data, err := os.ReadFile(dataPath)
+	if err != nil {
+		qm.logger.Error("failed to read message data", "id", msg.ID, "error", err)
+
+		// Move to failed queue if data can't be read
+		msg.QueueType = QueueTypeFailed
+		msg.FailReason = fmt.Sprintf("Failed to read message data: %v", err)
+		msg.Status = StatusFailed
+		msg.UpdatedAt = time.Now()
+
+		if err := qm.saveQueuedMessage(msg); err != nil {
+			qm.logger.Error("failed to save failed message", "id", msg.ID, "error", err)
+		}
+
+		return
+	}
+
+	// Record attempt
+	msg.Attempts = append(msg.Attempts, time.Now())
+
+	// Attempt delivery
+	err = qm.attemptDelivery(msg, data)
+
+	if err == nil {
+		// Delivery successful
+		qm.logger.Info("message delivered successfully", "id", msg.ID)
+
+		// Update stats
+		qm.statsMu.Lock()
+		qm.stats.TotalDelivered++
+		qm.statsMu.Unlock()
+
+		// Update message status
+		msg.Status = StatusDelivered
+		msg.UpdatedAt = time.Now()
+
+		// Save to completed directory or delete
+		if qm.config.KeepDeliveredMessages {
+			// Move to a "delivered" directory for archiving
+			deliveredDir := filepath.Join(qm.config.QueueDir, "delivered")
+			if err := os.MkdirAll(deliveredDir, 0755); err == nil {
+				deliveredPath := filepath.Join(deliveredDir, msg.ID+".json")
+				data, err := json.Marshal(msg)
+				if err == nil {
+					os.WriteFile(deliveredPath, data, 0644)
+				}
+			}
+		}
+
+		// Remove from queue
+		queuePath := filepath.Join(qm.config.QueueDir, string(msg.QueueType), msg.ID+".json")
+		os.Remove(queuePath)
+
+		// Remove message data if configured
+		if !qm.config.KeepMessageData {
+			os.Remove(dataPath)
+		}
+
+		return
+	}
+
+	// Delivery failed
+	qm.logger.Error("message delivery failed",
+		"id", msg.ID,
+		"retry_count", msg.RetryCount,
+		"error", err)
+
+	// Update message
+	msg.LastError = err.Error()
+	msg.RetryCount++
+	msg.UpdatedAt = time.Now()
+
+	// Check if we've exceeded max retries
+	if msg.RetryCount >= qm.config.MaxRetries {
+		// Move to failed queue
+		qm.logger.Info("max retries exceeded, moving to failed queue",
+			"id", msg.ID,
+			"retry_count", msg.RetryCount)
+
+		msg.QueueType = QueueTypeFailed
+		msg.Status = StatusFailed
+		msg.FailReason = fmt.Sprintf("Max retries (%d) exceeded. Last error: %s",
+			qm.config.MaxRetries, msg.LastError)
+
+		// Update stats
+		qm.statsMu.Lock()
+		qm.stats.TotalFailed++
+		qm.statsMu.Unlock()
+	} else {
+		// Calculate next retry time with exponential backoff
+		backoffDelay := qm.getBackoffDelay(msg.RetryCount)
+		msg.NextRetry = time.Now().Add(time.Duration(backoffDelay) * time.Second)
+
+		// Move to deferred queue
+		msg.QueueType = QueueTypeDeferred
+		msg.Status = StatusDeferred
+
+		qm.logger.Info("message deferred",
+			"id", msg.ID,
+			"retry_count", msg.RetryCount,
+			"next_retry", msg.NextRetry.Format(time.RFC3339))
+	}
+
+	// Save updated message
+	if err := qm.moveMessage(msg, QueueTypeActive, msg.QueueType); err != nil {
+		qm.logger.Error("failed to move message", "id", msg.ID, "error", err)
+	}
+}
+
+// getBackoffDelay calculates the delay for the next retry using exponential backoff
+func (qm *QueueManager) getBackoffDelay(retryCount int) int {
+	// If a custom retry schedule is defined, use it
+	if len(qm.config.RetrySchedule) > 0 {
+		if retryCount <= len(qm.config.RetrySchedule) {
+			return qm.config.RetrySchedule[retryCount-1]
+		}
+		// If we've gone beyond the defined schedule, use the last value
+		return qm.config.RetrySchedule[len(qm.config.RetrySchedule)-1]
+	}
+
+	// Default exponential backoff: 1min, 5min, 15min, 30min, 1hr, 2hr, 4hr, 8hr
+	baseDelay := 60 // 1 minute in seconds
+
+	// Calculate exponential backoff with a maximum of 8 hours
+	delay := baseDelay * (1 << uint(retryCount-1)) // 2^(retryCount-1) * baseDelay
+	maxDelay := 8 * 60 * 60                        // 8 hours in seconds
+
+	if delay > maxDelay {
+		return maxDelay
+	}
+
+	return delay
+}
+
+// HoldMessage moves a message to the held queue for manual review
+func (qm *QueueManager) HoldMessage(msgID, reason string) error {
+	// Find the message in any queue
+	var msg *QueuedMessage
+	var sourceQueue QueueType
+
+	for _, qType := range []QueueType{QueueTypeActive, QueueTypeDeferred} {
+		qDir := filepath.Join(qm.config.QueueDir, string(qType))
+		path := filepath.Join(qDir, msgID+".json")
+
+		if _, err := os.Stat(path); err == nil {
+			// Found the message
+			loadedMsg, err := qm.loadQueuedMessage(path)
+			if err != nil {
+				return fmt.Errorf("failed to load message: %w", err)
+			}
+
+			msg = loadedMsg
+			sourceQueue = qType
+			break
+		}
+	}
+
+	if msg == nil {
+		return fmt.Errorf("message %s not found in active or deferred queues", msgID)
+	}
+
+	// Update message
+	msg.QueueType = QueueTypeHeld
+	msg.Status = StatusHeld
+	msg.HoldReason = reason
+	msg.UpdatedAt = time.Now()
+
+	// Move to held queue
+	return qm.moveMessage(msg, sourceQueue, QueueTypeHeld)
+}
+
+// ReleaseMessage moves a message from the held queue back to the active queue
+func (qm *QueueManager) ReleaseMessage(msgID string) error {
+	// Find the message in the held queue
+	heldDir := filepath.Join(qm.config.QueueDir, string(QueueTypeHeld))
+	path := filepath.Join(heldDir, msgID+".json")
+
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("message %s not found in held queue: %w", msgID, err)
+	}
+
+	msg, err := qm.loadQueuedMessage(path)
+	if err != nil {
+		return fmt.Errorf("failed to load message: %w", err)
+	}
+
+	// Update message
+	msg.QueueType = QueueTypeActive
+	msg.Status = StatusQueued
+	msg.HoldReason = ""
+	msg.UpdatedAt = time.Now()
+
+	// Move to active queue
+	return qm.moveMessage(msg, QueueTypeHeld, QueueTypeActive)
+}
+
+// GetQueueStats returns the current queue statistics
+func (qm *QueueManager) GetQueueStats() QueueStats {
+	qm.statsMu.RLock()
+	defer qm.statsMu.RUnlock()
+
+	// Return a copy to avoid race conditions
+	return QueueStats{
+		ActiveCount:    qm.stats.ActiveCount,
+		DeferredCount:  qm.stats.DeferredCount,
+		HeldCount:      qm.stats.HeldCount,
+		FailedCount:    qm.stats.FailedCount,
+		TotalProcessed: qm.stats.TotalProcessed,
+		TotalDelivered: qm.stats.TotalDelivered,
+		TotalFailed:    qm.stats.TotalFailed,
+		LastUpdated:    qm.stats.LastUpdated,
+	}
+}
+
+// processActiveQueue processes messages in the active queue
+func (qm *QueueManager) processActiveQueue() {
+	ticker := time.NewTicker(time.Second * 1)
+	defer ticker.Stop()
+
+	for {
+		if !qm.running {
+			return
+		}
+
+		select {
+		case <-ticker.C:
+			// Get messages from active queue
+			activeQueue := filepath.Join(qm.config.QueueDir, string(QueueTypeActive))
+			messages, err := qm.getQueuedMessagesFromDir(activeQueue)
+			if err != nil {
+				qm.logger.Error("failed to get active queue messages", "error", err)
+				continue
+			}
+
+			// Sort messages by priority (highest first) and then by creation time (oldest first)
+			sort.Slice(messages, func(i, j int) bool {
+				if messages[i].Priority != messages[j].Priority {
+					return messages[i].Priority > messages[j].Priority
+				}
+				return messages[i].CreatedAt.Before(messages[j].CreatedAt)
+			})
+
+			// Process each message
+			for _, msg := range messages {
+				// Skip if we're already processing this message
+				qm.activeMu.Lock()
+				if qm.activeJobs[msg.ID] {
+					qm.activeMu.Unlock()
+					continue
+				}
+				qm.activeMu.Unlock()
+
+				// Acquire worker from pool (blocks if pool is full)
+				select {
+				case qm.workerPool <- struct{}{}:
+					// Process message in a goroutine
+					go func(msg *QueuedMessage) {
+						defer func() {
+							// Release worker back to pool
+							<-qm.workerPool
+
+							// Remove from active jobs
+							qm.activeMu.Lock()
+							delete(qm.activeJobs, msg.ID)
+							qm.activeMu.Unlock()
+						}()
+
+						// Mark as active job
+						qm.activeMu.Lock()
+						qm.activeJobs[msg.ID] = true
+						qm.activeMu.Unlock()
+
+						qm.processMessage(msg)
+					}(msg)
+				default:
+					// Worker pool is full, try again next tick
+					break
+				}
 			}
 		}
 	}
 }
 
-// processMessage handles delivery of a single message with retry logic
-func (qm *QueueManager) processMessage(msg *QueuedMessage) {
-	messageID := msg.ID
+// processDeferredQueue checks deferred messages and moves them to active queue when ready
+func (qm *QueueManager) processDeferredQueue() {
+	ticker := time.NewTicker(time.Second * 10)
+	defer ticker.Stop()
 
-	// Atomic job tracking to prevent duplicate processing
-	qm.activeMu.Lock()
-	if qm.activeJobs[messageID] {
-		qm.activeMu.Unlock()
-		return // Already being processed
-	}
-	qm.activeJobs[messageID] = true
-	qm.activeMu.Unlock()
-
-	defer func() {
-		qm.activeMu.Lock()
-		delete(qm.activeJobs, messageID)
-		qm.activeMu.Unlock()
-	}()
-
-	// Read message data
-	msgPath := filepath.Join(qm.config.QueueDir, messageID)
-	data, err := os.ReadFile(msgPath)
-	if err != nil {
-		qm.logger.Error("failed to read message data", "id", messageID, "error", err)
-		return
-	}
-
-	// Update status to delivering
-	msg.Status = StatusDelivering
-	msg.UpdatedAt = time.Now()
-	msg.Attempts = append(msg.Attempts, time.Now())
-	if err := qm.saveQueuedMessage(msg); err != nil {
-		qm.logger.Error("failed to update message status", "id", messageID, "error", err)
-		return
-	}
-
-	// Attempt delivery
-	deliveryErr := qm.attemptDelivery(msg, data)
-
-	if deliveryErr == nil {
-		// Successful delivery
-		msg.Status = StatusDelivered
-		msg.UpdatedAt = time.Now()
-		if err := qm.saveQueuedMessage(msg); err != nil {
-			qm.logger.Error("failed to update message status after delivery", "id", messageID, "error", err)
+	for {
+		if !qm.running {
+			return
 		}
 
-		// Cleanup message file after successful delivery
-		if err := os.Remove(msgPath); err != nil {
-			qm.logger.Error("failed to remove delivered message file", "id", messageID, "error", err)
+		select {
+		case <-ticker.C:
+			// Get messages from deferred queue
+			deferredQueue := filepath.Join(qm.config.QueueDir, string(QueueTypeDeferred))
+			messages, err := qm.getQueuedMessagesFromDir(deferredQueue)
+			if err != nil {
+				qm.logger.Error("failed to get deferred queue messages", "error", err)
+				continue
+			}
+
+			now := time.Now()
+			for _, msg := range messages {
+				// If it's time to retry, move to active queue
+				if now.After(msg.NextRetry) {
+					msg.QueueType = QueueTypeActive
+					if err := qm.moveMessage(msg, QueueTypeDeferred, QueueTypeActive); err != nil {
+						qm.logger.Error("failed to move message to active queue",
+							"id", msg.ID,
+							"error", err)
+					} else {
+						qm.logger.Info("moved message from deferred to active queue",
+							"id", msg.ID,
+							"retry_count", msg.RetryCount)
+					}
+				}
+			}
 		}
-
-		// Cleanup metadata file after successful delivery
-		metaPath := msgPath + ".json"
-		if err := os.Remove(metaPath); err != nil {
-			qm.logger.Error("failed to remove metadata file", "id", messageID, "error", err)
-		}
-
-		qm.logger.Info("message delivered successfully", "id", messageID)
-	} else {
-		// Failed delivery, schedule retry
-		msg.Status = StatusFailed
-		msg.RetryCount++
-		msg.LastError = deliveryErr.Error()
-		msg.UpdatedAt = time.Now()
-
-		// Calculate next retry time based on retry schedule
-		retryDelay := qm.getRetryDelay(msg.RetryCount)
-		msg.NextRetry = time.Now().Add(time.Duration(retryDelay) * time.Second)
-
-		if msg.RetryCount >= qm.config.MaxRetries {
-			qm.logger.Warn("message exceeded maximum retry attempts",
-				"id", messageID,
-				"retry_count", msg.RetryCount,
-				"max_retries", qm.config.MaxRetries)
-
-			// Could implement bounce message generation here
-		}
-
-		if err := qm.saveQueuedMessage(msg); err != nil {
-			qm.logger.Error("failed to update message status after failed delivery", "id", messageID, "error", err)
-		}
-
-		qm.logger.Info("message delivery failed, scheduled for retry",
-			"id", messageID,
-			"retry_count", msg.RetryCount,
-			"next_retry", msg.NextRetry,
-			"error", deliveryErr)
 	}
 }
 
-// getRetryDelay returns the delay in seconds for the given retry attempt
-func (qm *QueueManager) getRetryDelay(retryCount int) int {
-	if retryCount <= 0 {
-		return 0
+// moveMessage moves a message from one queue to another
+func (qm *QueueManager) moveMessage(msg *QueuedMessage, fromQueue, toQueue QueueType) error {
+	// Update message metadata
+	msg.QueueType = toQueue
+	msg.UpdatedAt = time.Now()
+
+	// Delete from source queue
+	sourceFile := filepath.Join(qm.config.QueueDir, string(fromQueue), msg.ID+".json")
+	if err := os.Remove(sourceFile); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove message from source queue: %w", err)
 	}
 
-	if retryCount > len(qm.config.RetrySchedule) {
-		// Use the last value in the retry schedule for any retries beyond the schedule
-		return qm.config.RetrySchedule[len(qm.config.RetrySchedule)-1]
+	// Save to destination queue
+	return qm.saveQueuedMessage(msg)
+}
+
+// updateQueueStats periodically updates queue statistics
+func (qm *QueueManager) updateQueueStats() {
+	ticker := time.NewTicker(time.Second * 30)
+	defer ticker.Stop()
+
+	for {
+		if !qm.running {
+			return
+		}
+
+		select {
+		case <-ticker.C:
+			stats := QueueStats{
+				LastUpdated: time.Now(),
+			}
+
+			// Count messages in each queue
+			for _, qType := range []QueueType{QueueTypeActive, QueueTypeDeferred, QueueTypeHeld, QueueTypeFailed} {
+				qDir := filepath.Join(qm.config.QueueDir, string(qType))
+				files, err := os.ReadDir(qDir)
+				if err != nil {
+					qm.logger.Error("failed to read queue directory", "type", qType, "error", err)
+					continue
+				}
+
+				count := 0
+				for _, file := range files {
+					if !file.IsDir() && filepath.Ext(file.Name()) == ".json" {
+						count++
+					}
+				}
+
+				switch qType {
+				case QueueTypeActive:
+					stats.ActiveCount = count
+				case QueueTypeDeferred:
+					stats.DeferredCount = count
+				case QueueTypeHeld:
+					stats.HeldCount = count
+				case QueueTypeFailed:
+					stats.FailedCount = count
+				}
+			}
+
+			// Update stats
+			qm.statsMu.Lock()
+			// Preserve counters that are incremented elsewhere
+			stats.TotalProcessed = qm.stats.TotalProcessed
+			stats.TotalDelivered = qm.stats.TotalDelivered
+			stats.TotalFailed = qm.stats.TotalFailed
+			qm.stats = stats
+			qm.statsMu.Unlock()
+
+			qm.logger.Info("queue stats updated",
+				"active", stats.ActiveCount,
+				"deferred", stats.DeferredCount,
+				"held", stats.HeldCount,
+				"failed", stats.FailedCount,
+				"total_processed", stats.TotalProcessed,
+				"total_delivered", stats.TotalDelivered,
+				"total_failed", stats.TotalFailed)
+		}
+	}
+}
+
+// getQueuedMessagesFromDir gets all queued messages from a specific directory
+func (qm *QueueManager) getQueuedMessagesFromDir(dir string) ([]*QueuedMessage, error) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []*QueuedMessage{}, nil
+		}
+		return nil, fmt.Errorf("failed to read queue directory: %w", err)
 	}
 
-	return qm.config.RetrySchedule[retryCount-1]
+	var messages []*QueuedMessage
+	for _, file := range files {
+		if file.IsDir() || filepath.Ext(file.Name()) != ".json" {
+			continue
+		}
+
+		path := filepath.Join(dir, file.Name())
+		msg, err := qm.loadQueuedMessage(path)
+		if err != nil {
+			qm.logger.Error("failed to load queued message", "path", path, "error", err)
+			continue
+		}
+
+		messages = append(messages, msg)
+	}
+
+	return messages, nil
+}
+
+// loadQueuedMessage loads a QueuedMessage from a metadata file
+func (qm *QueueManager) loadQueuedMessage(path string) (*QueuedMessage, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read metadata file: %w", err)
+	}
+
+	var msg QueuedMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return nil, fmt.Errorf("failed to parse metadata: %w", err)
+	}
+
+	return &msg, nil
+}
+
+// saveQueuedMessage saves a QueuedMessage to a metadata file
+func (qm *QueueManager) saveQueuedMessage(msg *QueuedMessage) error {
+	// Determine queue directory based on message queue type
+	queueDir := filepath.Join(qm.config.QueueDir, string(msg.QueueType))
+	if err := os.MkdirAll(queueDir, 0755); err != nil {
+		return fmt.Errorf("failed to create queue directory: %w", err)
+	}
+
+	// Marshal message to JSON
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	// Save to queue directory
+	path := filepath.Join(queueDir, msg.ID+".json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write message metadata: %w", err)
+	}
+
+	return nil
 }
 
 // attemptDelivery tries to deliver a message to all recipients
@@ -332,61 +833,4 @@ func (qm *QueueManager) deliverToRecipient(recipient, from string, data []byte) 
 	// For now, we'll just call the existing delivery manager's method
 	dm := NewDeliveryManager(qm.config)
 	return dm.deliverToRecipient(recipient, from, data)
-}
-
-// getQueuedMessages returns all queued messages sorted by priority
-func (qm *QueueManager) getQueuedMessages() ([]*QueuedMessage, error) {
-	files, err := os.ReadDir(qm.config.QueueDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read queue directory: %w", err)
-	}
-
-	var messages []*QueuedMessage
-
-	for _, file := range files {
-		if filepath.Ext(file.Name()) != ".json" {
-			continue
-		}
-
-		metaPath := filepath.Join(qm.config.QueueDir, file.Name())
-		msg, err := qm.loadQueuedMessage(metaPath)
-		if err != nil {
-			qm.logger.Error("failed to load message metadata", "file", file.Name(), "error", err)
-			continue
-		}
-
-		messages = append(messages, msg)
-	}
-
-	return messages, nil
-}
-
-// loadQueuedMessage loads a QueuedMessage from a metadata file
-func (qm *QueueManager) loadQueuedMessage(path string) (*QueuedMessage, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read metadata file: %w", err)
-	}
-
-	var msg QueuedMessage
-	if err := json.Unmarshal(data, &msg); err != nil {
-		return nil, fmt.Errorf("failed to parse metadata: %w", err)
-	}
-
-	return &msg, nil
-}
-
-// saveQueuedMessage saves a QueuedMessage to a metadata file
-func (qm *QueueManager) saveQueuedMessage(msg *QueuedMessage) error {
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("failed to marshal metadata: %w", err)
-	}
-
-	metaPath := filepath.Join(qm.config.QueueDir, msg.ID+".json")
-	if err := os.WriteFile(metaPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write metadata file: %w", err)
-	}
-
-	return nil
 }

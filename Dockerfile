@@ -22,26 +22,28 @@ RUN go build -o /app/elemta-bin ./cmd/elemta
 FROM alpine:latest
 
 # Add necessary packages
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata netcat-openbsd
 
 # Create a non-root user
 RUN addgroup -S elemta && adduser -S elemta -G elemta
 
 # Create necessary directories
-RUN mkdir -p /app/queue /app/logs /app/config /app/plugins
-RUN chown -R elemta:elemta /app
+RUN mkdir -p /app/queue /app/logs /app/config /app/plugins /config-volume
+RUN chown -R elemta:elemta /app /config-volume
 
 WORKDIR /app
 
 # Copy the binary and config file
 COPY --from=builder /app/elemta-bin /app/elemta
-COPY --from=builder /app/config/test-elemta.conf /app/config/elemta.conf
+
+# Create a simple entrypoint script
+RUN echo '#!/bin/sh' > /app/entrypoint.sh && \
+    echo 'exec /app/elemta server' >> /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh && \
+    chown elemta:elemta /app/entrypoint.sh
 
 # Copy example plugins
 COPY --from=builder /app/examples/plugins /app/examples/plugins
-
-# Create plugins directory
-RUN mkdir -p /app/plugins
 
 # Set the user to run the application
 USER elemta
@@ -50,4 +52,4 @@ USER elemta
 EXPOSE 2525
 
 # Set the entry point
-ENTRYPOINT ["/app/elemta"] 
+ENTRYPOINT ["/app/entrypoint.sh"] 

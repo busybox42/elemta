@@ -4,44 +4,51 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/BurntSushi/toml"
 )
 
 // Config represents the main configuration for the SMTP server
 type Config struct {
-	ListenAddr    string   `json:"listen_addr"`
-	QueueDir      string   `json:"queue_dir"`
-	MaxSize       int64    `json:"max_size"`
-	DevMode       bool     `json:"dev_mode"`
-	AllowedRelays []string `json:"allowed_relays"`
-	Hostname      string   `json:"hostname"`
-	MaxWorkers    int      `json:"max_workers"`
-	MaxRetries    int      `json:"max_retries"`
-	MaxQueueTime  int      `json:"max_queue_time"`
-	RetrySchedule []int    `json:"retry_schedule"`
+	ListenAddr    string   `toml:"listen_addr" json:"listen_addr"`
+	QueueDir      string   `toml:"queue_dir" json:"queue_dir"`
+	MaxSize       int64    `toml:"max_size" json:"max_size"`
+	DevMode       bool     `toml:"dev_mode" json:"dev_mode"`
+	AllowedRelays []string `toml:"allowed_relays" json:"allowed_relays"`
+	Hostname      string   `toml:"hostname" json:"hostname"`
+	MaxWorkers    int      `toml:"max_workers" json:"max_workers"`
+	MaxRetries    int      `toml:"max_retries" json:"max_retries"`
+	MaxQueueTime  int      `toml:"max_queue_time" json:"max_queue_time"`
+	RetrySchedule []int    `toml:"retry_schedule" json:"retry_schedule"`
+
+	// Queue management options
+	KeepDeliveredMessages bool `toml:"keep_delivered_messages" json:"keep_delivered_messages"` // Whether to keep delivered messages for archiving
+	KeepMessageData       bool `toml:"keep_message_data" json:"keep_message_data"`             // Whether to keep message data after delivery
+	QueuePriorityEnabled  bool `toml:"queue_priority_enabled" json:"queue_priority_enabled"`   // Whether to enable queue prioritization
 
 	// Authentication configuration
-	Auth *AuthConfig `json:"auth"`
+	Auth *AuthConfig `toml:"auth" json:"auth"`
 
 	// TLS configuration
-	TLS *TLSConfig `json:"tls"`
+	TLS *TLSConfig `toml:"tls" json:"tls"`
 
 	// Resource limits
-	Resources *ResourceConfig `json:"resources"`
+	Resources *ResourceConfig `toml:"resources" json:"resources"`
 
 	// Caching configuration
-	Cache *CacheConfig `json:"cache"`
+	Cache *CacheConfig `toml:"cache" json:"cache"`
 
 	// Antivirus configuration
-	Antivirus *AntivirusConfig `json:"antivirus"`
+	Antivirus *AntivirusConfig `toml:"antivirus" json:"antivirus"`
 
 	// Rules configuration
-	Rules *RulesConfig `json:"rules"`
+	Rules *RulesConfig `toml:"rules" json:"rules"`
 
 	// Antispam configuration
-	Antispam *AntispamConfig `json:"antispam"`
+	Antispam *AntispamConfig `toml:"antispam" json:"antispam"`
 
 	// Plugin configuration
-	Plugins *PluginConfig `json:"plugins"`
+	Plugins *PluginConfig `toml:"plugins" json:"plugins"`
 }
 
 // AuthConfig represents authentication configuration
@@ -183,6 +190,14 @@ func findConfigFile(configPath string) (string, error) {
 }
 
 func LoadConfig(configPath string) (*Config, error) {
+	// Check for environment variable if configPath is empty
+	if configPath == "" {
+		envPath := os.Getenv("ELEMTA_CONFIG_PATH")
+		if envPath != "" {
+			configPath = envPath
+		}
+	}
+
 	path, err := findConfigFile(configPath)
 	if err != nil {
 		return DefaultConfig(), nil
@@ -190,12 +205,15 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error reading config file: %w", err)
 	}
 
 	var config Config
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, err
+	if _, err := toml.Decode(string(data), &config); err != nil {
+		// Try JSON as fallback
+		if jsonErr := json.Unmarshal(data, &config); jsonErr != nil {
+			return nil, fmt.Errorf("error parsing config (tried TOML and JSON): %w", err)
+		}
 	}
 
 	if config.Hostname == "" {
