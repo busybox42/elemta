@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test
+  template:
+    metadata:
+      labels:
+        app: test
+    spec:
+      containers:
+      - name: elemta
+        image: elemta:latest
+        imagePullPolicy: IfNotPresent
+        command: ["sh", "-c", "cat /app/config/elemta.conf && sleep 3600"]
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config/elemta.conf
+          subPath: elemta.conf
+      volumes:
+      - name: config-volume
+        configMap:
+          name: elemta-conf-new 

@@ -1,60 +1,6 @@
-# Binaries and build artifacts
-bin/
-*.exe
-*.dll
-*.so
-*.dylib
-
-# Test files
-*.test
-*.out
-coverage.html
-
-# Runtime data
-*.log
-*.db
-*.sqlite
-
-# IDE files
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS specific
-.DS_Store
-Thumbs.db
-
-# Environment variables
-.env
-.env.local
+# Build artifacts
+build/
 
 # Temporary files
-tmp/
-*/tmp/
-*.tmp
-*.bak
-*.backup
-*~
-.*.swp
-.*.swo
-
-# Python test scripts
-test_smtp.py
-test_smtp_auth.py
-
-# Configuration files
-elemta.conf
-
-# Backup directory
-backup/
-
-# Test output files
-*_test_output.txt
-*_output.txt
-# Queue, logs, and build directories
-queue/*
-!queue/.gitkeep
-logs/*
-!logs/.gitkeep
-!build/.gitkeep
+elemta-fixed.conf
+entrypoint.sh
