@@ -4,3 +4,4 @@ build/
 # Temporary files
 elemta-fixed.conf
 entrypoint.sh
+.cursor/

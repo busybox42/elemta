@@ -3,7 +3,6 @@
 import smtplib
 import argparse
 import sys
-import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -13,14 +12,7 @@ EICAR_STRING = "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!
 # GTUBE test string for antispam testing
 GTUBE_STRING = "XJS*C4JDBQADN1.NSBN3*2IDNEN*GTUBE-STANDARD-ANTI-UBE-TEST-EMAIL*C.34X"
 
-# Environment variable to skip security tests
-SKIP_SECURITY_TESTS = os.environ.get("SKIP_SECURITY_TESTS", "").lower() in ("true", "1", "yes")
-
 def test_antivirus(server, port, sender, recipient, debug=False):
-    if SKIP_SECURITY_TESTS:
-        print("Skipping antivirus test as SKIP_SECURITY_TESTS is set")
-        return True
-        
     print(f"Testing antivirus scanning with EICAR test string...")
     print(f"Connecting to SMTP server at {server}:{port}...")
     
@@ -57,10 +49,6 @@ def test_antivirus(server, port, sender, recipient, debug=False):
         return False
 
 def test_antispam(server, port, sender, recipient, debug=False):
-    if SKIP_SECURITY_TESTS:
-        print("Skipping antispam test as SKIP_SECURITY_TESTS is set")
-        return True
-        
     print(f"Testing antispam scanning with GTUBE test string...")
     print(f"Connecting to SMTP server at {server}:{port}...")
     

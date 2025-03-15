@@ -4,21 +4,28 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"crypto/tls"
+
+	"net/smtp"
 )
 
 // QueueType represents different queue types for message processing
 type QueueType string
 
 const (
-	QueueTypeActive   QueueType = "active"   // Messages actively being processed
-	QueueTypeDeferred QueueType = "deferred" // Messages waiting for retry
-	QueueTypeHeld     QueueType = "held"     // Messages held for manual review
-	QueueTypeFailed   QueueType = "failed"   // Messages that have permanently failed
+	QueueTypeActive    QueueType = "active"    // Messages actively being processed
+	QueueTypeDeferred  QueueType = "deferred"  // Messages waiting for retry
+	QueueTypeHeld      QueueType = "held"      // Messages held for manual review
+	QueueTypeFailed    QueueType = "failed"    // Messages that have permanently failed
+	QueueTypeDelivered QueueType = "delivered" // Messages that have been successfully delivered
 )
 
 // Priority levels for messages
@@ -50,15 +57,46 @@ const (
 // QueuedMessage extends MessageInfo with additional queue-specific fields
 type QueuedMessage struct {
 	MessageInfo
-	Priority    Priority          `json:"priority"`
-	QueueType   QueueType         `json:"queue_type"`
-	RetryCount  int               `json:"retry_count"`
-	NextRetry   time.Time         `json:"next_retry"`
-	LastError   string            `json:"last_error"`
-	Attempts    []time.Time       `json:"attempts"`
-	HoldReason  string            `json:"hold_reason,omitempty"`
-	FailReason  string            `json:"fail_reason,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"` // For storing metadata like SPF/DKIM results
+	Priority            Priority                   `json:"priority"`
+	QueueType           QueueType                  `json:"queue_type"`
+	RetryCount          int                        `json:"retry_count"`
+	NextRetry           time.Time                  `json:"next_retry"`
+	LastError           string                     `json:"last_error"`
+	Attempts            []DeliveryAttempt          `json:"attempts"`
+	HoldReason          string                     `json:"hold_reason,omitempty"`
+	FailReason          string                     `json:"fail_reason,omitempty"`
+	Annotations         map[string]string          `json:"annotations,omitempty"`      // For storing metadata like SPF/DKIM results
+	DeliveryStatus      map[string]RecipientStatus `json:"delivery_status,omitempty"`  // Status per recipient
+	LastDeliveryAttempt time.Time                  `json:"last_delivery_attempt"`      // Time of last delivery attempt
+	FirstAttemptTime    time.Time                  `json:"first_attempt_time"`         // Time of first delivery attempt
+	ExpiryTime          time.Time                  `json:"expiry_time"`                // Time when message expires
+	DeliveryTags        []string                   `json:"delivery_tags,omitempty"`    // Tags for categorizing messages
+	DSN                 bool                       `json:"dsn"`                        // Whether to send DSN
+	ORCPT               map[string]string          `json:"orcpt,omitempty"`            // Original recipient per recipient
+	EnvelopeOptions     map[string]string          `json:"envelope_options,omitempty"` // SMTP envelope options
+}
+
+// DeliveryAttempt represents a single delivery attempt
+type DeliveryAttempt struct {
+	Timestamp  time.Time              `json:"timestamp"`
+	Error      string                 `json:"error,omitempty"`
+	Server     string                 `json:"server,omitempty"`
+	Recipients []string               `json:"recipients,omitempty"`
+	Response   string                 `json:"response,omitempty"`
+	Duration   time.Duration          `json:"duration"`
+	Details    map[string]interface{} `json:"details,omitempty"`
+}
+
+// RecipientStatus represents the delivery status for a single recipient
+type RecipientStatus struct {
+	Status      MessageStatus `json:"status"`
+	LastAttempt time.Time     `json:"last_attempt"`
+	LastError   string        `json:"last_error,omitempty"`
+	RetryCount  int           `json:"retry_count"`
+	NextRetry   time.Time     `json:"next_retry,omitempty"`
+	Server      string        `json:"server,omitempty"`
+	Response    string        `json:"response,omitempty"`
+	DSNSent     bool          `json:"dsn_sent"`
 }
 
 // QueueManager handles message queuing, prioritization, and retry logic
@@ -73,6 +111,14 @@ type QueueManager struct {
 	// Queue statistics
 	stats   QueueStats
 	statsMu sync.RWMutex
+
+	// Enhanced fields
+	deliveryCache   *sync.Map               // Cache for MX records, etc.
+	rateLimiters    map[string]*RateLimiter // Rate limiters per domain/IP
+	rateLimitersMu  sync.RWMutex
+	deliveryHooks   []DeliveryHook // Hooks for delivery events
+	deliveryHooksMu sync.RWMutex
+	queueStorage    QueueStorage // Storage backend for queue
 }
 
 // QueueStats tracks statistics about the queue
@@ -87,21 +133,267 @@ type QueueStats struct {
 	LastUpdated    time.Time `json:"last_updated"`
 }
 
+// RateLimiter represents a rate limiter for a domain or IP
+type RateLimiter struct {
+	Limit     int           // Maximum number of concurrent connections
+	Tokens    int           // Current number of available tokens
+	TokensMu  sync.Mutex    // Mutex for tokens
+	LastReset time.Time     // Time of last token reset
+	Interval  time.Duration // Interval between token resets
+}
+
+// DeliveryHook is a function that is called on delivery events
+type DeliveryHook func(event string, msg *QueuedMessage, details map[string]interface{})
+
+// QueueStorage defines the interface for queue storage backends
+type QueueStorage interface {
+	// Store a message in the queue
+	Store(msg *QueuedMessage) error
+
+	// Retrieve a message from the queue
+	Retrieve(id string) (*QueuedMessage, error)
+
+	// Update a message in the queue
+	Update(msg *QueuedMessage) error
+
+	// Delete a message from the queue
+	Delete(id string) error
+
+	// List messages in a queue
+	List(queueType QueueType) ([]*QueuedMessage, error)
+
+	// Count messages in a queue
+	Count(queueType QueueType) (int, error)
+
+	// Move a message between queues
+	Move(id string, fromQueue, toQueue QueueType) error
+}
+
+// FileQueueStorage implements QueueStorage using the file system
+type FileQueueStorage struct {
+	queueDir string
+}
+
+// NewFileQueueStorage creates a new FileQueueStorage
+func NewFileQueueStorage(queueDir string) *FileQueueStorage {
+	return &FileQueueStorage{
+		queueDir: queueDir,
+	}
+}
+
+// Store stores a message in the queue
+func (s *FileQueueStorage) Store(msg *QueuedMessage) error {
+	// Create queue directory if it doesn't exist
+	queueDir := filepath.Join(s.queueDir, string(msg.QueueType))
+	if err := os.MkdirAll(queueDir, 0755); err != nil {
+		return fmt.Errorf("failed to create queue directory: %w", err)
+	}
+
+	// Marshal message to JSON
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	// Write to file
+	filePath := filepath.Join(queueDir, msg.ID+".json")
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write message file: %w", err)
+	}
+
+	return nil
+}
+
+// Retrieve retrieves a message from the queue
+func (s *FileQueueStorage) Retrieve(id string) (*QueuedMessage, error) {
+	// Try to find the message in any queue
+	queueTypes := []QueueType{QueueTypeActive, QueueTypeDeferred, QueueTypeHeld, QueueTypeFailed}
+
+	for _, queueType := range queueTypes {
+		filePath := filepath.Join(s.queueDir, string(queueType), id+".json")
+		if _, err := os.Stat(filePath); err == nil {
+			// File exists, read it
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read message file: %w", err)
+			}
+
+			// Unmarshal JSON
+			var msg QueuedMessage
+			if err := json.Unmarshal(data, &msg); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal message: %w", err)
+			}
+
+			return &msg, nil
+		}
+	}
+
+	return nil, fmt.Errorf("message not found: %s", id)
+}
+
+// Update updates a message in the queue
+func (s *FileQueueStorage) Update(msg *QueuedMessage) error {
+	// Marshal message to JSON
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	// Write to file
+	filePath := filepath.Join(s.queueDir, string(msg.QueueType), msg.ID+".json")
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write message file: %w", err)
+	}
+
+	return nil
+}
+
+// Delete deletes a message from the queue
+func (s *FileQueueStorage) Delete(id string) error {
+	// Try to find the message in any queue
+	queueTypes := []QueueType{QueueTypeActive, QueueTypeDeferred, QueueTypeHeld, QueueTypeFailed}
+
+	for _, queueType := range queueTypes {
+		filePath := filepath.Join(s.queueDir, string(queueType), id+".json")
+		if _, err := os.Stat(filePath); err == nil {
+			// File exists, delete it
+			if err := os.Remove(filePath); err != nil {
+				return fmt.Errorf("failed to delete message file: %w", err)
+			}
+			return nil
+		}
+	}
+
+	return fmt.Errorf("message not found: %s", id)
+}
+
+// List lists messages in a queue
+func (s *FileQueueStorage) List(queueType QueueType) ([]*QueuedMessage, error) {
+	queueDir := filepath.Join(s.queueDir, string(queueType))
+
+	// Check if directory exists
+	if _, err := os.Stat(queueDir); os.IsNotExist(err) {
+		return []*QueuedMessage{}, nil
+	}
+
+	// Read directory
+	files, err := os.ReadDir(queueDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read queue directory: %w", err)
+	}
+
+	// Load each message
+	messages := make([]*QueuedMessage, 0, len(files))
+	for _, file := range files {
+		if filepath.Ext(file.Name()) != ".json" {
+			continue
+		}
+
+		filePath := filepath.Join(queueDir, file.Name())
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			continue // Skip files that can't be read
+		}
+
+		var msg QueuedMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue // Skip files that can't be unmarshaled
+		}
+
+		messages = append(messages, &msg)
+	}
+
+	return messages, nil
+}
+
+// Count counts messages in a queue
+func (s *FileQueueStorage) Count(queueType QueueType) (int, error) {
+	queueDir := filepath.Join(s.queueDir, string(queueType))
+
+	// Check if directory exists
+	if _, err := os.Stat(queueDir); os.IsNotExist(err) {
+		return 0, nil
+	}
+
+	// Read directory
+	files, err := os.ReadDir(queueDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read queue directory: %w", err)
+	}
+
+	// Count JSON files
+	count := 0
+	for _, file := range files {
+		if filepath.Ext(file.Name()) == ".json" {
+			count++
+		}
+	}
+
+	return count, nil
+}
+
+// Move moves a message between queues
+func (s *FileQueueStorage) Move(id string, fromQueue, toQueue QueueType) error {
+	// Construct file paths
+	fromPath := filepath.Join(s.queueDir, string(fromQueue), id+".json")
+	toPath := filepath.Join(s.queueDir, string(toQueue), id+".json")
+
+	// Ensure destination directory exists
+	if err := os.MkdirAll(filepath.Dir(toPath), 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	// Read message
+	data, err := os.ReadFile(fromPath)
+	if err != nil {
+		return fmt.Errorf("failed to read message file: %w", err)
+	}
+
+	// Unmarshal to update queue type
+	var msg QueuedMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return fmt.Errorf("failed to unmarshal message: %w", err)
+	}
+
+	// Update queue type
+	msg.QueueType = toQueue
+
+	// Marshal updated message
+	data, err = json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	// Write to destination
+	if err := os.WriteFile(toPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write message file: %w", err)
+	}
+
+	// Remove from source
+	if err := os.Remove(fromPath); err != nil {
+		return fmt.Errorf("failed to remove source file: %w", err)
+	}
+
+	return nil
+}
+
 // NewQueueManager creates a new queue manager
 func NewQueueManager(config *Config) *QueueManager {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}))
-
-	return &QueueManager{
+	qm := &QueueManager{
 		config:     config,
-		logger:     logger,
+		logger:     slog.Default().With("component", "queue"),
 		activeJobs: make(map[string]bool),
-		workerPool: make(chan struct{}, config.MaxWorkers),
+		workerPool: make(chan struct{}, config.QueueWorkers),
 		stats: QueueStats{
 			LastUpdated: time.Now(),
 		},
+		deliveryCache: &sync.Map{},
+		rateLimiters:  make(map[string]*RateLimiter),
+		deliveryHooks: make([]DeliveryHook, 0),
+		queueStorage:  NewFileQueueStorage(config.QueueDir),
 	}
+
+	return qm
 }
 
 // Start begins queue processing
@@ -148,54 +440,66 @@ func (qm *QueueManager) ensureQueueDirectories() {
 	}
 }
 
-// EnqueueMessage adds a message to the queue with specified priority
+// EnqueueMessage adds a message to the queue
 func (qm *QueueManager) EnqueueMessage(msg *Message, priority Priority) error {
-	// Create queue directory if it doesn't exist
-	if err := os.MkdirAll(qm.config.QueueDir, 0755); err != nil {
-		return fmt.Errorf("failed to create queue directory: %w", err)
+	// Create a new queued message
+	qMsg := &QueuedMessage{
+		MessageInfo: MessageInfo{
+			ID:         msg.id,
+			From:       msg.from,
+			To:         msg.to,
+			Size:       len(msg.data),
+			ReceivedAt: time.Now(),
+			Status:     StatusQueued,
+		},
+		Priority:         priority,
+		QueueType:        QueueTypeActive,
+		RetryCount:       0,
+		NextRetry:        time.Time{},
+		LastError:        "",
+		Attempts:         make([]DeliveryAttempt, 0),
+		Annotations:      make(map[string]string),
+		DeliveryStatus:   make(map[string]RecipientStatus),
+		FirstAttemptTime: time.Time{},
+		ExpiryTime:       time.Now().Add(time.Duration(qm.config.MessageRetentionHours) * time.Hour),
+		DeliveryTags:     make([]string, 0),
+		DSN:              false,
+		ORCPT:            make(map[string]string),
+		EnvelopeOptions:  make(map[string]string),
 	}
 
-	// Save message data to the data directory
-	dataDir := filepath.Join(qm.config.QueueDir, "data")
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	// Initialize delivery status for each recipient
+	for _, rcpt := range msg.to {
+		qMsg.DeliveryStatus[rcpt] = RecipientStatus{
+			Status:      StatusQueued,
+			LastAttempt: time.Time{},
+			RetryCount:  0,
+		}
+	}
+
+	// Save message data to disk
+	dataPath := filepath.Join(qm.config.QueueDir, "data", qMsg.ID)
+	if err := os.MkdirAll(filepath.Dir(dataPath), 0755); err != nil {
 		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	msgDataPath := filepath.Join(dataDir, msg.id)
-	if err := os.WriteFile(msgDataPath, msg.data, 0644); err != nil {
+	if err := os.WriteFile(dataPath, msg.data, 0644); err != nil {
 		return fmt.Errorf("failed to write message data: %w", err)
 	}
 
-	// Create queued message metadata
-	queuedMsg := &QueuedMessage{
-		MessageInfo: MessageInfo{
-			ID:        msg.id,
-			From:      msg.from,
-			To:        msg.to,
-			Status:    StatusQueued,
-			CreatedAt: msg.created,
-			UpdatedAt: time.Now(),
-		},
-		Priority:    priority,
-		QueueType:   QueueTypeActive, // Start in active queue
-		RetryCount:  0,
-		NextRetry:   time.Now(),
-		Attempts:    []time.Time{},
-		Annotations: make(map[string]string),
+	// Save queued message to active queue
+	if err := qm.queueStorage.Store(qMsg); err != nil {
+		return fmt.Errorf("failed to save queued message: %w", err)
 	}
 
-	// Save metadata to the active queue
-	if err := qm.saveQueuedMessage(queuedMsg); err != nil {
-		// Try to clean up message file if metadata save fails
-		os.Remove(msgDataPath)
-		return fmt.Errorf("failed to save message metadata: %w", err)
-	}
+	// Update statistics
+	qm.statsMu.Lock()
+	qm.stats.ActiveCount++
+	qm.stats.LastUpdated = time.Now()
+	qm.statsMu.Unlock()
 
-	qm.logger.Info("message enqueued",
-		"id", msg.id,
-		"from", msg.from,
-		"to", msg.to,
-		"priority", priority)
+	// Trigger hooks
+	qm.triggerHooks("enqueue", qMsg, nil)
 
 	return nil
 }
@@ -316,125 +620,332 @@ func (qm *QueueManager) cleanupQueue() {
 
 // processMessage processes a single message from the queue
 func (qm *QueueManager) processMessage(msg *QueuedMessage) {
-	qm.logger.Info("processing message",
-		"id", msg.ID,
-		"from", msg.From,
-		"to", msg.To,
-		"retry_count", msg.RetryCount)
+	// Mark message as being processed
+	qm.activeMu.Lock()
+	qm.activeJobs[msg.ID] = true
+	qm.activeMu.Unlock()
 
-	// Update stats
-	qm.statsMu.Lock()
-	qm.stats.TotalProcessed++
-	qm.statsMu.Unlock()
+	// Ensure we mark the job as done when we're finished
+	defer func() {
+		qm.activeMu.Lock()
+		delete(qm.activeJobs, msg.ID)
+		qm.activeMu.Unlock()
+
+		// Release worker token
+		<-qm.workerPool
+	}()
+
+	// Update message status
+	msg.Status = StatusDelivering
+	if err := qm.queueStorage.Update(msg); err != nil {
+		qm.logger.Error("Failed to update message status", "error", err, "id", msg.ID)
+	}
+
+	// If this is the first attempt, set the first attempt time
+	if msg.FirstAttemptTime.IsZero() {
+		msg.FirstAttemptTime = time.Now()
+	}
+
+	// Update last delivery attempt time
+	msg.LastDeliveryAttempt = time.Now()
 
 	// Load message data
 	dataPath := filepath.Join(qm.config.QueueDir, "data", msg.ID)
 	data, err := os.ReadFile(dataPath)
 	if err != nil {
-		qm.logger.Error("failed to read message data", "id", msg.ID, "error", err)
+		qm.logger.Error("Failed to read message data", "error", err, "id", msg.ID)
 
-		// Move to failed queue if data can't be read
-		msg.QueueType = QueueTypeFailed
-		msg.FailReason = fmt.Sprintf("Failed to read message data: %v", err)
+		// Move to failed queue if we can't read the data
 		msg.Status = StatusFailed
-		msg.UpdatedAt = time.Now()
-
-		if err := qm.saveQueuedMessage(msg); err != nil {
-			qm.logger.Error("failed to save failed message", "id", msg.ID, "error", err)
+		msg.FailReason = fmt.Sprintf("Failed to read message data: %v", err)
+		if err := qm.moveMessage(msg, QueueTypeActive, QueueTypeFailed); err != nil {
+			qm.logger.Error("Failed to move message to failed queue", "error", err, "id", msg.ID)
 		}
-
 		return
 	}
 
-	// Record attempt
-	msg.Attempts = append(msg.Attempts, time.Now())
+	// Create a new delivery attempt
+	attempt := DeliveryAttempt{
+		Timestamp:  time.Now(),
+		Recipients: make([]string, 0, len(msg.To)),
+		Details:    make(map[string]interface{}),
+	}
 
-	// Attempt delivery
-	err = qm.attemptDelivery(msg, data)
+	// Group recipients by domain for more efficient delivery
+	recipientsByDomain := make(map[string][]string)
+	for _, rcpt := range msg.To {
+		// Skip recipients that have already been delivered or permanently failed
+		status, ok := msg.DeliveryStatus[rcpt]
+		if ok && (status.Status == StatusDelivered || status.Status == StatusFailed) {
+			continue
+		}
 
-	if err == nil {
-		// Delivery successful
-		qm.logger.Info("message delivered successfully", "id", msg.ID)
+		// Extract domain from recipient
+		parts := strings.Split(rcpt, "@")
+		if len(parts) != 2 {
+			qm.logger.Warn("Invalid recipient address", "recipient", rcpt, "id", msg.ID)
 
-		// Update stats
-		qm.statsMu.Lock()
-		qm.stats.TotalDelivered++
-		qm.statsMu.Unlock()
+			// Mark as failed
+			msg.DeliveryStatus[rcpt] = RecipientStatus{
+				Status:      StatusFailed,
+				LastAttempt: time.Now(),
+				LastError:   "Invalid recipient address",
+				RetryCount:  msg.DeliveryStatus[rcpt].RetryCount,
+			}
+			continue
+		}
 
-		// Update message status
-		msg.Status = StatusDelivered
-		msg.UpdatedAt = time.Now()
+		domain := parts[1]
+		recipientsByDomain[domain] = append(recipientsByDomain[domain], rcpt)
+		attempt.Recipients = append(attempt.Recipients, rcpt)
+	}
 
-		// Save to completed directory or delete
-		if qm.config.KeepDeliveredMessages {
-			// Move to a "delivered" directory for archiving
-			deliveredDir := filepath.Join(qm.config.QueueDir, "delivered")
-			if err := os.MkdirAll(deliveredDir, 0755); err == nil {
-				deliveredPath := filepath.Join(deliveredDir, msg.ID+".json")
-				data, err := json.Marshal(msg)
-				if err == nil {
-					os.WriteFile(deliveredPath, data, 0644)
-				}
+	// If no recipients to deliver to, mark as delivered
+	if len(attempt.Recipients) == 0 {
+		qm.logger.Info("No recipients to deliver to", "id", msg.ID)
+
+		// Check if all recipients have been delivered or failed
+		allDone := true
+		for _, status := range msg.DeliveryStatus {
+			if status.Status != StatusDelivered && status.Status != StatusFailed {
+				allDone = false
+				break
 			}
 		}
 
-		// Remove from queue
-		queuePath := filepath.Join(qm.config.QueueDir, string(msg.QueueType), msg.ID+".json")
-		os.Remove(queuePath)
+		if allDone {
+			// Move to delivered or failed queue based on whether any recipients were delivered
+			anyDelivered := false
+			for _, status := range msg.DeliveryStatus {
+				if status.Status == StatusDelivered {
+					anyDelivered = true
+					break
+				}
+			}
 
-		// Remove message data if configured
-		if !qm.config.KeepMessageData {
-			os.Remove(dataPath)
+			if anyDelivered {
+				msg.Status = StatusDelivered
+				if err := qm.moveMessage(msg, QueueTypeActive, QueueTypeDelivered); err != nil {
+					qm.logger.Error("Failed to move message to delivered queue", "error", err, "id", msg.ID)
+				}
+			} else {
+				msg.Status = StatusFailed
+				msg.FailReason = "All recipients failed"
+				if err := qm.moveMessage(msg, QueueTypeActive, QueueTypeFailed); err != nil {
+					qm.logger.Error("Failed to move message to failed queue", "error", err, "id", msg.ID)
+				}
+			}
+		} else {
+			// Some recipients are deferred, move to deferred queue
+			msg.Status = StatusDeferred
+			if err := qm.moveMessage(msg, QueueTypeActive, QueueTypeDeferred); err != nil {
+				qm.logger.Error("Failed to move message to deferred queue", "error", err, "id", msg.ID)
+			}
 		}
 
 		return
 	}
 
-	// Delivery failed
-	qm.logger.Error("message delivery failed",
-		"id", msg.ID,
-		"retry_count", msg.RetryCount,
-		"error", err)
+	// Attempt delivery for each domain
+	startTime := time.Now()
+	deliveryErrors := make(map[string]string)
 
-	// Update message
-	msg.LastError = err.Error()
-	msg.RetryCount++
-	msg.UpdatedAt = time.Now()
+	for domain, recipients := range recipientsByDomain {
+		// Apply rate limiting for this domain
+		if !qm.acquireRateLimit(domain) {
+			// If rate limited, defer all recipients for this domain
+			for _, rcpt := range recipients {
+				msg.DeliveryStatus[rcpt] = RecipientStatus{
+					Status:      StatusDeferred,
+					LastAttempt: time.Now(),
+					LastError:   "Rate limited",
+					RetryCount:  msg.DeliveryStatus[rcpt].RetryCount,
+					NextRetry:   time.Now().Add(time.Minute * 5), // Retry in 5 minutes
+				}
+			}
+			continue
+		}
 
-	// Check if we've exceeded max retries
-	if msg.RetryCount >= qm.config.MaxRetries {
-		// Move to failed queue
-		qm.logger.Info("max retries exceeded, moving to failed queue",
-			"id", msg.ID,
-			"retry_count", msg.RetryCount)
+		// Release rate limit when done
+		defer qm.releaseRateLimit(domain)
 
-		msg.QueueType = QueueTypeFailed
+		// Attempt delivery to this domain
+		err := qm.deliverToDomain(msg, domain, recipients, data)
+
+		if err != nil {
+			qm.logger.Error("Failed to deliver to domain", "error", err, "domain", domain, "id", msg.ID)
+			deliveryErrors[domain] = err.Error()
+
+			// Determine if this is a permanent or temporary failure
+			isPermanent := false
+			if strings.Contains(err.Error(), "550") ||
+				strings.Contains(err.Error(), "553") ||
+				strings.Contains(err.Error(), "554") {
+				isPermanent = true
+			}
+
+			// Update status for all recipients in this domain
+			for _, rcpt := range recipients {
+				status := msg.DeliveryStatus[rcpt]
+				status.LastAttempt = time.Now()
+				status.LastError = err.Error()
+				status.RetryCount++
+
+				if isPermanent {
+					status.Status = StatusFailed
+				} else {
+					status.Status = StatusDeferred
+					status.NextRetry = time.Now().Add(time.Duration(qm.getBackoffDelay(status.RetryCount)) * time.Second)
+				}
+
+				msg.DeliveryStatus[rcpt] = status
+			}
+		} else {
+			// Delivery successful for this domain
+			for _, rcpt := range recipients {
+				msg.DeliveryStatus[rcpt] = RecipientStatus{
+					Status:      StatusDelivered,
+					LastAttempt: time.Now(),
+					Server:      domain,
+					Response:    "250 OK",
+					DSNSent:     false,
+				}
+			}
+		}
+	}
+
+	// Record the delivery attempt
+	attempt.Duration = time.Since(startTime)
+	if len(deliveryErrors) > 0 {
+		// Combine errors
+		errStr := ""
+		for domain, err := range deliveryErrors {
+			if errStr != "" {
+				errStr += "; "
+			}
+			errStr += domain + ": " + err
+		}
+		attempt.Error = errStr
+	}
+	msg.Attempts = append(msg.Attempts, attempt)
+
+	// Check if all recipients have been delivered or failed
+	allDelivered := true
+	allFailed := true
+	anyDeferred := false
+
+	for _, status := range msg.DeliveryStatus {
+		if status.Status != StatusDelivered {
+			allDelivered = false
+		}
+		if status.Status != StatusFailed {
+			allFailed = false
+		}
+		if status.Status == StatusDeferred {
+			anyDeferred = true
+		}
+	}
+
+	// Determine next steps based on delivery status
+	if allDelivered {
+		// All recipients delivered successfully
+		msg.Status = StatusDelivered
+		if err := qm.moveMessage(msg, QueueTypeActive, QueueTypeDelivered); err != nil {
+			qm.logger.Error("Failed to move message to delivered queue", "error", err, "id", msg.ID)
+		}
+
+		// Trigger hooks
+		qm.triggerHooks("delivered", msg, map[string]interface{}{
+			"attempt": attempt,
+		})
+
+		// Update statistics
+		qm.statsMu.Lock()
+		qm.stats.TotalDelivered++
+		qm.statsMu.Unlock()
+	} else if allFailed {
+		// All recipients failed permanently
 		msg.Status = StatusFailed
-		msg.FailReason = fmt.Sprintf("Max retries (%d) exceeded. Last error: %s",
-			qm.config.MaxRetries, msg.LastError)
+		msg.FailReason = "All recipients failed"
+		if err := qm.moveMessage(msg, QueueTypeActive, QueueTypeFailed); err != nil {
+			qm.logger.Error("Failed to move message to failed queue", "error", err, "id", msg.ID)
+		}
 
-		// Update stats
+		// Trigger hooks
+		qm.triggerHooks("failed", msg, map[string]interface{}{
+			"attempt": attempt,
+		})
+
+		// Update statistics
 		qm.statsMu.Lock()
 		qm.stats.TotalFailed++
 		qm.statsMu.Unlock()
-	} else {
-		// Calculate next retry time with exponential backoff
-		backoffDelay := qm.getBackoffDelay(msg.RetryCount)
-		msg.NextRetry = time.Now().Add(time.Duration(backoffDelay) * time.Second)
-
-		// Move to deferred queue
-		msg.QueueType = QueueTypeDeferred
+	} else if anyDeferred {
+		// Some recipients need to be retried
 		msg.Status = StatusDeferred
+		msg.RetryCount++
 
-		qm.logger.Info("message deferred",
-			"id", msg.ID,
-			"retry_count", msg.RetryCount,
-			"next_retry", msg.NextRetry.Format(time.RFC3339))
-	}
+		// Calculate next retry time based on the earliest recipient retry
+		nextRetry := time.Now().Add(time.Hour * 24) // Default to 24 hours
+		for _, status := range msg.DeliveryStatus {
+			if status.Status == StatusDeferred && !status.NextRetry.IsZero() && status.NextRetry.Before(nextRetry) {
+				nextRetry = status.NextRetry
+			}
+		}
+		msg.NextRetry = nextRetry
 
-	// Save updated message
-	if err := qm.moveMessage(msg, QueueTypeActive, msg.QueueType); err != nil {
-		qm.logger.Error("failed to move message", "id", msg.ID, "error", err)
+		if err := qm.moveMessage(msg, QueueTypeActive, QueueTypeDeferred); err != nil {
+			qm.logger.Error("Failed to move message to deferred queue", "error", err, "id", msg.ID)
+		}
+
+		// Trigger hooks
+		qm.triggerHooks("deferred", msg, map[string]interface{}{
+			"attempt":   attempt,
+			"nextRetry": nextRetry,
+		})
+	} else {
+		// Mixed results - some delivered, some failed, none deferred
+		// This is an unusual case, but we'll move to delivered if at least one recipient was delivered
+		anyDelivered := false
+		for _, status := range msg.DeliveryStatus {
+			if status.Status == StatusDelivered {
+				anyDelivered = true
+				break
+			}
+		}
+
+		if anyDelivered {
+			msg.Status = StatusDelivered
+			if err := qm.moveMessage(msg, QueueTypeActive, QueueTypeDelivered); err != nil {
+				qm.logger.Error("Failed to move message to delivered queue", "error", err, "id", msg.ID)
+			}
+
+			// Trigger hooks
+			qm.triggerHooks("partial_delivered", msg, map[string]interface{}{
+				"attempt": attempt,
+			})
+
+			// Update statistics
+			qm.statsMu.Lock()
+			qm.stats.TotalDelivered++
+			qm.statsMu.Unlock()
+		} else {
+			msg.Status = StatusFailed
+			msg.FailReason = "All recipients failed"
+			if err := qm.moveMessage(msg, QueueTypeActive, QueueTypeFailed); err != nil {
+				qm.logger.Error("Failed to move message to failed queue", "error", err, "id", msg.ID)
+			}
+
+			// Trigger hooks
+			qm.triggerHooks("failed", msg, map[string]interface{}{
+				"attempt": attempt,
+			})
+
+			// Update statistics
+			qm.statsMu.Lock()
+			qm.stats.TotalFailed++
+			qm.statsMu.Unlock()
+		}
 	}
 }
 
@@ -833,4 +1344,235 @@ func (qm *QueueManager) deliverToRecipient(recipient, from string, data []byte) 
 	// For now, we'll just call the existing delivery manager's method
 	dm := NewDeliveryManager(qm.config)
 	return dm.deliverToRecipient(recipient, from, data)
+}
+
+// deliverToDomain attempts to deliver a message to all recipients at a specific domain
+func (qm *QueueManager) deliverToDomain(msg *QueuedMessage, domain string, recipients []string, data []byte) error {
+	// Look up MX records for the domain
+	mxRecords, err := qm.lookupMX(domain)
+	if err != nil {
+		return fmt.Errorf("MX lookup failed: %w", err)
+	}
+
+	// Try each MX record in order of preference
+	var lastErr error
+	for _, mx := range mxRecords {
+		// Attempt delivery to this MX
+		err := qm.deliverToMX(msg, mx.Host, recipients, data)
+		if err == nil {
+			// Delivery successful
+			return nil
+		}
+
+		// Store the error and try the next MX
+		lastErr = err
+		qm.logger.Warn("Delivery to MX failed, trying next", "mx", mx.Host, "error", err, "id", msg.ID)
+	}
+
+	// If we get here, all MX records failed
+	if lastErr != nil {
+		return fmt.Errorf("all MX servers failed: %w", lastErr)
+	}
+
+	return fmt.Errorf("no MX records found for domain %s", domain)
+}
+
+// lookupMX looks up MX records for a domain with caching
+func (qm *QueueManager) lookupMX(domain string) ([]*net.MX, error) {
+	// Check cache first
+	if cached, ok := qm.deliveryCache.Load(domain + ":mx"); ok {
+		if mxRecords, ok := cached.([]*net.MX); ok {
+			return mxRecords, nil
+		}
+	}
+
+	// Lookup MX records
+	mxRecords, err := net.LookupMX(domain)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cache the result (for 1 hour)
+	qm.deliveryCache.Store(domain+":mx", mxRecords)
+	time.AfterFunc(time.Hour, func() {
+		qm.deliveryCache.Delete(domain + ":mx")
+	})
+
+	return mxRecords, nil
+}
+
+// deliverToMX attempts to deliver a message to a specific MX server
+func (qm *QueueManager) deliverToMX(msg *QueuedMessage, mxHost string, recipients []string, data []byte) error {
+	// Connect to the MX server
+	conn, err := net.DialTimeout("tcp", mxHost+":25", time.Duration(qm.config.ConnectTimeout)*time.Second)
+	if err != nil {
+		return fmt.Errorf("connection failed: %w", err)
+	}
+	defer conn.Close()
+
+	// Set deadlines
+	conn.SetDeadline(time.Now().Add(time.Duration(qm.config.SMTPTimeout) * time.Second))
+
+	// Create SMTP client
+	client, err := smtp.NewClient(conn, mxHost)
+	if err != nil {
+		return fmt.Errorf("SMTP client creation failed: %w", err)
+	}
+	defer client.Close()
+
+	// Say HELO
+	if err := client.Hello(qm.config.Hostname); err != nil {
+		return fmt.Errorf("HELO failed: %w", err)
+	}
+
+	// Start TLS if available
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		tlsConfig := &tls.Config{
+			ServerName: mxHost,
+			MinVersion: tls.VersionTLS12,
+		}
+		if err := client.StartTLS(tlsConfig); err != nil {
+			qm.logger.Warn("STARTTLS failed, continuing without TLS", "error", err, "host", mxHost)
+		}
+	}
+
+	// Set the sender
+	if err := client.Mail(msg.From); err != nil {
+		return fmt.Errorf("MAIL FROM failed: %w", err)
+	}
+
+	// Set the recipients
+	for _, rcpt := range recipients {
+		if err := client.Rcpt(rcpt); err != nil {
+			// Update status for this recipient
+			msg.DeliveryStatus[rcpt] = RecipientStatus{
+				Status:      StatusFailed,
+				LastAttempt: time.Now(),
+				LastError:   err.Error(),
+				RetryCount:  msg.DeliveryStatus[rcpt].RetryCount + 1,
+				Server:      mxHost,
+				Response:    err.Error(),
+			}
+
+			// Continue with other recipients
+			continue
+		}
+	}
+
+	// Check if any recipients were accepted
+	anyAccepted := false
+	for _, rcpt := range recipients {
+		if status, ok := msg.DeliveryStatus[rcpt]; !ok || status.Status != StatusFailed {
+			anyAccepted = true
+			break
+		}
+	}
+
+	if !anyAccepted {
+		return fmt.Errorf("all recipients rejected")
+	}
+
+	// Send the message data
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("DATA command failed: %w", err)
+	}
+
+	if _, err := w.Write(data); err != nil {
+		return fmt.Errorf("sending message data failed: %w", err)
+	}
+
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("closing message data failed: %w", err)
+	}
+
+	// Quit the session
+	client.Quit()
+
+	// Mark all non-failed recipients as delivered
+	for _, rcpt := range recipients {
+		if status, ok := msg.DeliveryStatus[rcpt]; !ok || status.Status != StatusFailed {
+			msg.DeliveryStatus[rcpt] = RecipientStatus{
+				Status:      StatusDelivered,
+				LastAttempt: time.Now(),
+				Server:      mxHost,
+				Response:    "250 OK",
+				DSNSent:     false,
+			}
+		}
+	}
+
+	return nil
+}
+
+// acquireRateLimit attempts to acquire a rate limit token for a domain
+func (qm *QueueManager) acquireRateLimit(domain string) bool {
+	qm.rateLimitersMu.RLock()
+	limiter, ok := qm.rateLimiters[domain]
+	qm.rateLimitersMu.RUnlock()
+
+	if !ok {
+		// Create a new rate limiter for this domain
+		qm.rateLimitersMu.Lock()
+		limiter = &RateLimiter{
+			Limit:     qm.config.MaxConnectionsPerDomain,
+			Tokens:    qm.config.MaxConnectionsPerDomain,
+			LastReset: time.Now(),
+			Interval:  time.Second,
+		}
+		qm.rateLimiters[domain] = limiter
+		qm.rateLimitersMu.Unlock()
+	}
+
+	// Try to acquire a token
+	limiter.TokensMu.Lock()
+	defer limiter.TokensMu.Unlock()
+
+	// Reset tokens if interval has passed
+	if time.Since(limiter.LastReset) > limiter.Interval {
+		limiter.Tokens = limiter.Limit
+		limiter.LastReset = time.Now()
+	}
+
+	if limiter.Tokens > 0 {
+		limiter.Tokens--
+		return true
+	}
+
+	return false
+}
+
+// releaseRateLimit releases a rate limit token for a domain
+func (qm *QueueManager) releaseRateLimit(domain string) {
+	qm.rateLimitersMu.RLock()
+	limiter, ok := qm.rateLimiters[domain]
+	qm.rateLimitersMu.RUnlock()
+
+	if ok {
+		limiter.TokensMu.Lock()
+		if limiter.Tokens < limiter.Limit {
+			limiter.Tokens++
+		}
+		limiter.TokensMu.Unlock()
+	}
+}
+
+// AddDeliveryHook adds a hook function to be called on delivery events
+func (qm *QueueManager) AddDeliveryHook(hook DeliveryHook) {
+	qm.deliveryHooksMu.Lock()
+	defer qm.deliveryHooksMu.Unlock()
+
+	qm.deliveryHooks = append(qm.deliveryHooks, hook)
+}
+
+// triggerHooks calls all registered hooks for an event
+func (qm *QueueManager) triggerHooks(event string, msg *QueuedMessage, details map[string]interface{}) {
+	qm.deliveryHooksMu.RLock()
+	hooks := make([]DeliveryHook, len(qm.deliveryHooks))
+	copy(hooks, qm.deliveryHooks)
+	qm.deliveryHooksMu.RUnlock()
+
+	for _, hook := range hooks {
+		go hook(event, msg, details)
+	}
 }

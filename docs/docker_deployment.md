@@ -132,20 +132,6 @@ Check the queue directory for stuck messages:
 docker exec -it elemta ls -la /app/queue
 ```
 
-### Network errors during undeployment
-
-If you encounter network errors when stopping containers with `docker-compose down`, use the improved command:
-
-```bash
-docker-compose down --remove-orphans
-```
-
-Or use the Makefile target which handles orphaned containers and network cleanup:
-
-```bash
-make docker-undeploy
-```
-
 ## Advanced Usage
 
 ### Building a custom image
@@ -167,30 +153,15 @@ docker run -d \
   -v $(pwd)/config:/app/config \
   -v elemta_queue:/app/queue \
   -v elemta_logs:/app/logs \
-  elemta:latest server
+  elemta:latest
 ```
-
-Note the `server` command at the end, which is required to start the SMTP server.
 
 ### Using Docker Compose for Testing
 
 Elemta includes a separate Docker Compose configuration for testing:
 
 ```bash
-make docker-test
+docker-compose -f docker-compose.test.yml up -d
 ```
 
-This will:
-1. Stop any existing test containers
-2. Build a fresh test image
-3. Start a new test container on port 2526
-
-The test container has security features (antivirus and antispam) disabled by default to allow for easier testing.
-
-### Stopping Test Containers
-
-To stop the test containers:
-
-```bash
-docker-compose -f tests/docker/docker-compose.test.yml down --remove-orphans
-``` 
+This will start a separate instance of Elemta on port 2526 for testing purposes. 

@@ -6,11 +6,11 @@ import (
 
 // AntispamPlugin defines the interface for antispam plugins
 type AntispamPlugin interface {
+	// Embed the Plugin interface
+	Plugin
+
 	// GetScanner returns the antispam scanner
 	GetScanner() antispam.Scanner
-
-	// GetInfo returns information about the plugin
-	GetInfo() *PluginInfo
 }
 
 // AntispamPluginBase provides a base implementation of the AntispamPlugin interface
@@ -33,8 +33,20 @@ func (p *AntispamPluginBase) GetScanner() antispam.Scanner {
 }
 
 // GetInfo returns information about the plugin
-func (p *AntispamPluginBase) GetInfo() *PluginInfo {
-	return p.info
+func (p *AntispamPluginBase) GetInfo() PluginInfo {
+	return *p.info
+}
+
+// Init initializes the plugin with the given configuration
+func (p *AntispamPluginBase) Init(config map[string]interface{}) error {
+	// Default implementation does nothing
+	return nil
+}
+
+// Close closes the plugin and releases any resources
+func (p *AntispamPluginBase) Close() error {
+	// Default implementation does nothing
+	return nil
 }
 
 // Example of how to implement a plugin:
@@ -52,6 +64,7 @@ var PluginInfo = &plugin.PluginInfo{
 	Description: "My custom antispam scanner",
 	Version:     "1.0.0",
 	Type:        plugin.PluginTypeAntispam,
+	Author:      "Your Name",
 }
 
 // MyScanner implements the antispam.Scanner interface
@@ -61,16 +74,18 @@ type MyScanner struct {
 
 // Implement all methods required by the antispam.Scanner interface
 
-// MyPlugin implements the plugin.AntispamPlugin interface
-type MyPlugin struct {
-	*plugin.AntispamPluginBase
-}
-
-// Instance is exported and provides the plugin instance
-var Instance = &MyPlugin{
+// Plugin is exported and provides the plugin instance
+var Plugin = &MyPlugin{
 	AntispamPluginBase: plugin.NewAntispamPluginBase(
 		PluginInfo,
 		&MyScanner{},
 	),
 }
+
+// MyPlugin implements the plugin.AntispamPlugin interface
+type MyPlugin struct {
+	*plugin.AntispamPluginBase
+}
+
+// You can override any methods from AntispamPluginBase if needed
 */

@@ -22,9 +22,14 @@ type Config struct {
 	RetrySchedule []int    `toml:"retry_schedule" json:"retry_schedule"`
 
 	// Queue management options
-	KeepDeliveredMessages bool `toml:"keep_delivered_messages" json:"keep_delivered_messages"` // Whether to keep delivered messages for archiving
-	KeepMessageData       bool `toml:"keep_message_data" json:"keep_message_data"`             // Whether to keep message data after delivery
-	QueuePriorityEnabled  bool `toml:"queue_priority_enabled" json:"queue_priority_enabled"`   // Whether to enable queue prioritization
+	KeepDeliveredMessages   bool `toml:"keep_delivered_messages" json:"keep_delivered_messages"`       // Whether to keep delivered messages for archiving
+	KeepMessageData         bool `toml:"keep_message_data" json:"keep_message_data"`                   // Whether to keep message data after delivery
+	QueuePriorityEnabled    bool `toml:"queue_priority_enabled" json:"queue_priority_enabled"`         // Whether to enable queue prioritization
+	QueueWorkers            int  `toml:"queue_workers" json:"queue_workers"`                           // Number of queue worker goroutines
+	MessageRetentionHours   int  `toml:"message_retention_hours" json:"message_retention_hours"`       // How long to keep messages before expiry
+	ConnectTimeout          int  `toml:"connect_timeout" json:"connect_timeout"`                       // Timeout for connecting to remote servers
+	SMTPTimeout             int  `toml:"smtp_timeout" json:"smtp_timeout"`                             // Timeout for SMTP operations
+	MaxConnectionsPerDomain int  `toml:"max_connections_per_domain" json:"max_connections_per_domain"` // Maximum concurrent connections per domain
 
 	// Authentication configuration
 	Auth *AuthConfig `toml:"auth" json:"auth"`

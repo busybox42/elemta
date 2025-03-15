@@ -8,7 +8,7 @@ services:
     container_name: elemta
     restart: unless-stopped
     ports:
-      - "2525:2525"
+      - "2525:25"
     volumes:
       - elemta_queue:/app/queue
       - elemta_logs:/app/logs
@@ -25,13 +25,45 @@ services:
     stdin_open: true
     init: true
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2525"]
+      test: ["CMD", "nc", "-z", "localhost", "25"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 5s
     networks:
       - elemta_network
+    depends_on:
+      - elemta-clamav
+      - elemta-rspamd
+
+  elemta-clamav:
+    image: clamav/clamav:latest
+    container_name: elemta-clamav
+    restart: unless-stopped
+    networks:
+      - elemta_network
+    volumes:
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "3310"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  elemta-rspamd:
+    image: rspamd/rspamd:latest
+    container_name: elemta-rspamd
+    restart: unless-stopped
+    networks:
+      - elemta_network
+    volumes:
+      - rspamd_data:/var/lib/rspamd
+      - ./config/rspamd/local.d:/etc/rspamd/local.d
+    ports:
+      - "11334:11334"  # Web interface
+    healthcheck:
+      disable: true  # Temporarily disable health check since Rspamd is working correctly
 
 networks:
   elemta_network:
@@ -45,4 +77,8 @@ volumes:
   elemta_config:
     driver: local
   elemta_plugins:
+    driver: local
+  clamav_data:
+    driver: local
+  rspamd_data:
     driver: local 

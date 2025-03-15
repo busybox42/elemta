@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"plugin"
+	"sort"
 	"sync"
 )
 
@@ -29,6 +30,8 @@ type Manager struct {
 	pluginPath       string
 	antivirusPlugins map[string]AntivirusPlugin
 	antispamPlugins  map[string]AntispamPlugin
+	stagePlugins     map[ProcessingStage][]StagePlugin
+	typePlugins      map[string][]Plugin
 	loadedPlugins    map[string]*plugin.Plugin
 	mu               sync.RWMutex
 }
@@ -39,6 +42,8 @@ func NewManager(pluginPath string) *Manager {
 		pluginPath:       pluginPath,
 		antivirusPlugins: make(map[string]AntivirusPlugin),
 		antispamPlugins:  make(map[string]AntispamPlugin),
+		stagePlugins:     make(map[ProcessingStage][]StagePlugin),
+		typePlugins:      make(map[string][]Plugin),
 		loadedPlugins:    make(map[string]*plugin.Plugin),
 		mu:               sync.RWMutex{},
 	}
@@ -59,79 +64,160 @@ func (m *Manager) LoadPlugin(pluginName string) error {
 
 	// Check if plugin file exists
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
-		return fmt.Errorf("plugin file %s not found: %w", pluginPath, ErrPluginNotFound)
+		return fmt.Errorf("%w: %s", ErrPluginNotFound, pluginPath)
 	}
 
 	// Load plugin
 	p, err := plugin.Open(pluginPath)
 	if err != nil {
-		return fmt.Errorf("failed to load plugin %s: %w", pluginName, err)
+		return fmt.Errorf("failed to open plugin: %w", err)
+	}
+
+	// Get plugin info
+	infoSym, err := p.Lookup("PluginInfo")
+	if err != nil {
+		return fmt.Errorf("%w: PluginInfo", ErrPluginSymbolNotFound)
+	}
+
+	info, ok := infoSym.(*PluginInfo)
+	if !ok {
+		return fmt.Errorf("%w: PluginInfo", ErrPluginInvalidType)
+	}
+
+	// Register plugin based on its type
+	switch info.Type {
+	case PluginTypeAntivirus:
+		if err := m.loadAntivirusPlugin(pluginName, p); err != nil {
+			return err
+		}
+	case PluginTypeAntispam:
+		if err := m.loadAntispamPlugin(pluginName, p); err != nil {
+			return err
+		}
+	default:
+		// Try to load as a generic plugin
+		if err := m.loadGenericPlugin(pluginName, p, info.Type); err != nil {
+			return err
+		}
 	}
 
 	// Store loaded plugin
 	m.loadedPlugins[pluginName] = p
-
-	// Try to load as antivirus plugin
-	if err := m.loadAntivirusPlugin(pluginName, p); err == nil {
-		return nil
-	}
-
-	// Try to load as antispam plugin
-	if err := m.loadAntispamPlugin(pluginName, p); err == nil {
-		return nil
-	}
-
-	// If we get here, the plugin didn't have any recognized symbols
-	return fmt.Errorf("plugin %s does not contain any recognized plugin symbols", pluginName)
+	return nil
 }
 
-// loadAntivirusPlugin attempts to load an antivirus plugin
+// loadAntivirusPlugin loads an antivirus plugin
 func (m *Manager) loadAntivirusPlugin(pluginName string, p *plugin.Plugin) error {
-	// Look for AntivirusPlugin symbol
-	sym, err := p.Lookup("AntivirusPlugin")
+	// Lookup plugin symbol
+	sym, err := p.Lookup("Plugin")
 	if err != nil {
-		return ErrPluginSymbolNotFound
+		return fmt.Errorf("%w: Plugin", ErrPluginSymbolNotFound)
 	}
 
-	// Check if symbol is of the expected type
-	avPlugin, ok := sym.(AntivirusPlugin)
+	// Check if plugin is of the correct type
+	plugin, ok := sym.(AntivirusPlugin)
 	if !ok {
-		return ErrPluginInvalidType
+		return fmt.Errorf("%w: expected AntivirusPlugin", ErrPluginInvalidType)
 	}
 
-	// Store antivirus plugin
-	m.antivirusPlugins[pluginName] = avPlugin
+	// Register plugin
+	m.antivirusPlugins[pluginName] = plugin
+
+	// Also register as a type plugin
+	m.registerTypePlugin(pluginName, plugin, PluginTypeAntivirus)
+
+	// If it implements StagePlugin, register it for its stages
+	if stagePlugin, ok := sym.(StagePlugin); ok {
+		m.registerStagePlugin(stagePlugin)
+	}
+
 	return nil
 }
 
-// loadAntispamPlugin attempts to load an antispam plugin
+// loadAntispamPlugin loads an antispam plugin
 func (m *Manager) loadAntispamPlugin(pluginName string, p *plugin.Plugin) error {
-	// Look for AntispamPlugin symbol
-	sym, err := p.Lookup("AntispamPlugin")
+	// Lookup plugin symbol
+	sym, err := p.Lookup("Plugin")
 	if err != nil {
-		return ErrPluginSymbolNotFound
+		return fmt.Errorf("%w: Plugin", ErrPluginSymbolNotFound)
 	}
 
-	// Check if symbol is of the expected type
-	asPlugin, ok := sym.(AntispamPlugin)
+	// Check if plugin is of the correct type
+	plugin, ok := sym.(AntispamPlugin)
 	if !ok {
-		return ErrPluginInvalidType
+		return fmt.Errorf("%w: expected AntispamPlugin", ErrPluginInvalidType)
 	}
 
-	// Store antispam plugin
-	m.antispamPlugins[pluginName] = asPlugin
+	// Register plugin
+	m.antispamPlugins[pluginName] = plugin
+
+	// Also register as a type plugin
+	m.registerTypePlugin(pluginName, plugin, PluginTypeAntispam)
+
+	// If it implements StagePlugin, register it for its stages
+	if stagePlugin, ok := sym.(StagePlugin); ok {
+		m.registerStagePlugin(stagePlugin)
+	}
+
 	return nil
+}
+
+// loadGenericPlugin loads a generic plugin
+func (m *Manager) loadGenericPlugin(pluginName string, p *plugin.Plugin, pluginType string) error {
+	// Lookup plugin symbol
+	sym, err := p.Lookup("Plugin")
+	if err != nil {
+		return fmt.Errorf("%w: Plugin", ErrPluginSymbolNotFound)
+	}
+
+	// Check if plugin implements the Plugin interface
+	plugin, ok := sym.(Plugin)
+	if !ok {
+		return fmt.Errorf("%w: expected Plugin interface", ErrPluginInvalidType)
+	}
+
+	// Register as a type plugin
+	m.registerTypePlugin(pluginName, plugin, pluginType)
+
+	// If it implements StagePlugin, register it for its stages
+	if stagePlugin, ok := sym.(StagePlugin); ok {
+		m.registerStagePlugin(stagePlugin)
+	}
+
+	return nil
+}
+
+// registerTypePlugin registers a plugin by its type
+func (m *Manager) registerTypePlugin(pluginName string, plugin Plugin, pluginType string) {
+	if _, ok := m.typePlugins[pluginType]; !ok {
+		m.typePlugins[pluginType] = make([]Plugin, 0)
+	}
+	m.typePlugins[pluginType] = append(m.typePlugins[pluginType], plugin)
+}
+
+// registerStagePlugin registers a plugin for its processing stages
+func (m *Manager) registerStagePlugin(plugin StagePlugin) {
+	for _, stage := range plugin.GetStages() {
+		if _, ok := m.stagePlugins[stage]; !ok {
+			m.stagePlugins[stage] = make([]StagePlugin, 0)
+		}
+		m.stagePlugins[stage] = append(m.stagePlugins[stage], plugin)
+
+		// Sort plugins by priority (highest first)
+		sort.Slice(m.stagePlugins[stage], func(i, j int) bool {
+			return m.stagePlugins[stage][i].GetPriority() > m.stagePlugins[stage][j].GetPriority()
+		})
+	}
 }
 
 // LoadPlugins loads all plugins from the plugin path
 func (m *Manager) LoadPlugins() error {
-	// Check if plugin path exists
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Check if plugin directory exists
 	if _, err := os.Stat(m.pluginPath); os.IsNotExist(err) {
-		// Create plugin directory if it doesn't exist
-		if err := os.MkdirAll(m.pluginPath, 0755); err != nil {
-			return fmt.Errorf("failed to create plugin directory: %w", err)
-		}
-		return nil // No plugins to load yet
+		return fmt.Errorf("plugin directory not found: %s", m.pluginPath)
 	}
 
 	// Walk plugin directory
@@ -157,7 +243,7 @@ func (m *Manager) LoadPlugins() error {
 		// Load plugin
 		if err := m.LoadPlugin(pluginName); err != nil {
 			// Log error but continue loading other plugins
-			fmt.Printf("Error loading plugin %s: %v\n", pluginName, err)
+			fmt.Printf("Failed to load plugin %s: %v\n", pluginName, err)
 		}
 
 		return nil
@@ -173,7 +259,7 @@ func (m *Manager) GetAntivirusPlugin(name string) (AntivirusPlugin, error) {
 
 	plugin, ok := m.antivirusPlugins[name]
 	if !ok {
-		return nil, ErrPluginNotFound
+		return nil, fmt.Errorf("%w: %s", ErrPluginNotFound, name)
 	}
 
 	return plugin, nil
@@ -186,13 +272,79 @@ func (m *Manager) GetAntispamPlugin(name string) (AntispamPlugin, error) {
 
 	plugin, ok := m.antispamPlugins[name]
 	if !ok {
-		return nil, ErrPluginNotFound
+		return nil, fmt.Errorf("%w: %s", ErrPluginNotFound, name)
 	}
 
 	return plugin, nil
 }
 
-// ListAntivirusPlugins returns a list of loaded antivirus plugins
+// GetPluginsByType returns all plugins of a specific type
+func (m *Manager) GetPluginsByType(pluginType string) []Plugin {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	plugins, ok := m.typePlugins[pluginType]
+	if !ok {
+		return []Plugin{}
+	}
+
+	return plugins
+}
+
+// GetPluginsByStage returns all plugins for a specific processing stage
+func (m *Manager) GetPluginsByStage(stage ProcessingStage) []StagePlugin {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	plugins, ok := m.stagePlugins[stage]
+	if !ok {
+		return []StagePlugin{}
+	}
+
+	return plugins
+}
+
+// ExecuteStage runs all plugins for a specific stage and returns the combined result
+func (m *Manager) ExecuteStage(stage ProcessingStage, ctx interface{}) (PluginResult, error) {
+	plugins := m.GetPluginsByStage(stage)
+
+	// Default result is to continue processing
+	result := PluginResult{
+		Action:      ActionContinue,
+		Annotations: make(map[string]string),
+	}
+
+	for _, p := range plugins {
+		// Execute plugin
+		// This is a simplified example - in a real implementation, you would need to
+		// define a proper interface for executing plugins with the right context
+		// For now, we'll just assume there's an Execute method
+		if execPlugin, ok := p.(interface {
+			Execute(ctx interface{}) (PluginResult, error)
+		}); ok {
+			pluginResult, err := execPlugin.Execute(ctx)
+			if err != nil {
+				return result, fmt.Errorf("plugin execution error: %w", err)
+			}
+
+			// Merge annotations
+			for k, v := range pluginResult.Annotations {
+				result.Annotations[k] = v
+			}
+
+			// If plugin wants to stop processing, respect that
+			if pluginResult.Action != ActionContinue {
+				result.Action = pluginResult.Action
+				result.Message = pluginResult.Message
+				break
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// ListAntivirusPlugins returns a list of all loaded antivirus plugins
 func (m *Manager) ListAntivirusPlugins() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -205,7 +357,7 @@ func (m *Manager) ListAntivirusPlugins() []string {
 	return plugins
 }
 
-// ListAntispamPlugins returns a list of loaded antispam plugins
+// ListAntispamPlugins returns a list of all loaded antispam plugins
 func (m *Manager) ListAntispamPlugins() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -218,15 +370,41 @@ func (m *Manager) ListAntispamPlugins() []string {
 	return plugins
 }
 
-// Close closes all plugins
+// ListPluginTypes returns a list of all plugin types with loaded plugins
+func (m *Manager) ListPluginTypes() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	types := make([]string, 0, len(m.typePlugins))
+	for t := range m.typePlugins {
+		types = append(types, t)
+	}
+
+	return types
+}
+
+// Close closes all loaded plugins
 func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Clear all plugin maps
+	var lastErr error
+
+	// Close all plugins
+	for _, plugins := range m.typePlugins {
+		for _, p := range plugins {
+			if err := p.Close(); err != nil {
+				lastErr = err
+			}
+		}
+	}
+
+	// Clear plugin maps
 	m.antivirusPlugins = make(map[string]AntivirusPlugin)
 	m.antispamPlugins = make(map[string]AntispamPlugin)
+	m.stagePlugins = make(map[ProcessingStage][]StagePlugin)
+	m.typePlugins = make(map[string][]Plugin)
 	m.loadedPlugins = make(map[string]*plugin.Plugin)
 
-	return nil
+	return lastErr
 }

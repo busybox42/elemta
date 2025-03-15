@@ -1,143 +1,170 @@
-# Elemta SMTP Server
+# Elemta - High-Performance SMTP Server
 
-Elemta is a high-performance SMTP server written in Go, designed to be extensible and secure.
+Elemta is a high-performance, carrier-grade Mail Transfer Agent (MTA) written in Go. It's designed to be a modern, pluggable, and secure alternative to traditional MTAs like Postfix, Sendmail, and Exim.
 
 ## Features
 
-- **Lightweight**: Elemta is designed to be lightweight and efficient, making it suitable for both small and large deployments.
-- **Flexible**: Supports various storage backends, including file system, MySQL, PostgreSQL, and SQLite.
-- **Secure**: Implements modern security practices to protect your email infrastructure.
-- **Extensible**: Provides a plugin system for adding custom functionality.
-- **Authentication**: Supports PLAIN and LOGIN authentication methods with configurable backends.
-- **TLS Support**: Secure your SMTP connections with TLS, including Let's Encrypt integration.
-- **Advanced Queue Management**: Prioritized message queue with configurable retry logic and worker pools.
-- **Development Mode**: Test your email functionality without sending actual emails.
+- **High Performance**: Built with Go for excellent concurrency and performance
+- **Pluggable Architecture**: Easily extend functionality with plugins
+- **Security-First Design**: Built-in SPF, DKIM, and DMARC validation
+- **Modern Queue Management**: Sophisticated queue system with priority, retry, and status tracking
+- **Comprehensive Monitoring**: Detailed metrics and logging
+- **Containerized Deployment**: Ready for Docker and Kubernetes
+- **Horizontal Scalability**: Designed to scale out across multiple nodes
+- **API-Driven**: RESTful API for management and monitoring
 
-## Code Structure
+## Architecture
 
-The codebase is organized into several packages:
+Elemta is built with a modular architecture:
 
-### `/cmd`
+- **Core SMTP Server**: Handles SMTP protocol and message processing
+- **Plugin System**: Allows for extending functionality at various processing stages
+- **Queue Manager**: Manages message queues, retries, and delivery
+- **Delivery Manager**: Handles message delivery to remote servers
+- **Configuration Manager**: Manages configuration and runtime settings
+- **Monitoring System**: Provides metrics and monitoring capabilities
 
-Contains the main application entry points.
+## Plugin Types
 
-### `/internal`
+Elemta supports various plugin types:
 
-Contains packages that are specific to this application and not meant to be imported by other applications.
+- **Connection Plugins**: Run during the SMTP connection phase
+- **Authentication Plugins**: Handle SMTP authentication
+- **HELO/EHLO Plugins**: Process HELO/EHLO commands
+- **MAIL FROM Plugins**: Process MAIL FROM commands
+- **RCPT TO Plugins**: Process RCPT TO commands
+- **DATA Plugins**: Process message data
+- **Queue Plugins**: Interact with the queue system
+- **Delivery Plugins**: Modify delivery behavior
+- **Security Plugins**: Implement security features (SPF, DKIM, DMARC)
+- **Routing Plugins**: Control message routing
+- **Storage Plugins**: Customize message storage
 
-- `/internal/datasource`: Database access (SQLite, MySQL, PostgreSQL)
-- `/internal/queue`: Email queue management
-- `/internal/smtp`: SMTP server implementation
-
-### `/docs`
-
-Contains detailed documentation for various components of the system.
-
-## Configuration
-
-Elemta is configured using a JSON configuration file. The server will look for a configuration file in the following locations:
-
-1. The path specified by the `-config` command-line flag
-2. `./elemta.conf`
-3. `./config/elemta.conf`
-4. `../config/elemta.conf`
-5. `$HOME/.elemta.conf`
-6. `/etc/elemta/elemta.conf`
-
-If no configuration file is found, default values will be used.
-
-### Example Configuration
-
-```json
-{
-  "hostname": "mail.example.com",
-  "listen_addr": ":2525",
-  "queue_dir": "./queue",
-  "max_size": 26214400,
-  "dev_mode": true,
-  "allowed_relays": ["127.0.0.1", "::1", "192.168.65.1"],
-  "max_workers": 5,
-  "max_retries": 3,
-  "max_queue_time": 3600,
-  "retry_schedule": [60, 300, 900],
-  "auth": {
-    "enabled": true,
-    "required": false,
-    "datasource_type": "sqlite",
-    "datasource_path": "./auth.db"
-  },
-  "tls": {
-    "enabled": true,
-    "listen_addr": ":465",
-    "cert_file": "/path/to/cert.pem",
-    "key_file": "/path/to/key.pem"
-  }
-}
-```
-
-## Building and Running
+## Getting Started
 
 ### Prerequisites
 
-- Go 1.21 or later
-- Docker (optional, for containerized deployment)
+- Go 1.20 or higher
+- Git
 
-### Building
-
-```bash
-go build -o elemta ./cmd/elemta
-```
-
-### Running with Docker
+### Installation
 
 ```bash
-# Build and start the container
-docker-compose up -d
+# Clone the repository
+git clone https://github.com/yourusername/elemta.git
+cd elemta
 
-# Check the logs
-docker logs elemta
+# Build the binary
+go build -o elemta cmd/elemta/main.go
+
+# Run the server
+./elemta serve
 ```
 
-## Testing
+### Configuration
 
-You can test the SMTP server using various methods:
+Elemta uses a YAML configuration file. A sample configuration is provided in `config/elemta.yaml.example`.
 
 ```bash
-# Run all Python tests
-make python-test
+# Copy the example configuration
+cp config/elemta.yaml.example config/elemta.yaml
 
-# Run unit tests
-make unit-test
-
-# Run Docker tests
-make docker-test
-
-# Run Kubernetes tests
-make k8s-test
+# Edit the configuration
+vim config/elemta.yaml
 ```
 
-For detailed testing instructions, see the [Testing Documentation](docs/testing.md).
+### Docker
 
-## Queue Management System
+Elemta can be run in Docker:
 
-Elemta includes a robust queue management system for reliable email delivery:
+```bash
+# Build the Docker image
+docker build -t elemta .
 
-- **Message Prioritization**: Messages can be assigned different priority levels (Low, Normal, High, Critical)
-- **Configurable Retry Logic**: Customize retry intervals and maximum attempts
-- **Worker Pool**: Limit concurrent deliveries to prevent resource exhaustion
-- **Automatic Cleanup**: Old messages are automatically removed from the queue
-- **Delivery Tracking**: Track delivery attempts and errors for each message
+# Run the container
+docker run -p 25:25 -p 587:587 -v /path/to/config:/etc/elemta elemta
+```
 
-For more details, see the [Queue Management Documentation](docs/queue_management.md).
+## Development
 
-## Docker Deployment
+### Building from Source
 
-For detailed instructions on deploying Elemta with Docker, see the [Docker Deployment Documentation](docs/docker_deployment.md).
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/elemta.git
+cd elemta
 
-## Kubernetes Deployment
+# Install dependencies
+go mod download
 
-For detailed instructions on deploying Elemta to Kubernetes, see the [Kubernetes Deployment Documentation](docs/kubernetes_deployment.md).
+# Build
+go build -o elemta cmd/elemta/main.go
+```
 
-## SMTP Server
+### Running Tests
 
-For detailed information about the SMTP server functionality, see the [SMTP Server Documentation](docs/smtp_server.md).
+```bash
+# Run all tests
+go test ./...
+
+# Run tests with coverage
+go test -cover ./...
+```
+
+### Creating Plugins
+
+Elemta's plugin system makes it easy to extend functionality. Here's a simple example of a plugin:
+
+```go
+package myplugin
+
+import (
+    "github.com/yourusername/elemta/internal/plugin"
+)
+
+type MyPlugin struct {
+    plugin.BasePlugin
+}
+
+func (p *MyPlugin) Init() error {
+    // Initialize the plugin
+    return nil
+}
+
+func (p *MyPlugin) Close() error {
+    // Clean up resources
+    return nil
+}
+
+func (p *MyPlugin) Execute(ctx *plugin.Context) (*plugin.Result, error) {
+    // Plugin logic here
+    return &plugin.Result{
+        Action:  plugin.ActionContinue,
+        Message: "Plugin executed successfully",
+    }, nil
+}
+
+// Register the plugin
+func init() {
+    plugin.Register("my-plugin", &MyPlugin{})
+}
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- The Go team for creating an excellent language for building high-performance servers
+- The open-source community for inspiration and tools

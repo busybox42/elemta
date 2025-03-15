@@ -5,7 +5,7 @@ from email.mime.multipart import MIMEMultipart
 
 # SMTP server details
 smtp_server = "localhost"
-smtp_port = 2526
+smtp_port = 2525
 
 # Authentication details
 username = "testuser"
