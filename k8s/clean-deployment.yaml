@@ -22,9 +22,21 @@ spec:
         args:
           - |
             cp /config-volume/elemta.conf /app/config/elemta.conf
-            /app/elemta
+            echo "#!/bin/sh" > /app/entrypoint.sh
+            echo "set -e" >> /app/entrypoint.sh
+            echo "echo \"Environment variables:\"" >> /app/entrypoint.sh
+            echo "env" >> /app/entrypoint.sh
+            echo "echo \"Working directory:\"" >> /app/entrypoint.sh
+            echo "pwd" >> /app/entrypoint.sh
+            echo "ls -la" >> /app/entrypoint.sh
+            echo "echo \"Looking for server binary:\"" >> /app/entrypoint.sh
+            echo "find / -name elemta -type f 2>/dev/null || echo \"Binary not found\"" >> /app/entrypoint.sh
+            echo "echo \"Starting Elemta server...\"" >> /app/entrypoint.sh
+            echo "exec /app/elemta server" >> /app/entrypoint.sh
+            chmod +x /app/entrypoint.sh
+            /app/entrypoint.sh
         ports:
-        - containerPort: 2525
+        - containerPort: 25
           name: smtp
         resources:
           limits:
@@ -45,27 +57,18 @@ spec:
         env:
         - name: TZ
           value: "UTC"
-        # Add environment variables for authentication configuration
-        - name: AUTH_DATASOURCE_TYPE
-          valueFrom:
-            configMapKeyRef:
-              name: elemta-auth-config
-              key: auth.datasource.type
-        # For SQLite authentication
-        - name: AUTH_SQLITE_PATH
-          valueFrom:
-            configMapKeyRef:
-              name: elemta-auth-config
-              key: auth.sqlite.path
-              optional: true
+        - name: ELEMTA_CONFIG_PATH
+          value: "/app/config/elemta.conf"
+        - name: DEBUG
+          value: "true"
         livenessProbe:
           tcpSocket:
-            port: 2525
+            port: 25
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           tcpSocket:
-            port: 2525
+            port: 25
           initialDelaySeconds: 5
           periodSeconds: 10
       volumes:

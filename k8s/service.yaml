@@ -5,10 +5,11 @@ metadata:
   labels:
     app: elemta
 spec:
-  type: ClusterIP
+  type: NodePort
   ports:
-  - port: 2525
-    targetPort: 2525
+  - port: 25
+    targetPort: 25
+    nodePort: 30025
     protocol: TCP
     name: smtp
   selector:

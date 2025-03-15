@@ -14,8 +14,22 @@ services:
       - elemta_logs:/app/logs
       - elemta_config:/app/config
       - elemta_plugins:/app/plugins
+      - ./config:/config-volume
+      - ./docker-entrypoint.sh:/docker-entrypoint.sh
     environment:
       - TZ=UTC
+      - ELEMTA_CONFIG_PATH=/config-volume/elemta.conf
+      - DEBUG=true
+    entrypoint: ["/docker-entrypoint.sh"]
+    tty: true
+    stdin_open: true
+    init: true
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2525"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     networks:
       - elemta_network
 
