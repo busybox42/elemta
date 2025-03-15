@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+
+# Set permissions
+chown -R __PACKAGE_NAME__:__PACKAGE_NAME__ /etc/__PACKAGE_NAME__
+chmod 750 /etc/__PACKAGE_NAME__
+
+# Enable and start service if systemd is available
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload
+  systemctl enable __PACKAGE_NAME__.service
+  systemctl start __PACKAGE_NAME__.service || true
+fi
+
+exit 0 

@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+# Add user if it doesn't exist
+if ! getent passwd __PACKAGE_NAME__ > /dev/null; then
+  useradd --system --no-create-home --shell /sbin/nologin __PACKAGE_NAME__
+fi
+
+exit 0 

@@ -1,0 +1,8 @@
+# Build artifacts
+dist/
+build_tmp/
+*.rpm
+*.deb
+
+# Logs
+*.log

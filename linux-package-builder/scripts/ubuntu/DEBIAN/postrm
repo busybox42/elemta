@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+# Remove user only on complete uninstall (purge)
+if [ "$1" = "purge" ]; then
+  if getent passwd __PACKAGE_NAME__ > /dev/null; then
+    userdel __PACKAGE_NAME__
+  fi
+fi
+
+exit 0 

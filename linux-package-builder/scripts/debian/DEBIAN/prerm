@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+# Stop service if running
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl stop __PACKAGE_NAME__.service || true
+  systemctl disable __PACKAGE_NAME__.service || true
+fi
+
+exit 0 

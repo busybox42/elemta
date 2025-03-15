@@ -1,0 +1,2 @@
+This is a sample data file for the MyApp application.
+It demonstrates how data files are packaged and installed. 

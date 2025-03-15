@@ -1,0 +1,100 @@
+# Package Configuration
+# This file contains all the configuration needed to build packages for different distributions
+
+# Basic package information
+package_name: elemta
+package_version: 0.0.1
+package_description: Elemta application
+package_maintainer: Your Name <your.email@example.com>
+package_license: MIT
+
+# Installation paths
+install_prefix: /usr/local
+binary_path: /usr/local/bin
+config_path: /etc/elemta
+data_path: /usr/share/elemta
+systemd_service_path: /usr/lib/systemd/system
+
+# Files to include in the package
+# Format: source_path: destination_path
+files:
+  - source: ./bin/elemta
+    destination: /usr/local/bin/elemta
+  - source: ./config/elemta.conf
+    destination: /etc/elemta/elemta.conf
+  - source: ./data/*
+    destination: /usr/share/elemta/
+
+# Systemd service file (if needed)
+systemd_service: true
+systemd_service_name: elemta
+systemd_service_description: Elemta Application Service
+systemd_service_exec_start: /usr/local/bin/elemta --config /etc/elemta/elemta.conf
+systemd_service_user: elemta
+systemd_service_group: elemta
+systemd_service_restart: on-failure
+
+# Dependencies for RHEL/CentOS 8
+rhel8_dependencies:
+  - openssl >= 1.1.1
+  - zlib
+  - libcurl
+rhel8_dependencies_end:
+
+# Dependencies for RHEL/CentOS 9
+rhel9_dependencies:
+  - openssl >= 3.0.0
+  - zlib
+  - libcurl
+rhel9_dependencies_end:
+
+# Dependencies for Debian
+debian_dependencies:
+  - openssl (>= 1.1.1)
+  - zlib1g
+  - libcurl4
+debian_dependencies_end:
+
+# Dependencies for Ubuntu
+ubuntu_dependencies:
+  - openssl (>= 1.1.1)
+  - zlib1g
+  - libcurl4
+ubuntu_dependencies_end:
+
+# Pre-install script
+pre_install: |
+  # Add user if it doesn't exist
+  if ! getent passwd elemta > /dev/null; then
+    useradd --system --no-create-home --shell /sbin/nologin elemta
+  fi
+
+# Post-install script
+post_install: |
+  # Set permissions
+  chown -R elemta:elemta /etc/elemta
+  chmod 750 /etc/elemta
+  
+  # Enable and start service if systemd is available
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload
+    systemctl enable elemta.service
+    systemctl start elemta.service
+  fi
+
+# Pre-uninstall script
+pre_uninstall: |
+  # Stop service if running
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl stop elemta.service
+    systemctl disable elemta.service
+  fi
+
+# Post-uninstall script
+post_uninstall: |
+  # Remove user only on complete uninstall
+  if [ "$1" = "0" ]; then
+    if getent passwd elemta > /dev/null; then
+      userdel elemta
+    fi
+  fi 
