@@ -35,11 +35,11 @@ WORKDIR /app
 
 # Copy the binary and config file
 COPY --from=builder /app/elemta-bin /app/elemta
+COPY --from=builder /app/config/elemta.conf /app/config/
 
-# Create a simple entrypoint script
-RUN echo '#!/bin/sh' > /app/entrypoint.sh && \
-    echo 'exec /app/elemta server' >> /app/entrypoint.sh && \
-    chmod +x /app/entrypoint.sh && \
+# Copy entrypoint script
+COPY --from=builder /app/scripts/docker/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh && \
     chown elemta:elemta /app/entrypoint.sh
 
 # Copy example plugins

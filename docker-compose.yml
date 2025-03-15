@@ -15,7 +15,7 @@ services:
       - elemta_config:/app/config
       - elemta_plugins:/app/plugins
       - ./config:/config-volume
-      - ./docker-entrypoint.sh:/docker-entrypoint.sh
+      - ./scripts/docker/docker-entrypoint.sh:/docker-entrypoint.sh
     environment:
       - TZ=UTC
       - ELEMTA_CONFIG_PATH=/config-volume/elemta.conf
@@ -59,7 +59,7 @@ services:
       - elemta_network
     volumes:
       - rspamd_data:/var/lib/rspamd
-      - ./rspamd/local.d:/etc/rspamd/local.d
+      - ./config/rspamd/local.d:/etc/rspamd/local.d
     ports:
       - "11334:11334"  # Web interface
     healthcheck:

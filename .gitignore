@@ -7,9 +7,11 @@ linux-package-builder/build_tmp/
 *.deb
 
 # Temporary files
-elemta-fixed.conf
-entrypoint.sh
+config/examples/elemta-fixed.conf
 .cursor/
 
 # Logs
 *.log
+
+# Archived files
+k8s/archive/
