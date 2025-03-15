@@ -26,15 +26,36 @@ linux-package-builder/
 ├── build_debian.sh      # Script to build DEB packages for Debian 11
 ├── build_ubuntu.sh      # Script to build DEB packages for Ubuntu 22.04
 ├── check_files.sh       # Script to check for required files
-├── dummy_build.sh       # Script to create dummy packages for testing
+├── README.md            # This documentation file
+└── SUMMARY.md           # Summary of package building implementation
+```
+
+When the build scripts are run, they will create the following directories:
+
+```
+linux-package-builder/
 ├── dist/                # Output directory for built packages
 │   ├── rhel8/           # RHEL/CentOS 8 packages
 │   ├── rhel9/           # RHEL/CentOS 9 packages
 │   ├── debian11/        # Debian 11 packages
 │   └── ubuntu2204/      # Ubuntu 22.04 packages
-├── templates/           # Templates for package files
-└── scripts/             # Helper scripts
+└── build_tmp/           # Temporary build directory
 ```
+
+## Required Files
+
+The build scripts expect the following files to be present in the parent directory:
+
+```
+elemta/
+├── bin/
+│   └── elemta           # The Elemta binary
+├── config/
+│   └── elemta.conf      # Configuration file
+└── data/                # Data directory
+```
+
+If these files are not present, the `check_files.sh` script will create dummy files for testing purposes.
 
 ## Building Packages
 
@@ -139,5 +160,4 @@ If you encounter issues with the package building process, try the following:
 
 1. Check if the required files exist using `./check_files.sh`
 2. Make sure Docker is installed and running
-3. Check the build logs in the `build_tmp` directory
-4. Try building a dummy package using `./dummy_build.sh` to test the process 
+3. Check the build logs in the `build_tmp` directory 

@@ -1,60 +1,105 @@
 #!/bin/bash
+set -e
 
-PACKAGE_NAME="elemta"
+# Colors for output
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PARENT_DIR="$(dirname "$SCRIPT_DIR")"
 
-echo "Script directory: $SCRIPT_DIR"
-echo "Parent directory: $PARENT_DIR"
+# Required files and directories
+BINARY_FILE="$PARENT_DIR/bin/elemta"
+CONFIG_FILE="$PARENT_DIR/config/elemta.conf"
+DATA_DIR="$PARENT_DIR/data"
+
+# Check if files exist
+echo -e "${YELLOW}Checking for required files...${NC}"
 
 # Check binary file
-if [ -f "$PARENT_DIR/bin/$PACKAGE_NAME" ]; then
-    echo "Binary file exists: $PARENT_DIR/bin/$PACKAGE_NAME"
+if [ -f "$BINARY_FILE" ]; then
+    echo -e "${GREEN}✓ Binary file exists: $BINARY_FILE${NC}"
 else
-    echo "Binary file does not exist: $PARENT_DIR/bin/$PACKAGE_NAME"
-    # Create a dummy binary file for testing
-    mkdir -p "$PARENT_DIR/bin"
-    echo "#!/bin/bash" > "$PARENT_DIR/bin/$PACKAGE_NAME"
-    echo "echo \"This is a dummy $PACKAGE_NAME binary\"" >> "$PARENT_DIR/bin/$PACKAGE_NAME"
-    chmod +x "$PARENT_DIR/bin/$PACKAGE_NAME"
-    echo "Created dummy binary file"
+    echo -e "${RED}✗ Binary file not found: $BINARY_FILE${NC}"
+    echo -e "${YELLOW}Creating dummy binary file...${NC}"
+    
+    # Create directory if it doesn't exist
+    mkdir -p "$(dirname "$BINARY_FILE")"
+    
+    # Create dummy binary file
+    cat > "$BINARY_FILE" << 'EOF'
+#!/bin/bash
+echo "Elemta SMTP Server v0.0.1"
+echo "This is a dummy binary file for testing package building."
+echo "In a real deployment, this would be the actual Elemta binary."
+EOF
+    
+    # Make it executable
+    chmod +x "$BINARY_FILE"
+    echo -e "${GREEN}✓ Created dummy binary file: $BINARY_FILE${NC}"
 fi
 
 # Check config file
-if [ -f "$PARENT_DIR/config/$PACKAGE_NAME.conf" ]; then
-    echo "Config file exists: $PARENT_DIR/config/$PACKAGE_NAME.conf"
+if [ -f "$CONFIG_FILE" ]; then
+    echo -e "${GREEN}✓ Config file exists: $CONFIG_FILE${NC}"
 else
-    echo "Config file does not exist: $PARENT_DIR/config/$PACKAGE_NAME.conf"
-    # Create a dummy config file for testing
-    mkdir -p "$PARENT_DIR/config"
-    echo "# Dummy config file for $PACKAGE_NAME" > "$PARENT_DIR/config/$PACKAGE_NAME.conf"
-    echo "port = 8080" >> "$PARENT_DIR/config/$PACKAGE_NAME.conf"
-    echo "log_level = info" >> "$PARENT_DIR/config/$PACKAGE_NAME.conf"
-    echo "Created dummy config file"
+    echo -e "${RED}✗ Config file not found: $CONFIG_FILE${NC}"
+    echo -e "${YELLOW}Creating dummy config file...${NC}"
+    
+    # Create directory if it doesn't exist
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+    
+    # Create dummy config file
+    cat > "$CONFIG_FILE" << 'EOF'
+# Elemta SMTP Server Configuration
+# This is a dummy configuration file for testing package building.
+
+[server]
+hostname = mail.example.com
+port = 25
+tls_port = 465
+submission_port = 587
+
+[security]
+tls_cert = /etc/elemta/certs/cert.pem
+tls_key = /etc/elemta/certs/key.pem
+
+[storage]
+queue_dir = /var/lib/elemta/queue
+data_dir = /var/lib/elemta/data
+
+[logging]
+log_level = info
+log_file = /var/log/elemta/elemta.log
+
+[plugins]
+enabled_plugins = antivirus,antispam,dkim
+plugin_dir = /usr/lib/elemta/plugins
+EOF
+    
+    echo -e "${GREEN}✓ Created dummy config file: $CONFIG_FILE${NC}"
 fi
 
 # Check data directory
-if [ -d "$PARENT_DIR/data" ]; then
-    echo "Data directory exists: $PARENT_DIR/data"
+if [ -d "$DATA_DIR" ]; then
+    echo -e "${GREEN}✓ Data directory exists: $DATA_DIR${NC}"
 else
-    echo "Data directory does not exist: $PARENT_DIR/data"
-    # Create a dummy data directory for testing
-    mkdir -p "$PARENT_DIR/data"
-    echo "This is a dummy data file" > "$PARENT_DIR/data/dummy.txt"
-    echo "Created dummy data directory and file"
+    echo -e "${RED}✗ Data directory not found: $DATA_DIR${NC}"
+    echo -e "${YELLOW}Creating dummy data directory...${NC}"
+    
+    # Create data directory
+    mkdir -p "$DATA_DIR"
+    
+    # Create a dummy file in the data directory
+    cat > "$DATA_DIR/README.txt" << 'EOF'
+This is a dummy data directory for testing package building.
+In a real deployment, this directory would contain data files for the Elemta SMTP server.
+EOF
+    
+    echo -e "${GREEN}✓ Created dummy data directory: $DATA_DIR${NC}"
 fi
 
-# Check if Docker is available
-if command -v docker &> /dev/null; then
-    echo "Docker is available"
-else
-    echo "Docker is not available"
-fi
-
-# Make all build scripts executable
-chmod +x "$SCRIPT_DIR"/*.sh
-echo "Made all build scripts executable"
-
-# List all build scripts
-echo "Build scripts:"
-ls -la "$SCRIPT_DIR"/*.sh 
+echo -e "${GREEN}All required files are available.${NC}"
+exit 0 

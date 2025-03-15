@@ -12,6 +12,7 @@ Elemta is a high-performance, carrier-grade Mail Transfer Agent (MTA) written in
 - **Containerized Deployment**: Ready for Docker and Kubernetes
 - **Horizontal Scalability**: Designed to scale out across multiple nodes
 - **API-Driven**: RESTful API for management and monitoring
+- **Native Packages**: Support for RHEL/CentOS 8/9, Debian 11, and Ubuntu 22.04
 
 ## Architecture
 
@@ -49,6 +50,8 @@ Elemta supports various plugin types:
 
 ### Installation
 
+#### From Source
+
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/elemta.git
@@ -59,6 +62,43 @@ go build -o elemta cmd/elemta/main.go
 
 # Run the server
 ./elemta serve
+```
+
+#### Using Native Packages
+
+Elemta provides native packages for various Linux distributions:
+
+##### RHEL/CentOS 8
+```bash
+sudo rpm -i elemta-0.0.1-1.el8.x86_64.rpm
+```
+
+##### RHEL/CentOS 9
+```bash
+sudo rpm -i elemta-0.0.1-1.el9.x86_64.rpm
+```
+
+##### Debian 11
+```bash
+sudo dpkg -i elemta_0.0.1_amd64.deb
+```
+
+##### Ubuntu 22.04
+```bash
+sudo dpkg -i elemta_0.0.1_amd64.deb
+```
+
+After installation, the Elemta service can be managed using systemd:
+
+```bash
+# Start the service
+sudo systemctl start elemta
+
+# Enable the service to start at boot
+sudo systemctl enable elemta
+
+# Check the service status
+sudo systemctl status elemta
 ```
 
 ### Configuration
@@ -100,6 +140,26 @@ go mod download
 # Build
 go build -o elemta cmd/elemta/main.go
 ```
+
+### Building Native Packages
+
+Elemta includes a package builder for creating native packages for various Linux distributions:
+
+```bash
+# Navigate to the package builder directory
+cd linux-package-builder
+
+# Build all packages
+./build_all.sh
+
+# Or build a specific package type
+./build_rpm.sh      # RHEL/CentOS 8
+./build_rhel9.sh    # RHEL/CentOS 9
+./build_debian.sh   # Debian 11
+./build_ubuntu.sh   # Ubuntu 22.04
+```
+
+For more information about the package builder, see [linux-package-builder/README.md](linux-package-builder/README.md).
 
 ### Running Tests
 
