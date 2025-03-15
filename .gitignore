@@ -1,7 +1,15 @@
 # Build artifacts
 build/
+dist/
+linux-package-builder/dist/
+linux-package-builder/build_tmp/
+*.rpm
+*.deb
 
 # Temporary files
 elemta-fixed.conf
 entrypoint.sh
 .cursor/
+
+# Logs
+*.log
