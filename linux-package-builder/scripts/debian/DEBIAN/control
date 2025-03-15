@@ -1,8 +1,0 @@
-Package: __PACKAGE_NAME__
-Version: __PACKAGE_VERSION__
-Section: utils
-Priority: optional
-Architecture: amd64
-Maintainer: __PACKAGE_MAINTAINER__
-Description: __PACKAGE_DESCRIPTION__
-Depends: __PACKAGE_DEPENDENCIES__ 
