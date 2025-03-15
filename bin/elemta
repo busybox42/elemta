@@ -1,0 +1,3 @@
+#!/bin/bash
+echo "Elemta version 0.0.1"
+echo "Configuration: $1"

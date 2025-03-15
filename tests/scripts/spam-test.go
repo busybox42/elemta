@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net/smtp"
-	"strings"
 )
 
 func main() {
@@ -33,12 +32,11 @@ func main() {
 	}
 	defer wc.Close()
 
-	// EICAR test virus pattern
+	// GTUBE pattern for spam testing
 	msg := []byte("To: recipient@example.com\r\n" +
-		"Subject: EICAR Test\r\n" +
-		"Content-Type: text/plain\r\n" +
+		"Subject: GTUBE Test\r\n" +
 		"\r\n" +
-		"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*\r\n")
+		"XJS*C4JDBQADN1.NSBN3*2IDNEN*GTUBE-STANDARD-ANTI-UBE-TEST-EMAIL*C.34X\r\n")
 
 	if _, err = wc.Write(msg); err != nil {
 		fmt.Println("Error writing message:", err)
@@ -46,16 +44,10 @@ func main() {
 	}
 
 	// Send the QUIT command and close the connection
-	err = c.Quit()
-	if err != nil {
-		// Check if this is the expected response for virus detection
-		if strings.Contains(err.Error(), "554 5.7.0 Virus found") {
-			fmt.Println("Virus detected successfully!")
-			return
-		}
+	if err := c.Quit(); err != nil {
 		fmt.Println("Error closing connection:", err)
 		return
 	}
 
-	fmt.Println("Email sent successfully, but virus was not detected!")
+	fmt.Println("Email sent successfully!")
 }

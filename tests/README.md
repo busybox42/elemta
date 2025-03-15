@@ -1,94 +1,77 @@
-# Elemta MTA Tests
+# Elemta Tests
 
-This directory contains tests for the Elemta MTA.
+This directory contains all tests for the Elemta Mail Transfer Agent (MTA).
 
 ## Directory Structure
 
-- `scripts/`: Contains test scripts for various features
-  - `test-email.go`: Basic email sending test
-  - `spam-test.go`: Test for spam detection using GTUBE pattern
-  - `virus-test.go`: Test for virus detection using EICAR pattern
-  - `toggle_test_mode.sh`: Script to enable/disable test mode for Rspamd
+- `unit/`: Go unit tests for various components
+  - `smtp/`: Tests for the SMTP server implementation
+  - `context/`: Tests for the context package
+  
+- `k8s/`: Kubernetes deployment tests
+  - `test-elemta.sh`: Main test script for the Kubernetes deployment
+  - `simple-test.sh`: Basic connectivity tests
+  - `test-clamav.sh`: ClamAV-specific tests
+  - `test-rspamd.sh`: Rspamd-specific tests
+  - `test-k8s-email.sh`: End-to-end email flow tests
+  - `test-deployment.yaml`: Test deployment configuration
+  - `test-pod.yaml`: Test pod configuration
+  - `k8s-test-summary.md`: Summary of Kubernetes test results
 
-- `data/`: Contains test data files
-  - `eicar.txt`: EICAR test virus pattern
-  - `gtube.txt`: GTUBE spam test pattern
+- `python/`: Python test scripts
+  - `test_smtp.py`: Basic SMTP test
+  - `test_smtp_auth.py`: SMTP authentication test
+  - `test_security.py`: Security features test
 
-- `config/`: Contains test-specific configuration files
+- `docker/`: Docker test files
+  - `docker-compose.test.yml`: Docker Compose test configuration
+  - `Dockerfile.test`: Test Dockerfile
 
-- `docker/`: Contains Docker-specific tests
+- `config/`: Test configuration files
+  - `test-elemta.conf`: Test configuration for Elemta
 
-- `python/`: Contains Python-based tests
-
-- `k8s/`: Contains Kubernetes-specific tests
-
-- `unit/`: Contains unit tests
-
-## Test Mode
-
-Elemta supports a test mode that disables certain features for testing purposes. This is particularly useful for testing in environments where external services like DNS may not be available or reliable.
-
-### Enabling Test Mode
-
-To enable test mode:
-
-```bash
-./scripts/toggle_test_mode.sh enable
-```
-
-This will:
-1. Back up your current Rspamd configuration
-2. Apply test-specific settings that:
-   - Disable DNS checks
-   - Disable RBL checks
-   - Set higher spam thresholds
-
-### Disabling Test Mode
-
-To disable test mode and restore your previous configuration:
-
-```bash
-./scripts/toggle_test_mode.sh disable
-```
-
-### Test Mode Configuration
-
-The test mode configuration is defined in `config/rspamd/test-mode.conf`. You can modify this file to adjust the test mode settings.
+- `data/`: Test data files
+  - `eicar.txt`: EICAR test file for antivirus testing
 
 ## Running Tests
 
-### Basic Email Test
+### Unit Tests
+
+To run all Go unit tests:
 
 ```bash
-go run scripts/test-email.go
-```
-
-### Spam Detection Test
-
-```bash
-go run scripts/spam-test.go
-```
-
-### Virus Detection Test
-
-```bash
-go run scripts/virus-test.go
-```
-
-### Docker Tests
-
-```bash
-make docker-test
-```
-
-### Python Tests
-
-```bash
-make python-test
+make unit-test
 ```
 
 ### Kubernetes Tests
 
+To run the main Kubernetes test:
+
 ```bash
 make k8s-test
-``` 
+```
+
+### Python Tests
+
+To run a Python test:
+
+```bash
+python3 tests/python/test_smtp.py
+```
+
+### Docker Tests
+
+To run Docker tests:
+
+```bash
+docker-compose -f tests/docker/docker-compose.test.yml up -d
+```
+
+## Adding New Tests
+
+- For Go unit tests, add them to the appropriate subdirectory in `tests/unit/`
+- For Kubernetes tests, add shell scripts to `tests/k8s/`
+- For Python tests, add scripts to `tests/python/`
+- For Docker tests, add files to `tests/docker/`
+- For test configurations, add files to `tests/config/`
+- For test data, add files to `tests/data/` 

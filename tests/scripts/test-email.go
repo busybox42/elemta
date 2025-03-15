@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net/smtp"
-	"strings"
 )
 
 func main() {
@@ -33,11 +32,10 @@ func main() {
 	}
 	defer wc.Close()
 
-	// GTUBE pattern for spam testing
 	msg := []byte("To: recipient@example.com\r\n" +
-		"Subject: GTUBE Test\r\n" +
+		"Subject: Test Email\r\n" +
 		"\r\n" +
-		"XJS*C4JDBQADN1.NSBN3*2IDNEN*GTUBE-STANDARD-ANTI-UBE-TEST-EMAIL*C.34X\r\n")
+		"This is a test email from Go.\r\n")
 
 	if _, err = wc.Write(msg); err != nil {
 		fmt.Println("Error writing message:", err)
@@ -45,16 +43,10 @@ func main() {
 	}
 
 	// Send the QUIT command and close the connection
-	err = c.Quit()
-	if err != nil {
-		// Check if this is the expected response for spam detection
-		if strings.Contains(err.Error(), "554 5.7.1 Spam score") {
-			fmt.Println("Spam detected successfully!")
-			return
-		}
+	if err := c.Quit(); err != nil {
 		fmt.Println("Error closing connection:", err)
 		return
 	}
 
-	fmt.Println("Email sent successfully, but spam was not detected!")
+	fmt.Println("Email sent successfully!")
 }

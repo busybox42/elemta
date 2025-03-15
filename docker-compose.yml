@@ -59,11 +59,15 @@ services:
       - elemta_network
     volumes:
       - rspamd_data:/var/lib/rspamd
-      - ./config/rspamd/local.d:/etc/rspamd/local.d
+      - ./rspamd/local.d:/etc/rspamd/local.d
     ports:
       - "11334:11334"  # Web interface
     healthcheck:
-      disable: true  # Temporarily disable health check since Rspamd is working correctly
+      test: ["CMD-SHELL", "curl -f http://localhost:11334/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
 
 networks:
   elemta_network:

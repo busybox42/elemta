@@ -1,4 +1,4 @@
-.PHONY: all build clean test unit-test integration-test python-test docker-test docker docker-build docker-run docker-deploy docker-undeploy k8s-deploy k8s-undeploy k8s-down k8s-up k8s-restart k8s-test test-mode-enable test-mode-disable run-all-tests
+.PHONY: all build clean test unit-test integration-test python-test docker-test docker docker-build docker-run docker-deploy docker-undeploy k8s-deploy k8s-undeploy k8s-down k8s-up k8s-restart k8s-test
 
 BINARY_NAME=elemta
 QUEUE_BINARY_NAME=elemta-queue
@@ -44,11 +44,6 @@ docker-test:
 	@echo "Running Docker tests..."
 	docker-compose -f tests/docker/docker-compose.test.yml up -d
 	@echo "Docker tests started! Use 'docker-compose -f tests/docker/docker-compose.test.yml down' to stop."
-
-run-all-tests:
-	@echo "Running all tests..."
-	./tests/scripts/run-all-tests.sh
-	@echo "All tests complete!"
 
 coverage:
 	@echo "Running tests with coverage..."
@@ -136,16 +131,6 @@ k8s-test:
 	@echo "Running Kubernetes tests..."
 	./tests/k8s/test-elemta.sh
 	@echo "Kubernetes tests complete!"
-
-test-mode-enable:
-	@echo "Enabling test mode..."
-	./tests/scripts/toggle_test_mode.sh enable
-	@echo "Test mode enabled!"
-
-test-mode-disable:
-	@echo "Disabling test mode..."
-	./tests/scripts/toggle_test_mode.sh disable
-	@echo "Test mode disabled!"
 
 # Alias for backward compatibility
 docker: docker-build 
