@@ -53,7 +53,7 @@ func createTestMessage(t *testing.T, queueDir string, id string, queueType smtp.
 		Priority:    smtp.PriorityNormal,
 		RetryCount:  0,
 		NextRetry:   time.Now(),
-		Attempts:    []time.Time{},
+		Attempts:    []smtp.DeliveryAttempt{},
 		Annotations: make(map[string]string),
 	}
 

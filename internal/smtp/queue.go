@@ -1285,6 +1285,20 @@ func (qm *QueueManager) loadQueuedMessage(path string) (*QueuedMessage, error) {
 		return nil, fmt.Errorf("failed to parse metadata: %w", err)
 	}
 
+	// Initialize maps if they're nil
+	if msg.Annotations == nil {
+		msg.Annotations = make(map[string]string)
+	}
+	if msg.DeliveryStatus == nil {
+		msg.DeliveryStatus = make(map[string]RecipientStatus)
+	}
+	if msg.ORCPT == nil {
+		msg.ORCPT = make(map[string]string)
+	}
+	if msg.EnvelopeOptions == nil {
+		msg.EnvelopeOptions = make(map[string]string)
+	}
+
 	return &msg, nil
 }
 

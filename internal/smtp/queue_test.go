@@ -43,10 +43,16 @@ func TestQueueManager(t *testing.T) {
 			t.Fatalf("Failed to enqueue message: %v", err)
 		}
 
-		// Check if the message was saved to disk
-		msgDir := filepath.Join(tempDir, "active", "test-message-1")
-		if _, err := os.Stat(msgDir); os.IsNotExist(err) {
-			t.Errorf("Message directory was not created: %s", msgDir)
+		// Check if the message metadata was saved to disk
+		metadataPath := filepath.Join(tempDir, "active", "test-message-1.json")
+		if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
+			t.Errorf("Message metadata file was not created: %s", metadataPath)
+		}
+
+		// Check if the message data was saved to disk
+		dataPath := filepath.Join(tempDir, "data", "test-message-1")
+		if _, err := os.Stat(dataPath); os.IsNotExist(err) {
+			t.Errorf("Message data file was not created: %s", dataPath)
 		}
 
 		// Get active messages
@@ -424,7 +430,6 @@ func TestQueueManagerMultipleMessages(t *testing.T) {
 	// Create a queue manager
 	qm := NewQueueManager(config)
 	qm.Start()
-	defer qm.Stop()
 
 	// Create test messages in different queues
 	msg1 := createTestMessageInQueue(t, qm, QueueTypeActive, StatusQueued)
@@ -515,6 +520,9 @@ func TestQueueManagerMultipleMessages(t *testing.T) {
 			t.Errorf("Expected fourth message to have priority Low, got %v", allMessages[3].Priority)
 		}
 	})
+
+	// Stop the queue manager after all tests
+	qm.Stop()
 }
 
 // Helper function to sort messages by priority

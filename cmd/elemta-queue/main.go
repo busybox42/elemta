@@ -286,7 +286,7 @@ func viewMessage(config *smtp.Config, id string) {
 	if len(msg.Attempts) > 0 {
 		fmt.Println("Delivery Attempts:")
 		for i, attempt := range msg.Attempts {
-			fmt.Printf("  %d. %s\n", i+1, attempt.Format("2006-01-02 15:04:05"))
+			fmt.Printf("  %d. %s\n", i+1, attempt.Timestamp.Format("2006-01-02 15:04:05"))
 		}
 	}
 
