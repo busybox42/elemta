@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  elemta-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile.cli
+    container_name: elemta-cli
+    restart: unless-stopped
+    ports:
+      - "2526:25"
+      - "5871:587"
+      - "8083:8080"
+    volumes:
+      - elemta_cli_queue:/app/queue
+      - elemta_cli_logs:/app/logs
+      - elemta_cli_config:/app/config
+      - elemta_cli_plugins:/app/plugins
+    environment:
+      - TZ=UTC
+      - DEBUG=true
+    tty: true
+    stdin_open: true
+    init: true
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "25"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - elemta_elemta_network
+
+networks:
+  elemta_elemta_network:
+    external: true
+
+volumes:
+  elemta_cli_queue:
+  elemta_cli_logs:
+  elemta_cli_config:
+  elemta_cli_plugins: 
