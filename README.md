@@ -258,6 +258,8 @@ func init() {
 
 For an example of a more complex plugin, see the [Greylisting Plugin](docs/plugins/greylisting.md).
 
+For an example of a custom policy plugin, see the [Policy Plugin](docs/plugins/policy.md).
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -271,8 +273,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- The Go team for creating an excellent language for building high-performance servers
-- The open-source community for inspiration and tools
