@@ -133,14 +133,17 @@ Elemta provides comprehensive monitoring capabilities using Prometheus and Grafa
 #### Setting Up Monitoring
 
 ```bash
-# Set up the monitoring environment
+# Set up the basic monitoring environment
 ./scripts/setup-monitoring.sh
+
+# Set up security monitoring with ClamAV and Rspamd
+./scripts/setup-security-monitoring.sh
 
 # Start the monitoring stack
 docker-compose -f docker-compose-monitoring.yml up -d
 
-# Test the monitoring setup
-./scripts/test-monitoring.sh
+# Verify the monitoring setup
+./scripts/verify-monitoring-stack.sh
 
 # Generate test load to see metrics in action
 ./scripts/generate-test-load.sh
@@ -148,8 +151,10 @@ docker-compose -f docker-compose-monitoring.yml up -d
 
 #### Accessing Dashboards
 
-- **Grafana**: http://localhost:3000 (default credentials: admin/admin)
+- **Grafana**: http://localhost:3000 (default credentials: admin/elemta123)
 - **Prometheus**: http://localhost:9090
+- **AlertManager**: http://localhost:9093
+- **Rspamd Web Interface**: http://localhost:11334
 
 #### Available Metrics
 
@@ -159,9 +164,12 @@ Elemta exposes various metrics for monitoring:
 - Queue metrics (size, processing time)
 - Delivery metrics (attempts, successes, failures)
 - Security metrics (authentication, TLS)
+- ClamAV metrics (virus scans, detections)
+- Rspamd metrics (spam filtering, scores)
 - Plugin-specific metrics (e.g., greylisting statistics)
 
 For more information about monitoring, see [docs/monitoring/README.md](docs/monitoring/README.md).
+For details on security monitoring, see [docs/monitoring/security-monitoring.md](docs/monitoring/security-monitoring.md).
 
 ## Development
 

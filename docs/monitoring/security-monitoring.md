@@ -21,6 +21,21 @@ The security monitoring is included in the main monitoring stack. To set up the 
 
 # Start the monitoring stack
 docker-compose -f docker-compose-monitoring.yml up -d
+
+# Verify the setup
+./scripts/verify-monitoring-stack.sh
+```
+
+You can test the security features by running:
+
+```bash
+# Copy the EICAR test file to the ClamAV container and scan it
+docker cp tests/data/eicar.txt elemta_clamav_1:/tmp/
+docker exec elemta_clamav_1 sh -c "clamdscan /tmp/eicar.txt"
+
+# Copy the GTUBE test file to the Rspamd container and scan it
+docker cp tests/data/gtube.txt elemta_rspamd_1:/tmp/
+docker exec elemta_rspamd_1 sh -c "cat /tmp/gtube.txt | rspamc"
 ```
 
 ## Components

@@ -33,6 +33,12 @@ Then, start the monitoring stack with:
 docker-compose -f docker-compose-monitoring.yml up -d
 ```
 
+To verify that everything is working correctly:
+
+```bash
+./scripts/verify-monitoring-stack.sh
+```
+
 ## Accessing the Dashboards
 
 - **Grafana**: http://localhost:3000 (default credentials: admin/elemta123)

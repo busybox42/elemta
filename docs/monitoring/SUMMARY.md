@@ -116,7 +116,7 @@ docker-compose -f docker-compose-monitoring.yml up -d
 ./scripts/verify-monitoring-stack.sh
 
 # Generate test metrics
-./scripts/generate-test-metrics.sh
+./scripts/generate-test-load.sh
 ```
 
 ## Dashboards
