@@ -59,7 +59,7 @@ fi
 echo "Checking if Prometheus is accessible..."
 PROMETHEUS_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9090)
 
-if [[ "$PROMETHEUS_TEST" == "200" ]]; then
+if [[ "$PROMETHEUS_TEST" == "200" || "$PROMETHEUS_TEST" == "302" ]]; then
   echo -e "${GREEN}Prometheus is accessible at http://localhost:9090${NC}"
 else
   echo -e "${RED}Prometheus is not accessible at http://localhost:9090${NC}"
@@ -122,4 +122,62 @@ echo -e "\n${YELLOW}Next steps:${NC}"
 echo "1. Log in to Grafana at http://localhost:3000 with admin/elemta123"
 echo "2. Check the Elemta Overview dashboard"
 echo "3. Run ./scripts/generate-test-load.sh to generate test metrics"
-echo "4. Run ./tests/test-elemta.sh to verify all components" 
+echo "4. Run ./tests/test-elemta.sh to verify all components"
+
+# Check if metrics server is running
+echo -e "\n${YELLOW}Checking Metrics Server:${NC}"
+if curl -s http://localhost:8080/metrics > /dev/null; then
+  echo -e "${GREEN}✓ Metrics server is running and accessible${NC}"
+  echo "  URL: http://localhost:8080/metrics"
+else
+  echo -e "${RED}✗ Metrics server is not accessible${NC}"
+  echo "  Could not connect to http://localhost:8080/metrics"
+fi
+
+# Check if Prometheus is running
+echo -e "\n${YELLOW}Checking Prometheus:${NC}"
+if curl -s http://localhost:9090/-/healthy > /dev/null; then
+  echo -e "${GREEN}✓ Prometheus is running and healthy${NC}"
+  echo "  URL: http://localhost:9090"
+else
+  echo -e "${RED}✗ Prometheus is not accessible${NC}"
+  echo "  Could not connect to http://localhost:9090"
+fi
+
+# Check if Grafana is running
+echo -e "\n${YELLOW}Checking Grafana:${NC}"
+if curl -s http://localhost:3000/api/health > /dev/null; then
+  echo -e "${GREEN}✓ Grafana is running and healthy${NC}"
+  echo "  URL: http://localhost:3000 (default credentials: admin/elemta123)"
+else
+  echo -e "${RED}✗ Grafana is not accessible${NC}"
+  echo "  Could not connect to http://localhost:3000"
+fi
+
+# Check if AlertManager is running
+echo -e "\n${YELLOW}Checking AlertManager:${NC}"
+if curl -s http://localhost:9093/-/healthy > /dev/null; then
+  echo -e "${GREEN}✓ AlertManager is running and healthy${NC}"
+  echo "  URL: http://localhost:9093"
+else
+  echo -e "${RED}✗ AlertManager is not accessible${NC}"
+  echo "  Could not connect to http://localhost:9093"
+fi
+
+# Check if Prometheus can scrape the metrics
+echo -e "\n${YELLOW}Checking Prometheus targets:${NC}"
+TARGETS=$(curl -s http://localhost:9090/api/v1/targets | grep -o '"health":"up"' | wc -l)
+if [ "$TARGETS" -gt 0 ]; then
+  echo -e "${GREEN}✓ Prometheus has $TARGETS healthy targets${NC}"
+else
+  echo -e "${RED}✗ Prometheus has no healthy targets${NC}"
+  echo "  Check Prometheus configuration and target connectivity"
+fi
+
+echo -e "\n${YELLOW}Monitoring Stack Verification Complete${NC}"
+echo "======================================"
+echo -e "Access the monitoring stack at:"
+echo -e "  Grafana: ${GREEN}http://localhost:3000${NC} (default credentials: admin/elemta123)"
+echo -e "  Prometheus: ${GREEN}http://localhost:9090${NC}"
+echo -e "  AlertManager: ${GREEN}http://localhost:9093${NC}"
+echo -e "  Metrics: ${GREEN}http://localhost:8080/metrics${NC}" 

@@ -1,46 +1,21 @@
 version: '3.8'
 
 services:
-  elemta:
+  elemta-metrics:
     image: python:3.9-slim
+    container_name: elemta_metrics
     ports:
-      - "2525:25"    # SMTP
       - "8080:8080"  # Metrics endpoint
     volumes:
       - ./scripts/metrics_server.py:/app/metrics_server.py
     command: python3 /app/metrics_server.py
     networks:
-      - elemta-net
-    restart: unless-stopped
-
-  clamav:
-    image: clamav/clamav:latest
-    ports:
-      - "3310:3310"  # ClamAV daemon port
-    volumes:
-      - clamav_data:/var/lib/clamav
-    networks:
-      - elemta-net
-    restart: unless-stopped
-    environment:
-      - CLAMAV_NO_FRESHCLAM=false
-      - FRESHCLAM_CHECKS_PER_DAY=1
-
-  rspamd:
-    image: rspamd/rspamd:latest
-    ports:
-      - "11332:11332"  # Rspamd proxy worker
-      - "11333:11333"  # Rspamd controller
-      - "11334:11334"  # Rspamd normal worker
-    volumes:
-      - ./config/rspamd:/etc/rspamd/override.d
-      - rspamd_data:/var/lib/rspamd
-    networks:
-      - elemta-net
+      - monitoring-net
     restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:latest
+    container_name: elemta_prometheus
     ports:
       - "9090:9090"
     volumes:
@@ -53,7 +28,7 @@ services:
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--web.enable-lifecycle'
     networks:
-      - elemta-net
+      - monitoring-net
     restart: unless-stopped
 
   grafana:
@@ -70,12 +45,14 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=elemta123
       - GF_USERS_ALLOW_SIGN_UP=false
     networks:
-      - elemta-net
+      - monitoring-net
     depends_on:
       - prometheus
+    restart: unless-stopped
 
   alertmanager:
     image: prom/alertmanager:latest
+    container_name: elemta_alertmanager
     ports:
       - "9093:9093"
     volumes:
@@ -85,18 +62,16 @@ services:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
     networks:
-      - elemta-net
+      - monitoring-net
     restart: unless-stopped
     depends_on:
       - prometheus
 
 networks:
-  elemta-net:
+  monitoring-net:
     driver: bridge
 
 volumes:
   prometheus_data:
   grafana_data:
-  alertmanager_data:
-  clamav_data:
-  rspamd_data: 
+  alertmanager_data: 

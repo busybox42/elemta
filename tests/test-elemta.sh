@@ -36,7 +36,7 @@ check_monitoring() {
   
   # Check if monitoring containers are running
   GRAFANA_RUNNING=$(docker ps -q -f name=elemta_grafana)
-  PROMETHEUS_RUNNING=$(docker ps -q -f name=prometheus)
+  PROMETHEUS_RUNNING=$(docker ps -q -f name=elemta_prometheus)
   
   if [ -z "$GRAFANA_RUNNING" ] || [ -z "$PROMETHEUS_RUNNING" ]; then
     echo -e "${YELLOW}Monitoring stack not running. Skipping monitoring tests.${NC}"
@@ -140,7 +140,7 @@ run_tests() {
     echo "Testing Prometheus on localhost:9090..."
     PROMETHEUS_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9090)
     
-    if [[ "$PROMETHEUS_TEST" == "200" ]]; then
+    if [[ "$PROMETHEUS_TEST" == "200" || "$PROMETHEUS_TEST" == "302" ]]; then
       echo -e "${GREEN}✓ Prometheus web interface accessible${NC}"
       echo "Prometheus is running at http://localhost:9090"
     else
@@ -162,7 +162,7 @@ run_tests() {
     echo "Checking Grafana datasource connection to Prometheus..."
     # This requires the Grafana API, which needs authentication
     # For simplicity, we'll just check if Prometheus is accessible from Grafana container
-    DATASOURCE_TEST=$(docker exec elemta_grafana curl -s http://prometheus:9090/api/v1/status/buildinfo)
+    DATASOURCE_TEST=$(docker exec elemta_grafana curl -s http://elemta_prometheus:9090/api/v1/status/buildinfo)
     
     if [[ -n "$DATASOURCE_TEST" && "$DATASOURCE_TEST" == *"version"* ]]; then
       echo -e "${GREEN}✓ Grafana can connect to Prometheus${NC}"

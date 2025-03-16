@@ -1,0 +1,29 @@
+groups:
+- name: elemta_alerts
+  rules:
+  - alert: HighActiveConnections
+    expr: elemta_connections_active > 100
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High number of active connections"
+      description: "There are {{ $value }} active connections, which is above the threshold of 100."
+
+  - alert: QueueSizeGrowing
+    expr: elemta_queue_size > 1000
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Queue size is growing"
+      description: "The queue size is {{ $value }}, which is above the threshold of 1000."
+
+  - alert: HighDeliveryFailureRate
+    expr: (elemta_delivery_failures_total / elemta_delivery_attempts_total) * 100 > 20
+    for: 15m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High delivery failure rate"
+      description: "The delivery failure rate is {{ $value }}%, which is above the threshold of 20%."
