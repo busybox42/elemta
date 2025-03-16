@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  elemta:
+    image: python:3.9-slim
+    ports:
+      - "2525:25"    # SMTP
+      - "8080:8080"  # Metrics endpoint
+    volumes:
+      - ./scripts/metrics_server.py:/app/metrics_server.py
+    command: python3 /app/metrics_server.py
+    networks:
+      - elemta-net
+    restart: unless-stopped
+
+  clamav:
+    image: clamav/clamav:latest
+    ports:
+      - "3310:3310"  # ClamAV daemon port
+    volumes:
+      - clamav_data:/var/lib/clamav
+    networks:
+      - elemta-net
+    restart: unless-stopped
+    environment:
+      - CLAMAV_NO_FRESHCLAM=false
+      - FRESHCLAM_CHECKS_PER_DAY=1
+
+  rspamd:
+    image: rspamd/rspamd:latest
+    ports:
+      - "11332:11332"  # Rspamd proxy worker
+      - "11333:11333"  # Rspamd controller
+      - "11334:11334"  # Rspamd normal worker
+    volumes:
+      - ./config/rspamd:/etc/rspamd/override.d
+      - rspamd_data:/var/lib/rspamd
+    networks:
+      - elemta-net
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - elemta-net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: elemta_grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=elemta123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - elemta-net
+    depends_on:
+      - prometheus
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager:/etc/alertmanager
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - elemta-net
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+networks:
+  elemta-net:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+  clamav_data:
+  rspamd_data: 

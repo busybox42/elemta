@@ -481,22 +481,37 @@ func (s *Session) handleAuthLogin() error {
 
 // authenticate performs the actual authentication
 func (s *Session) authenticate(username, password string) error {
+	// Get metrics instance
+	metrics := GetMetrics()
+
+	// Track authentication attempt
+	metrics.AuthAttempts.Inc()
+
+	// Perform authentication
+	if s.authenticator == nil {
+		metrics.AuthFailures.Inc()
+		return errors.New("authenticator not configured")
+	}
+
 	authenticated, err := s.authenticator.Authenticate(context.Background(), username, password)
 	if err != nil {
-		s.logger.Error("authentication error", "username", username, "error", err)
-		s.write("454 4.7.0 Temporary authentication failure\r\n")
+		s.logger.Error("Authentication failed", "username", username, "error", err)
+		metrics.AuthFailures.Inc()
 		return err
 	}
 
 	if !authenticated {
-		s.logger.Warn("authentication failed", "username", username)
-		s.write("535 5.7.8 Authentication credentials invalid\r\n")
+		s.logger.Warn("Authentication failed", "username", username)
+		metrics.AuthFailures.Inc()
 		return fmt.Errorf("authentication failed for user %s", username)
 	}
 
 	s.authenticated = true
 	s.username = username
-	s.logger.Info("authentication successful", "username", username)
-	s.write("235 2.7.0 Authentication successful\r\n")
+	s.logger.Info("Authentication successful", "username", username)
+
+	// Track successful authentication
+	metrics.AuthSuccesses.Inc()
+
 	return nil
 }

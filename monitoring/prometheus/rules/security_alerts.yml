@@ -1,0 +1,38 @@
+groups:
+- name: security_alerts
+  rules:
+  - alert: HighVirusDetectionRate
+    expr: rate(elemta_clamav_virus_detected_total[5m]) > 0.1
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: High virus detection rate
+      description: More than 10% of scanned emails contain viruses.
+
+  - alert: RspamdHighSpamRate
+    expr: rate(elemta_rspamd_spam_total[5m]) / rate(elemta_rspamd_scans_total[5m]) > 0.3
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: High spam detection rate
+      description: More than 30% of scanned emails are classified as spam.
+
+  - alert: ClamAVDatabaseOutdated
+    expr: time() - elemta_clamav_database_updated_timestamp > 86400
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: ClamAV database outdated
+      description: The ClamAV virus database has not been updated in more than 24 hours.
+
+  - alert: SecurityScanLatencyHigh
+    expr: elemta_security_scan_latency_seconds > 5
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Security scan latency high
+      description: Security scanning is taking more than 5 seconds on average.

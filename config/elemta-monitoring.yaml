@@ -1,0 +1,48 @@
+server:
+  hostname: elemta.example.com
+  listen: 0.0.0.0:25
+  max_connections: 100
+  timeout: 30s
+  tls:
+    enabled: false
+
+metrics:
+  enabled: true
+  listen: 0.0.0.0:8080
+  path: /metrics
+
+logging:
+  level: info
+  file: /app/logs/elemta.log
+
+queue:
+  path: /app/queue
+  retry_interval: 5m
+  max_attempts: 3
+
+plugins:
+  - name: example_greylisting
+    enabled: true
+    config:
+      delay: 5m
+  - name: clamav
+    enabled: true
+    config:
+      host: clamav
+      port: 3310
+      timeout: 30s
+      action: reject
+      log_clean: false
+  - name: rspamd
+    enabled: true
+    config:
+      host: rspamd
+      port: 11334
+      timeout: 15s
+      reject_score: 15.0
+      add_headers: true
+
+delivery:
+  method: smtp
+  retry_intervals: [5m, 15m, 30m, 1h, 2h]
+  max_attempts: 5 

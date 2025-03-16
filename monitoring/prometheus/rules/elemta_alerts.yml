@@ -1,0 +1,29 @@
+groups:
+  - name: elemta_alerts
+    rules:
+      - alert: HighActiveConnections
+        expr: elemta_connections_active > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High number of active connections
+          description: There are more than 100 active connections for more than 5 minutes.
+
+      - alert: QueueSizeGrowing
+        expr: sum(elemta_queue_size) > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Queue size is growing
+          description: The total queue size is greater than 1000 for more than 10 minutes.
+
+      - alert: HighDeliveryFailureRate
+        expr: elemta_delivery_failures_total / elemta_delivery_attempts_total > 0.2
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: High delivery failure rate
+          description: The delivery failure rate is greater than 20% for more than 15 minutes.

@@ -54,6 +54,15 @@ type Config struct {
 
 	// Plugin configuration
 	Plugins *PluginConfig `toml:"plugins" json:"plugins"`
+
+	// Metrics configuration
+	Metrics *MetricsConfig `toml:"metrics" json:"metrics"`
+}
+
+// MetricsConfig represents the configuration for metrics collection
+type MetricsConfig struct {
+	Enabled    bool   `toml:"enabled" json:"enabled"`         // Whether metrics collection is enabled
+	ListenAddr string `toml:"listen_addr" json:"listen_addr"` // Address to listen on for metrics HTTP server
 }
 
 // AuthConfig represents authentication configuration
@@ -429,6 +438,10 @@ func DefaultConfig() *Config {
 			Enabled:    false,
 			PluginPath: "./plugins",
 			Plugins:    []string{},
+		},
+		Metrics: &MetricsConfig{
+			Enabled:    false,
+			ListenAddr: ":8080",
 		},
 	}
 }

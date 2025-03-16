@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/busybox42/elemta/internal/plugin"
 )
@@ -18,6 +20,8 @@ type Server struct {
 	running       bool
 	pluginManager *plugin.Manager
 	authenticator Authenticator
+	metrics       *Metrics
+	metricsServer *http.Server
 }
 
 // NewServer creates a new SMTP server
@@ -58,11 +62,15 @@ func NewServer(config *Config) (*Server, error) {
 		}
 	}
 
+	// Initialize metrics
+	metrics := GetMetrics()
+
 	server := &Server{
 		config:        config,
 		running:       false,
 		pluginManager: pluginManager,
 		authenticator: authenticator,
+		metrics:       metrics,
 	}
 
 	// Initialize scanner manager
@@ -106,10 +114,30 @@ func (s *Server) Start() error {
 	s.running = true
 	log.Printf("Elemta MTA starting on %s", s.config.ListenAddr)
 
+	// Start metrics server if enabled
+	if s.config.Metrics != nil && s.config.Metrics.Enabled {
+		s.metricsServer = StartMetricsServer(s.config.Metrics.ListenAddr)
+		log.Printf("Metrics server started on %s", s.config.Metrics.ListenAddr)
+
+		// Start periodic queue size updates
+		go s.updateQueueMetrics()
+	}
+
 	// Handle connections in a goroutine
 	go s.acceptConnections()
 
 	return nil
+}
+
+// updateQueueMetrics periodically updates queue size metrics
+func (s *Server) updateQueueMetrics() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for s.running {
+		s.metrics.UpdateQueueSizes(s.config)
+		<-ticker.C
+	}
 }
 
 // acceptConnections accepts and handles incoming connections
@@ -130,9 +158,15 @@ func (s *Server) acceptConnections() {
 func (s *Server) handleConnection(conn net.Conn) {
 	defer conn.Close()
 	session := NewSession(conn, s.config, s.authenticator)
-	if err := session.Handle(); err != nil {
-		log.Printf("Session error: %v", err)
-	}
+
+	// Track connection metrics
+	s.metrics.TrackConnectionDuration(func() error {
+		err := session.Handle()
+		if err != nil {
+			log.Printf("Session error: %v", err)
+		}
+		return err
+	})
 }
 
 // Close closes the server and all associated resources
@@ -142,6 +176,15 @@ func (s *Server) Close() error {
 	if s.listener != nil {
 		if err := s.listener.Close(); err != nil {
 			log.Printf("Error closing listener: %v", err)
+		}
+	}
+
+	// Close metrics server if it was started
+	if s.metricsServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.metricsServer.Shutdown(ctx); err != nil {
+			log.Printf("Error shutting down metrics server: %v", err)
 		}
 	}
 

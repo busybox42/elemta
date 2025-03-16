@@ -8,7 +8,7 @@ Elemta is a high-performance, carrier-grade Mail Transfer Agent (MTA) written in
 - **Pluggable Architecture**: Easily extend functionality with plugins
 - **Security-First Design**: Built-in SPF, DKIM, and DMARC validation
 - **Modern Queue Management**: Sophisticated queue system with priority, retry, and status tracking
-- **Comprehensive Monitoring**: Detailed metrics and logging
+- **Comprehensive Monitoring**: Detailed metrics and logging with Prometheus and Grafana integration
 - **Containerized Deployment**: Ready for Docker and Kubernetes
 - **Horizontal Scalability**: Designed to scale out across multiple nodes
 - **API-Driven**: RESTful API for management and monitoring
@@ -40,6 +40,7 @@ Elemta supports various plugin types:
 - **Security Plugins**: Implement security features (SPF, DKIM, DMARC)
 - **Routing Plugins**: Control message routing
 - **Storage Plugins**: Customize message storage
+- **Greylisting Plugins**: Implement greylisting for spam reduction
 
 ## Getting Started
 
@@ -125,6 +126,43 @@ docker build -t elemta .
 docker run -p 25:25 -p 587:587 -v /path/to/config:/etc/elemta elemta
 ```
 
+### Monitoring
+
+Elemta provides comprehensive monitoring capabilities using Prometheus and Grafana.
+
+#### Setting Up Monitoring
+
+```bash
+# Set up the monitoring environment
+./scripts/setup-monitoring.sh
+
+# Start the monitoring stack
+docker-compose -f docker-compose-monitoring.yml up -d
+
+# Test the monitoring setup
+./scripts/test-monitoring.sh
+
+# Generate test load to see metrics in action
+./scripts/generate-test-load.sh
+```
+
+#### Accessing Dashboards
+
+- **Grafana**: http://localhost:3000 (default credentials: admin/admin)
+- **Prometheus**: http://localhost:9090
+
+#### Available Metrics
+
+Elemta exposes various metrics for monitoring:
+
+- SMTP server metrics (connections, messages)
+- Queue metrics (size, processing time)
+- Delivery metrics (attempts, successes, failures)
+- Security metrics (authentication, TLS)
+- Plugin-specific metrics (e.g., greylisting statistics)
+
+For more information about monitoring, see [docs/monitoring/README.md](docs/monitoring/README.md).
+
 ## Development
 
 ### Building from Source
@@ -209,6 +247,8 @@ func init() {
     plugin.Register("my-plugin", &MyPlugin{})
 }
 ```
+
+For an example of a more complex plugin, see the [Greylisting Plugin](docs/plugins/greylisting.md).
 
 ## Contributing
 
