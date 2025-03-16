@@ -43,6 +43,15 @@ check_service "prometheus" || exit 1
 check_service "grafana" || exit 1
 check_service "alertmanager" || exit 1
 
+# Check security monitoring services if they exist
+if docker-compose -f docker-compose-monitoring.yml ps -q clamav &>/dev/null; then
+  check_service "clamav" || echo -e "${YELLOW}Warning: ClamAV service is not running. Security monitoring may be incomplete.${NC}"
+fi
+
+if docker-compose -f docker-compose-monitoring.yml ps -q rspamd &>/dev/null; then
+  check_service "rspamd" || echo -e "${YELLOW}Warning: Rspamd service is not running. Security monitoring may be incomplete.${NC}"
+fi
+
 # Check Elemta metrics endpoint
 echo -e "\n${YELLOW}Checking Elemta metrics endpoint...${NC}"
 ELEMTA_CONTAINER=$(docker-compose -f docker-compose-monitoring.yml ps -q elemta)
@@ -91,7 +100,7 @@ fi
 # Check Grafana datasources
 echo -e "\n${YELLOW}Checking Grafana datasources...${NC}"
 GRAFANA_CONTAINER=$(docker-compose -f docker-compose-monitoring.yml ps -q grafana)
-DATASOURCES=$(docker exec $GRAFANA_CONTAINER curl -s -u admin:admin http://localhost:3000/api/datasources)
+DATASOURCES=$(docker exec $GRAFANA_CONTAINER curl -s -u admin:elemta123 http://localhost:3000/api/datasources)
 if [[ $DATASOURCES != *"Prometheus"* ]]; then
   echo -e "${RED}Error: Prometheus datasource not found in Grafana.${NC}"
   exit 1
@@ -101,7 +110,7 @@ fi
 
 # Check Grafana dashboards
 echo -e "\n${YELLOW}Checking Grafana dashboards...${NC}"
-DASHBOARDS=$(docker exec $GRAFANA_CONTAINER curl -s -u admin:admin http://localhost:3000/api/search?query=Elemta)
+DASHBOARDS=$(docker exec $GRAFANA_CONTAINER curl -s -u admin:elemta123 http://localhost:3000/api/search?query=Elemta)
 if [[ $DASHBOARDS != *"Elemta"* ]]; then
   echo -e "${YELLOW}Warning: Elemta dashboards not found in Grafana.${NC}"
   echo -e "${YELLOW}This might be normal if you haven't imported the dashboards yet.${NC}"
@@ -111,7 +120,7 @@ fi
 
 # Check Grafana alerts
 echo -e "\n${YELLOW}Checking Grafana alerts...${NC}"
-ALERTS=$(docker exec $GRAFANA_CONTAINER curl -s -u admin:admin http://localhost:3000/api/alerts)
+ALERTS=$(docker exec $GRAFANA_CONTAINER curl -s -u admin:elemta123 http://localhost:3000/api/alerts)
 if [[ $ALERTS == *"[]"* ]]; then
   echo -e "${YELLOW}Warning: No alerts found in Grafana.${NC}"
   echo -e "${YELLOW}This might be normal if you haven't created any alerts yet.${NC}"
@@ -138,10 +147,38 @@ else
   echo -e "${GREEN}Metrics have changed. Test load generation is working.${NC}"
 fi
 
+# Check security monitoring metrics if services are running
+if docker-compose -f docker-compose-monitoring.yml ps -q clamav &>/dev/null; then
+  echo -e "\n${YELLOW}Checking ClamAV metrics...${NC}"
+  CLAMAV_METRICS=$(docker exec $ELEMTA_CONTAINER curl -s http://localhost:8080/metrics | grep clamav)
+  if [ -z "$CLAMAV_METRICS" ]; then
+    echo -e "${YELLOW}Warning: No ClamAV metrics found. This might be normal if no scans have been performed.${NC}"
+  else
+    echo -e "${GREEN}ClamAV metrics found:${NC}"
+    echo "$CLAMAV_METRICS" | head -n 5
+  fi
+fi
+
+if docker-compose -f docker-compose-monitoring.yml ps -q rspamd &>/dev/null; then
+  echo -e "\n${YELLOW}Checking Rspamd metrics...${NC}"
+  RSPAMD_METRICS=$(docker exec $ELEMTA_CONTAINER curl -s http://localhost:8080/metrics | grep rspamd)
+  if [ -z "$RSPAMD_METRICS" ]; then
+    echo -e "${YELLOW}Warning: No Rspamd metrics found. This might be normal if no scans have been performed.${NC}"
+  else
+    echo -e "${GREEN}Rspamd metrics found:${NC}"
+    echo "$RSPAMD_METRICS" | head -n 5
+  fi
+fi
+
 echo -e "\n${YELLOW}Monitoring URLs:${NC}"
-echo -e "${GREEN}Grafana:${NC} http://localhost:3000 (admin/admin)"
+echo -e "${GREEN}Grafana:${NC} http://localhost:3000 (admin/elemta123)"
 echo -e "${GREEN}Prometheus:${NC} http://localhost:9090"
 echo -e "${GREEN}AlertManager:${NC} http://localhost:9093"
+
+# Show security monitoring URLs if services are running
+if docker-compose -f docker-compose-monitoring.yml ps -q rspamd &>/dev/null; then
+  echo -e "${GREEN}Rspamd Web Interface:${NC} http://localhost:11334"
+fi
 
 echo -e "\n${GREEN}Verification completed successfully.${NC}"
 echo -e "${YELLOW}The monitoring stack is properly set up and functioning.${NC}" 
