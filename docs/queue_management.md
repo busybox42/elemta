@@ -149,19 +149,41 @@ This shows:
 
 ## Configuration
 
-The queue system can be configured in the Elemta configuration file:
+The queue system can be configured in the Elemta configuration file (YAML or TOML format):
 
-```json
-{
-  "queue_dir": "./queue",
-  "max_workers": 10,
-  "max_retries": 5,
-  "max_queue_time": 172800,
-  "retry_schedule": [60, 300, 900, 3600, 10800, 21600, 43200],
-  "keep_delivered_messages": true,
-  "keep_message_data": true,
-  "queue_priority_enabled": true
-}
+### YAML Configuration
+
+```yaml
+queue:
+  queue_dir: "./queue"
+  max_workers: 10
+  max_retries: 5
+  max_queue_time: 172800
+  retry_schedule:
+    - 60
+    - 300
+    - 900
+    - 3600
+    - 10800
+    - 21600
+    - 43200
+  keep_delivered_messages: true
+  keep_message_data: true
+  queue_priority_enabled: true
+```
+
+### TOML Configuration
+
+```toml
+[queue]
+queue_dir = "./queue"
+max_workers = 10
+max_retries = 5
+max_queue_time = 172800
+retry_schedule = [60, 300, 900, 3600, 10800, 21600, 43200]
+keep_delivered_messages = true
+keep_message_data = true
+queue_priority_enabled = true
 ```
 
 ### Configuration Options

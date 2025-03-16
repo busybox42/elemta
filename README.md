@@ -130,14 +130,38 @@ For more details, see [Docker Deployment Documentation](docs/docker/README.md).
 
 ### Configuration
 
-Elemta uses a YAML configuration file. A sample configuration is provided in `config/elemta.yaml.example`.
+Elemta supports both YAML and TOML configuration formats. Sample configurations are provided in `config/elemta.yaml.example` and `config/elemta.toml.example`.
+
+For detailed configuration information, see [Configuration Documentation](docs/configuration.md).
+
+#### Quick Start with YAML
 
 ```bash
-# Copy the example configuration
+# Copy the example YAML configuration
 cp config/elemta.yaml.example config/elemta.yaml
 
 # Edit the configuration
 vim config/elemta.yaml
+```
+
+#### Quick Start with TOML
+
+```bash
+# Copy the example TOML configuration
+cp config/elemta.toml.example config/elemta.toml
+
+# Edit the configuration
+vim config/elemta.toml
+```
+
+To specify which configuration file to use:
+
+```bash
+# Run with YAML configuration
+./elemta -config config/elemta.yaml
+
+# Run with TOML configuration
+./elemta -config config/elemta.toml
 ```
 
 ### Docker
@@ -303,3 +327,23 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Testing
+
+Elemta provides comprehensive testing capabilities, including test mode, queue testing, and SMTP testing. For detailed information, see [Testing Documentation](docs/testing.md).
+
+### Quick Testing
+
+```bash
+# Run a comprehensive test (deployment, SMTP, queue, test mode)
+./scripts/deploy-and-test.sh
+
+# Test only the queue functionality
+make test-queue-only
+
+# Test only SMTP functionality
+./scripts/test-smtp.sh
+
+# Run in test mode
+./scripts/test-mode.sh
+```
