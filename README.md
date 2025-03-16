@@ -53,54 +53,80 @@ Elemta supports various plugin types:
 
 #### From Source
 
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/elemta.git
-cd elemta
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/elemta/elemta.git
+   cd elemta
+   ```
 
-# Build the binary
-go build -o elemta cmd/elemta/main.go
+2. Build the binary:
+   ```bash
+   go build -o elemta cmd/elemta/main.go
+   ```
 
-# Run the server
-./elemta serve
-```
+3. Run the server:
+   ```bash
+   ./elemta -config config/elemta.yaml
+   ```
 
 #### Using Native Packages
 
-Elemta provides native packages for various Linux distributions:
+We provide native packages for various Linux distributions:
 
-##### RHEL/CentOS 8
+#### RHEL/CentOS 8
 ```bash
-sudo rpm -i elemta-0.0.1-1.el8.x86_64.rpm
+sudo dnf install -y https://github.com/elemta/elemta/releases/download/v0.1.0/elemta-0.1.0-1.el8.x86_64.rpm
 ```
 
-##### RHEL/CentOS 9
+#### RHEL/CentOS 9
 ```bash
-sudo rpm -i elemta-0.0.1-1.el9.x86_64.rpm
+sudo dnf install -y https://github.com/elemta/elemta/releases/download/v0.1.0/elemta-0.1.0-1.el9.x86_64.rpm
 ```
 
-##### Debian 11
+#### Debian 11
 ```bash
-sudo dpkg -i elemta_0.0.1_amd64.deb
+wget https://github.com/elemta/elemta/releases/download/v0.1.0/elemta_0.1.0-1_amd64.deb
+sudo dpkg -i elemta_0.1.0-1_amd64.deb
 ```
 
-##### Ubuntu 22.04
+#### Ubuntu 22.04
 ```bash
-sudo dpkg -i elemta_0.0.1_amd64.deb
+wget https://github.com/elemta/elemta/releases/download/v0.1.0/elemta_0.1.0-1_amd64.deb
+sudo dpkg -i elemta_0.1.0-1_amd64.deb
 ```
 
-After installation, the Elemta service can be managed using systemd:
-
+After installation, you can manage the service using systemd:
 ```bash
-# Start the service
 sudo systemctl start elemta
-
-# Enable the service to start at boot
 sudo systemctl enable elemta
-
-# Check the service status
-sudo systemctl status elemta
 ```
+
+### Using Docker
+
+For a quick deployment with all components (including ClamAV and Rspamd), you can use Docker:
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/elemta/elemta.git
+   cd elemta
+   ```
+
+2. Build and start the containers:
+   ```bash
+   docker-compose up -d
+   ```
+
+3. Verify the deployment:
+   ```bash
+   ./tests/test-elemta.sh
+   ```
+
+The Docker deployment exposes the following ports:
+- SMTP service: 2525
+- Metrics endpoint: 8080
+- Rspamd web interface: 11334
+
+For more details, see [Docker Deployment Documentation](docs/docker/README.md).
 
 ### Configuration
 

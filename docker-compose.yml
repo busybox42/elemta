@@ -9,23 +9,20 @@ services:
     restart: unless-stopped
     ports:
       - "2525:25"
+      - "8080:8080"
     volumes:
       - elemta_queue:/app/queue
       - elemta_logs:/app/logs
       - elemta_config:/app/config
       - elemta_plugins:/app/plugins
-      - ./config:/config-volume
-      - ./docker-entrypoint.sh:/docker-entrypoint.sh
     environment:
       - TZ=UTC
-      - ELEMTA_CONFIG_PATH=/config-volume/elemta.conf
       - DEBUG=true
-    entrypoint: ["/docker-entrypoint.sh"]
     tty: true
     stdin_open: true
     init: true
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "25"]
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -59,7 +56,6 @@ services:
       - elemta_network
     volumes:
       - rspamd_data:/var/lib/rspamd
-      - ./rspamd/local.d:/etc/rspamd/local.d
     ports:
       - "11334:11334"  # Web interface
     healthcheck:

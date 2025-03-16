@@ -161,4 +161,42 @@ docker-compose -f docker-compose-monitoring.yml logs grafana
 docker-compose -f docker-compose-monitoring.yml logs alertmanager
 docker-compose -f docker-compose-monitoring.yml logs clamav
 docker-compose -f docker-compose-monitoring.yml logs rspamd
-``` 
+```
+
+## Docker Deployment Monitoring
+
+If you're using the Docker deployment of Elemta, monitoring is already set up and ready to use. The Docker deployment includes:
+
+- **Elemta SMTP Server** with metrics exposed on port 8080
+- **ClamAV** for antivirus scanning
+- **Rspamd** for spam filtering with a web interface on port 11334
+
+### Accessing Monitoring in Docker
+
+- **Metrics Endpoint**: http://localhost:8080/metrics
+- **Rspamd Web Interface**: http://localhost:11334
+
+### Testing Docker Monitoring
+
+To verify that monitoring is working correctly in the Docker deployment:
+
+```bash
+./tests/test-elemta.sh
+```
+
+This script tests connectivity to all services and verifies that metrics are being exposed correctly.
+
+### Integrating with External Monitoring
+
+To integrate the Docker deployment with your existing Prometheus instance:
+
+1. Add the following scrape configuration to your Prometheus configuration:
+
+```yaml
+scrape_configs:
+  - job_name: 'elemta'
+    static_configs:
+      - targets: ['localhost:8080']
+```
+
+2. Restart your Prometheus instance to apply the changes. 
