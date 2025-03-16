@@ -19,7 +19,7 @@ func main() {
 		fmt.Println("Error setting sender:", err)
 		return
 	}
-	if err := c.Rcpt("recipient@example.com"); err != nil {
+	if err := c.Rcpt("recipient@example.org"); err != nil {
 		fmt.Println("Error setting recipient:", err)
 		return
 	}
@@ -32,21 +32,17 @@ func main() {
 	}
 	defer wc.Close()
 
-	msg := []byte("To: recipient@example.com\r\n" +
-		"Subject: Test Email\r\n" +
-		"\r\n" +
-		"This is a test email from Go.\r\n")
+	message := `From: sender@example.com
+To: recipient@example.org
+Subject: Test Email
 
-	if _, err = wc.Write(msg); err != nil {
+This is a test email sent from the Elemta test script.
+`
+
+	if _, err = fmt.Fprintf(wc, message); err != nil {
 		fmt.Println("Error writing message:", err)
 		return
 	}
 
-	// Send the QUIT command and close the connection
-	if err := c.Quit(); err != nil {
-		fmt.Println("Error closing connection:", err)
-		return
-	}
-
-	fmt.Println("Email sent successfully!")
+	fmt.Println("Test email sent successfully!")
 }
