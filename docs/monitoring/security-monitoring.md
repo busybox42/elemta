@@ -26,17 +26,41 @@ docker-compose -f docker-compose-monitoring.yml up -d
 ./scripts/verify-monitoring-stack.sh
 ```
 
-You can test the security features by running:
+## Verifying the Setup
+
+To verify that the security monitoring stack is set up correctly, run:
 
 ```bash
-# Copy the EICAR test file to the ClamAV container and scan it
-docker cp tests/data/eicar.txt elemta_clamav_1:/tmp/
-docker exec elemta_clamav_1 sh -c "clamdscan /tmp/eicar.txt"
-
-# Copy the GTUBE test file to the Rspamd container and scan it
-docker cp tests/data/gtube.txt elemta_rspamd_1:/tmp/
-docker exec elemta_rspamd_1 sh -c "cat /tmp/gtube.txt | rspamc"
+./scripts/verify-monitoring-stack.sh
 ```
+
+This script will check that all components are running and properly configured.
+
+## Testing Security Features
+
+You can test the security features by copying the test files to the respective containers and running scan commands:
+
+```bash
+# Test ClamAV with EICAR
+docker exec elemta_clamav_1 clamdscan /tmp/eicar.txt
+
+# Test Rspamd with GTUBE
+docker exec elemta_rspamd_1 rspamc scan /tmp/gtube.txt
+```
+
+Alternatively, you can use the provided script to generate test security events:
+
+```bash
+./scripts/generate-security-events.sh
+```
+
+This script will:
+1. Copy the EICAR test file to the ClamAV container
+2. Copy the GTUBE test file to the Rspamd container
+3. Run multiple scans to generate security events
+4. Display the results of the scans
+
+After running the script, you should see security metrics in Prometheus and Grafana.
 
 ## Components
 
