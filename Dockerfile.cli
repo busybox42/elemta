@@ -1,0 +1,39 @@
+FROM golang:1.21-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache git make
+
+# Copy source code
+COPY . .
+
+# Build the binaries
+RUN make build
+
+FROM alpine:3.18
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates tzdata bash
+
+# Create directories
+RUN mkdir -p /app/config /app/queue /app/logs /app/plugins
+
+# Copy binaries from builder
+COPY --from=builder /app/build/elemta /app/elemta
+COPY --from=builder /app/build/elemta-queue /app/elemta-queue
+
+# Copy configuration
+COPY config/ /app/config/
+
+# Set environment variables
+ENV ELEMTA_CONFIG_PATH=/app/config/elemta.toml
+
+# Expose ports
+EXPOSE 25 587 8080
+
+# Set entrypoint
+ENTRYPOINT ["/app/elemta"]
+CMD ["server"] 
