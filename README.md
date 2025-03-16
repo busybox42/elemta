@@ -197,6 +197,10 @@ Elemta exposes various metrics for monitoring:
 For more information about monitoring, see [docs/monitoring/README.md](docs/monitoring/README.md).
 For details on security monitoring, see [docs/monitoring/security-monitoring.md](docs/monitoring/security-monitoring.md).
 
+## CLI Tools
+
+Elemta provides command-line tools for managing the server and queue. For detailed information, see [CLI Documentation](docs/cli.md).
+
 ## Development
 
 ### Building from Source

@@ -1,4 +1,4 @@
-.PHONY: all build clean test unit-test integration-test python-test docker-test docker docker-build docker-run docker-deploy docker-undeploy k8s-deploy k8s-undeploy k8s-down k8s-up k8s-restart k8s-test
+.PHONY: all build clean test unit-test integration-test python-test docker-test docker docker-build docker-run docker-deploy docker-undeploy k8s-deploy k8s-undeploy k8s-down k8s-up k8s-restart k8s-test docker-cli-build docker-cli-run test-smtp test-queue test-mode check-queue create-queue-entry deploy-and-test test-queue-only
 
 BINARY_NAME=elemta
 QUEUE_BINARY_NAME=elemta-queue
@@ -71,14 +71,29 @@ docker-run:
 	docker run -p 2525:2525 -v $(CURDIR)/config:/app/config -v $(CURDIR)/queue:/app/queue -v $(CURDIR)/logs:/app/logs --name elemta elemta:$(DOCKER_TAG) server
 	@echo "Docker container started!"
 
-docker-deploy: docker-build
+docker-cli-build:
+	@echo "Building Docker CLI image..."
+	docker build -t elemta-cli:$(DOCKER_TAG) -f Dockerfile.cli .
+	@echo "Docker CLI build complete!"
+
+docker-cli-run:
+	@echo "Running Docker CLI container..."
+	docker run -d --name elemta-cli --network elemta_elemta_network -p 2526:25 -p 5871:587 -p 8083:8080 elemta-cli:$(DOCKER_TAG)
+	@echo "Docker CLI container started!"
+
+docker-deploy: docker-build docker-cli-build
 	@echo "Deploying with Docker Compose..."
 	docker-compose up -d
+	docker stop elemta-cli || true
+	docker rm elemta-cli || true
+	docker run -d --name elemta-cli --network elemta_elemta_network -p 2526:25 -p 5871:587 -p 8083:8080 elemta-cli:$(DOCKER_TAG)
 	@echo "Docker deployment complete!"
 
 docker-undeploy:
 	@echo "Undeploying Docker Compose..."
 	docker-compose down --remove-orphans || true
+	docker stop elemta-cli || true
+	docker rm elemta-cli || true
 	docker network prune -f || true
 	@echo "Docker undeployment complete!"
 
@@ -131,6 +146,42 @@ k8s-test:
 	@echo "Running Kubernetes tests..."
 	./tests/k8s/test-elemta.sh
 	@echo "Kubernetes tests complete!"
+
+# New test targets
+test-smtp:
+	@echo "Running SMTP tests..."
+	./scripts/test-smtp.sh
+	@echo "SMTP tests complete!"
+
+test-queue:
+	@echo "Running queue tests..."
+	./scripts/simulate-queue.sh
+	@echo "Queue tests complete!"
+
+test-mode:
+	@echo "Running test mode..."
+	./scripts/test-mode.sh
+	@echo "Test mode complete!"
+
+check-queue:
+	@echo "Checking queue format and structure..."
+	./scripts/check-queue.sh
+	@echo "Queue check complete!"
+
+create-queue-entry:
+	@echo "Creating a simple queue entry..."
+	./scripts/create-queue-entry.sh
+	@echo "Queue entry creation complete!"
+
+deploy-and-test:
+	@echo "Deploying and testing Elemta..."
+	./scripts/deploy-and-test.sh
+	@echo "Deployment and testing complete!"
+
+test-queue-only:
+	@echo "Running queue-only test..."
+	./scripts/test-queue-only.sh
+	@echo "Queue-only test complete!"
 
 # Alias for backward compatibility
 docker: docker-build 

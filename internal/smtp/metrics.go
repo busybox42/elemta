@@ -34,7 +34,7 @@ type Metrics struct {
 	MessageSize       prometheus.Histogram
 
 	// Queue metrics
-	QueueSize           prometheus.GaugeVec
+	QueueSize           *prometheus.GaugeVec
 	QueueProcessingTime prometheus.Histogram
 
 	// Delivery metrics
