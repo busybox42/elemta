@@ -123,5 +123,188 @@ if __name__ == '__main__':
     httpd.serve_forever()
 EOF
 
-# Run the metrics server
-python3 /app/metrics_server.py 
+# Create a simple SMTP server
+cat > /app/smtp_server.py << EOF
+import asyncio
+import logging
+import sys
+from datetime import datetime
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
+logger = logging.getLogger('elemta-smtp')
+
+class SMTPProtocol(asyncio.Protocol):
+    def __init__(self):
+        self.buffer = b''
+        self.transport = None
+        self.client_address = None
+        self.state = 'INIT'
+        self.mail_from = None
+        self.rcpt_to = []
+        self.data_buffer = []
+        self.logger = logger
+
+    def connection_made(self, transport):
+        self.transport = transport
+        self.client_address = transport.get_extra_info('peername')
+        self.logger.info(f"Connection from {self.client_address}")
+        self.send_response(220, "elemta.local ESMTP Elemta ready")
+        self.state = 'GREETING'
+
+    def data_received(self, data):
+        self.buffer += data
+        if b'\r\n' in self.buffer:
+            lines = self.buffer.split(b'\r\n')
+            self.buffer = lines.pop()  # Keep incomplete line in buffer
+            for line in lines:
+                try:
+                    self.process_command(line.decode('utf-8'))
+                except UnicodeDecodeError:
+                    self.send_response(500, "Invalid command encoding")
+
+    def connection_lost(self, exc):
+        self.logger.info(f"Connection closed from {self.client_address}")
+
+    def process_command(self, line):
+        if not line:
+            return
+            
+        self.logger.info(f"Received: {line}")
+        
+        parts = line.split(' ', 1)
+        command = parts[0].upper()
+        args = parts[1] if len(parts) > 1 else ""
+        
+        if self.state == 'DATA':
+            if line == '.':
+                # End of data
+                message = '\\n'.join(self.data_buffer)
+                self.logger.info(f"Received message from {self.mail_from} to {self.rcpt_to}")
+                self.send_response(250, "OK: message accepted for delivery")
+                self.state = 'GREETING'
+                self.mail_from = None
+                self.rcpt_to = []
+                self.data_buffer = []
+            else:
+                # Collect message data
+                if line.startswith('.'):
+                    line = line[1:]  # Remove dot-stuffing
+                self.data_buffer.append(line)
+            return
+            
+        if command == 'HELO' or command == 'EHLO':
+            self.handle_helo(args)
+        elif command == 'MAIL':
+            self.handle_mail(args)
+        elif command == 'RCPT':
+            self.handle_rcpt(args)
+        elif command == 'DATA':
+            self.handle_data()
+        elif command == 'QUIT':
+            self.handle_quit()
+        elif command == 'RSET':
+            self.handle_rset()
+        elif command == 'NOOP':
+            self.send_response(250, "OK")
+        elif command == 'HELP':
+            self.send_response(214, "HELO EHLO MAIL RCPT DATA RSET NOOP QUIT HELP")
+        else:
+            self.send_response(502, "Command not implemented")
+
+    def handle_helo(self, args):
+        if not args:
+            self.send_response(501, "Syntax: HELO hostname")
+            return
+            
+        self.send_response(250, f"elemta.local Hello {args}")
+        self.state = 'MAIL'
+
+    def handle_mail(self, args):
+        if self.state != 'MAIL':
+            self.send_response(503, "Bad sequence of commands")
+            return
+            
+        if not args.startswith('FROM:'):
+            self.send_response(501, "Syntax: MAIL FROM:<address>")
+            return
+            
+        # Extract email from FROM:<email>
+        try:
+            email = args[5:].strip()
+            if email.startswith('<') and email.endswith('>'):
+                email = email[1:-1]
+            self.mail_from = email
+            self.send_response(250, "OK")
+            self.state = 'RCPT'
+        except Exception as e:
+            self.logger.error(f"Error parsing MAIL FROM: {e}")
+            self.send_response(501, "Syntax error in parameters")
+
+    def handle_rcpt(self, args):
+        if self.state != 'RCPT' and self.state != 'DATA_READY':
+            self.send_response(503, "Bad sequence of commands")
+            return
+            
+        if not args.startswith('TO:'):
+            self.send_response(501, "Syntax: RCPT TO:<address>")
+            return
+            
+        # Extract email from TO:<email>
+        try:
+            email = args[3:].strip()
+            if email.startswith('<') and email.endswith('>'):
+                email = email[1:-1]
+            self.rcpt_to.append(email)
+            self.send_response(250, "OK")
+            self.state = 'DATA_READY'
+        except Exception as e:
+            self.logger.error(f"Error parsing RCPT TO: {e}")
+            self.send_response(501, "Syntax error in parameters")
+
+    def handle_data(self):
+        if self.state != 'DATA_READY':
+            self.send_response(503, "Bad sequence of commands")
+            return
+            
+        self.send_response(354, "End data with <CR><LF>.<CR><LF>")
+        self.state = 'DATA'
+
+    def handle_rset(self):
+        self.mail_from = None
+        self.rcpt_to = []
+        self.data_buffer = []
+        self.state = 'MAIL'
+        self.send_response(250, "OK")
+
+    def handle_quit(self):
+        self.send_response(221, "elemta.local Service closing transmission channel")
+        self.transport.close()
+
+    def send_response(self, code, message):
+        response = f"{code} {message}\r\n"
+        self.logger.info(f"Sending: {response.strip()}")
+        self.transport.write(response.encode('utf-8'))
+
+async def start_smtp_server():
+    loop = asyncio.get_event_loop()
+    server = await loop.create_server(
+        SMTPProtocol,
+        '0.0.0.0',
+        25
+    )
+    logger.info("Starting SMTP server on port 25...")
+    async with server:
+        await server.serve_forever()
+
+if __name__ == '__main__':
+    asyncio.run(start_smtp_server())
+EOF
+
+# Start both servers in background
+python3 /app/metrics_server.py &
+python3 /app/smtp_server.py 
