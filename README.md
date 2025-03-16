@@ -6,13 +6,14 @@ Elemta is a high-performance, carrier-grade Mail Transfer Agent (MTA) written in
 
 - **High Performance**: Built with Go for excellent concurrency and performance
 - **Pluggable Architecture**: Easily extend functionality with plugins
-- **Security-First Design**: Built-in SPF, DKIM, and DMARC validation
+- **Security-First Design**: Built-in SPF, DKIM, DMARC, and ARC validation
 - **Modern Queue Management**: Sophisticated queue system with priority, retry, and status tracking
 - **Comprehensive Monitoring**: Detailed metrics and logging with Prometheus and Grafana integration
 - **Containerized Deployment**: Ready for Docker and Kubernetes
 - **Horizontal Scalability**: Designed to scale out across multiple nodes
 - **API-Driven**: RESTful API for management and monitoring
 - **Native Packages**: Support for RHEL/CentOS 8/9, Debian 11, and Ubuntu 22.04
+- **Flexible Configuration**: Support for both YAML and TOML configuration formats
 
 ## Architecture
 
@@ -37,10 +38,68 @@ Elemta supports various plugin types:
 - **DATA Plugins**: Process message data
 - **Queue Plugins**: Interact with the queue system
 - **Delivery Plugins**: Modify delivery behavior
-- **Security Plugins**: Implement security features (SPF, DKIM, DMARC)
+- **Security Plugins**: Implement security features (SPF, DKIM, DMARC, ARC)
 - **Routing Plugins**: Control message routing
 - **Storage Plugins**: Customize message storage
 - **Greylisting Plugins**: Implement greylisting for spam reduction
+
+## Email Authentication
+
+Elemta provides comprehensive email authentication support:
+
+### SPF (Sender Policy Framework)
+
+SPF validation helps prevent email spoofing by verifying that incoming mail from a domain comes from a host authorized by that domain's administrators.
+
+```yaml
+plugins:
+  spf:
+    enabled: true
+    enforce: false  # Set to true to reject emails that fail SPF validation
+```
+
+### DKIM (DomainKeys Identified Mail)
+
+DKIM adds a digital signature to outgoing messages and validates incoming messages, allowing the receiver to verify that the message was not altered in transit.
+
+```yaml
+plugins:
+  dkim:
+    enabled: true
+    verify: true    # Verify DKIM signatures on incoming messages
+    sign: true      # Sign outgoing messages
+    domain: "example.com"
+    selector: "mail"
+    key_file: "/etc/elemta/dkim/example.com.private"
+```
+
+### DMARC (Domain-based Message Authentication, Reporting, and Conformance)
+
+DMARC builds on SPF and DKIM to provide domain-level authentication and reporting.
+
+```yaml
+plugins:
+  dmarc:
+    enabled: true
+    enforce: false  # Set to true to enforce DMARC policies
+```
+
+### ARC (Authenticated Received Chain)
+
+ARC preserves email authentication results across forwarding services, solving the email forwarding problem that affects SPF, DKIM, and DMARC.
+
+```yaml
+plugins:
+  arc:
+    enabled: true
+    verify: true    # Verify ARC chains on incoming messages
+    seal: true      # Add ARC seals to outgoing messages
+    domain: "example.com"
+    selector: "arc"
+    key_file: "/etc/elemta/arc/example.com.private"
+```
+
+For more information about email authentication, see [Email Authentication Documentation](docs/email_authentication.md).
 
 ## Getting Started
 
@@ -199,27 +258,84 @@ docker-compose -f docker-compose-monitoring.yml up -d
 ./scripts/generate-test-load.sh
 ```
 
+#### Monitoring Stack
+
+Elemta's monitoring stack includes:
+
+- **Prometheus**: Time-series database for storing metrics
+- **Grafana**: Visualization and dashboarding platform
+- **AlertManager**: Handles alerts from Prometheus
+- **Node Exporter**: Collects system metrics
+- **CAdvisor**: Collects container metrics
+- **Loki**: Log aggregation system
+- **Promtail**: Log collector for Loki
+
+#### Grafana Dashboards
+
+Elemta comes with pre-configured Grafana dashboards:
+
+- **Elemta Overview**: High-level view of SMTP server performance
+- **Queue Dashboard**: Detailed queue metrics and performance
+- **Security Dashboard**: Email authentication and security metrics
+- **System Dashboard**: Host and container resource usage
+- **Logs Dashboard**: Centralized log viewing and analysis
+
 #### Accessing Dashboards
 
 - **Grafana**: http://localhost:3000 (default credentials: admin/elemta123)
 - **Prometheus**: http://localhost:9090
 - **AlertManager**: http://localhost:9093
 - **Rspamd Web Interface**: http://localhost:11334
+- **Loki**: http://localhost:3100 (accessed through Grafana)
 
 #### Available Metrics
 
 Elemta exposes various metrics for monitoring:
 
-- SMTP server metrics (connections, messages)
-- Queue metrics (size, processing time)
-- Delivery metrics (attempts, successes, failures)
-- Security metrics (authentication, TLS)
-- ClamAV metrics (virus scans, detections)
-- Rspamd metrics (spam filtering, scores)
-- Plugin-specific metrics (e.g., greylisting statistics)
+- **SMTP Server Metrics**:
+  - Connection rates and states
+  - Message throughput
+  - Command success/failure rates
+  - TLS usage statistics
+
+- **Queue Metrics**:
+  - Queue sizes by type (active, deferred, held, failed)
+  - Message processing times
+  - Retry statistics
+  - Delivery success/failure rates
+
+- **Security Metrics**:
+  - Authentication success/failure rates
+  - SPF, DKIM, DMARC, and ARC validation results
+  - TLS connection statistics
+  - Rate limiting metrics
+
+- **Antivirus/Antispam Metrics**:
+  - ClamAV scan results and performance
+  - Rspamd spam scores and actions
+  - Greylisting statistics
+  - Blocklist hits
+
+- **System Metrics**:
+  - CPU, memory, disk, and network usage
+  - Container resource utilization
+  - Go runtime metrics
+
+#### Alerting
+
+Elemta includes pre-configured alerts for:
+
+- High queue sizes
+- Delivery failures
+- Authentication failures
+- Resource constraints
+- Security issues
+
+Alerts can be sent via email, Slack, PagerDuty, or other notification channels configured in AlertManager.
 
 For more information about monitoring, see [docs/monitoring/README.md](docs/monitoring/README.md).
 For details on security monitoring, see [docs/monitoring/security-monitoring.md](docs/monitoring/security-monitoring.md).
+For information on log management, see [docs/monitoring/logging.md](docs/monitoring/logging.md).
 
 ## CLI Tools
 
