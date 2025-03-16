@@ -30,6 +30,10 @@ type Manager struct {
 	pluginPath       string
 	antivirusPlugins map[string]AntivirusPlugin
 	antispamPlugins  map[string]AntispamPlugin
+	dkimPlugins      map[string]DKIMPlugin
+	spfPlugins       map[string]SPFPlugin
+	dmarcPlugins     map[string]DMARCPlugin
+	arcPlugins       map[string]ARCPlugin
 	stagePlugins     map[ProcessingStage][]StagePlugin
 	typePlugins      map[string][]Plugin
 	loadedPlugins    map[string]*plugin.Plugin
@@ -42,6 +46,10 @@ func NewManager(pluginPath string) *Manager {
 		pluginPath:       pluginPath,
 		antivirusPlugins: make(map[string]AntivirusPlugin),
 		antispamPlugins:  make(map[string]AntispamPlugin),
+		dkimPlugins:      make(map[string]DKIMPlugin),
+		spfPlugins:       make(map[string]SPFPlugin),
+		dmarcPlugins:     make(map[string]DMARCPlugin),
+		arcPlugins:       make(map[string]ARCPlugin),
 		stagePlugins:     make(map[ProcessingStage][]StagePlugin),
 		typePlugins:      make(map[string][]Plugin),
 		loadedPlugins:    make(map[string]*plugin.Plugin),
@@ -92,6 +100,22 @@ func (m *Manager) LoadPlugin(pluginName string) error {
 		}
 	case PluginTypeAntispam:
 		if err := m.loadAntispamPlugin(pluginName, p); err != nil {
+			return err
+		}
+	case PluginTypeDKIM:
+		if err := m.loadDKIMPlugin(pluginName, p); err != nil {
+			return err
+		}
+	case PluginTypeSPF:
+		if err := m.loadSPFPlugin(pluginName, p); err != nil {
+			return err
+		}
+	case PluginTypeDMARC:
+		if err := m.loadDMARCPlugin(pluginName, p); err != nil {
+			return err
+		}
+	case PluginTypeARC:
+		if err := m.loadARCPlugin(pluginName, p); err != nil {
 			return err
 		}
 	default:
@@ -158,6 +182,118 @@ func (m *Manager) loadAntispamPlugin(pluginName string, p *plugin.Plugin) error 
 	if stagePlugin, ok := sym.(StagePlugin); ok {
 		m.registerStagePlugin(stagePlugin)
 	}
+
+	return nil
+}
+
+// loadDKIMPlugin loads a DKIM plugin
+func (m *Manager) loadDKIMPlugin(pluginName string, p *plugin.Plugin) error {
+	// Look up the "NewDKIMPlugin" symbol
+	sym, err := p.Lookup("NewDKIMPlugin")
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrPluginSymbolNotFound, err)
+	}
+
+	// Assert that the symbol is a function that returns a DKIMPlugin
+	newPlugin, ok := sym.(func() DKIMPlugin)
+	if !ok {
+		return fmt.Errorf("%w: %v", ErrPluginInvalidType, "NewDKIMPlugin is not a function that returns a DKIMPlugin")
+	}
+
+	// Call the function to get the plugin instance
+	plugin := newPlugin()
+
+	// Register the plugin
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Store the plugin
+	m.dkimPlugins[pluginName] = plugin
+	m.registerTypePlugin(pluginName, plugin, PluginTypeDKIM)
+
+	return nil
+}
+
+// loadSPFPlugin loads an SPF plugin
+func (m *Manager) loadSPFPlugin(pluginName string, p *plugin.Plugin) error {
+	// Look up the "NewSPFPlugin" symbol
+	sym, err := p.Lookup("NewSPFPlugin")
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrPluginSymbolNotFound, err)
+	}
+
+	// Assert that the symbol is a function that returns an SPFPlugin
+	newPlugin, ok := sym.(func() SPFPlugin)
+	if !ok {
+		return fmt.Errorf("%w: %v", ErrPluginInvalidType, "NewSPFPlugin is not a function that returns an SPFPlugin")
+	}
+
+	// Call the function to get the plugin instance
+	plugin := newPlugin()
+
+	// Register the plugin
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Store the plugin
+	m.spfPlugins[pluginName] = plugin
+	m.registerTypePlugin(pluginName, plugin, PluginTypeSPF)
+
+	return nil
+}
+
+// loadDMARCPlugin loads a DMARC plugin
+func (m *Manager) loadDMARCPlugin(pluginName string, p *plugin.Plugin) error {
+	// Look up the "NewDMARCPlugin" symbol
+	sym, err := p.Lookup("NewDMARCPlugin")
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrPluginSymbolNotFound, err)
+	}
+
+	// Assert that the symbol is a function that returns a DMARCPlugin
+	newPlugin, ok := sym.(func() DMARCPlugin)
+	if !ok {
+		return fmt.Errorf("%w: %v", ErrPluginInvalidType, "NewDMARCPlugin is not a function that returns a DMARCPlugin")
+	}
+
+	// Call the function to get the plugin instance
+	plugin := newPlugin()
+
+	// Register the plugin
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Store the plugin
+	m.dmarcPlugins[pluginName] = plugin
+	m.registerTypePlugin(pluginName, plugin, PluginTypeDMARC)
+
+	return nil
+}
+
+// loadARCPlugin loads an ARC plugin
+func (m *Manager) loadARCPlugin(pluginName string, p *plugin.Plugin) error {
+	// Look up the "NewARCPlugin" symbol
+	sym, err := p.Lookup("NewARCPlugin")
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrPluginSymbolNotFound, err)
+	}
+
+	// Assert that the symbol is a function that returns an ARCPlugin
+	newPlugin, ok := sym.(func() ARCPlugin)
+	if !ok {
+		return fmt.Errorf("%w: %v", ErrPluginInvalidType, "NewARCPlugin is not a function that returns an ARCPlugin")
+	}
+
+	// Call the function to get the plugin instance
+	plugin := newPlugin()
+
+	// Register the plugin
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Store the plugin
+	m.arcPlugins[pluginName] = plugin
+	m.registerTypePlugin(pluginName, plugin, PluginTypeARC)
 
 	return nil
 }
@@ -278,6 +414,58 @@ func (m *Manager) GetAntispamPlugin(name string) (AntispamPlugin, error) {
 	return plugin, nil
 }
 
+// GetDKIMPlugin returns a DKIM plugin by name
+func (m *Manager) GetDKIMPlugin(name string) (DKIMPlugin, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	plugin, ok := m.dkimPlugins[name]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrPluginNotFound, name)
+	}
+
+	return plugin, nil
+}
+
+// GetSPFPlugin returns an SPF plugin by name
+func (m *Manager) GetSPFPlugin(name string) (SPFPlugin, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	plugin, ok := m.spfPlugins[name]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrPluginNotFound, name)
+	}
+
+	return plugin, nil
+}
+
+// GetDMARCPlugin returns a DMARC plugin by name
+func (m *Manager) GetDMARCPlugin(name string) (DMARCPlugin, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	plugin, ok := m.dmarcPlugins[name]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrPluginNotFound, name)
+	}
+
+	return plugin, nil
+}
+
+// GetARCPlugin returns an ARC plugin by name
+func (m *Manager) GetARCPlugin(name string) (ARCPlugin, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	plugin, ok := m.arcPlugins[name]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrPluginNotFound, name)
+	}
+
+	return plugin, nil
+}
+
 // GetPluginsByType returns all plugins of a specific type
 func (m *Manager) GetPluginsByType(pluginType string) []Plugin {
 	m.mu.RLock()
@@ -370,6 +558,59 @@ func (m *Manager) ListAntispamPlugins() []string {
 	return plugins
 }
 
+// ListDKIMPlugins returns a list of all loaded DKIM plugins
+func (m *Manager) ListDKIMPlugins() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	plugins := make([]string, 0, len(m.dkimPlugins))
+	for name := range m.dkimPlugins {
+		plugins = append(plugins, name)
+	}
+
+	return plugins
+}
+
+// ListSPFPlugins returns a list of all loaded SPF plugins
+func (m *Manager) ListSPFPlugins() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	plugins := make([]string, 0, len(m.spfPlugins))
+	for name := range m.spfPlugins {
+		plugins = append(plugins, name)
+	}
+
+	return plugins
+}
+
+// ListDMARCPlugins returns a list of all loaded DMARC plugins
+func (m *Manager) ListDMARCPlugins() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	plugins := make([]string, 0, len(m.dmarcPlugins))
+	for name := range m.dmarcPlugins {
+		plugins = append(plugins, name)
+	}
+
+	return plugins
+}
+
+// ListARCPlugins returns a list of loaded ARC plugins
+func (m *Manager) ListARCPlugins() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var plugins []string
+	for name := range m.arcPlugins {
+		plugins = append(plugins, name)
+	}
+
+	sort.Strings(plugins)
+	return plugins
+}
+
 // ListPluginTypes returns a list of all plugin types with loaded plugins
 func (m *Manager) ListPluginTypes() []string {
 	m.mu.RLock()
@@ -402,6 +643,10 @@ func (m *Manager) Close() error {
 	// Clear plugin maps
 	m.antivirusPlugins = make(map[string]AntivirusPlugin)
 	m.antispamPlugins = make(map[string]AntispamPlugin)
+	m.dkimPlugins = make(map[string]DKIMPlugin)
+	m.spfPlugins = make(map[string]SPFPlugin)
+	m.dmarcPlugins = make(map[string]DMARCPlugin)
+	m.arcPlugins = make(map[string]ARCPlugin)
 	m.stagePlugins = make(map[ProcessingStage][]StagePlugin)
 	m.typePlugins = make(map[string][]Plugin)
 	m.loadedPlugins = make(map[string]*plugin.Plugin)

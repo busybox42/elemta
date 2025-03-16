@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"strings"
 	"time"
 
@@ -12,7 +11,7 @@ import (
 // ExamplePolicyPlugin is a simple policy plugin that demonstrates
 // how to implement custom policies for Elemta SMTP server
 type ExamplePolicyPlugin struct {
-	plugin.BasePlugin
+	info plugin.PluginInfo
 	// Configuration options
 	config *PolicyConfig
 	// Cache for IP reputation data
@@ -41,13 +40,13 @@ type PolicyConfig struct {
 	MinReputationScore int `yaml:"min_reputation_score"`
 }
 
-// IPReputation represents reputation data for an IP address
+// IPReputation holds reputation data for an IP address
 type IPReputation struct {
 	Score      int       // 0-100, higher is better
 	LastUpdate time.Time // When the score was last updated
 }
 
-// RateLimitInfo tracks rate limiting data for an IP
+// RateLimitInfo holds rate limiting data for an IP address
 type RateLimitInfo struct {
 	MessageCount int       // Number of messages in the current window
 	WindowStart  time.Time // Start of the current window
@@ -55,189 +54,292 @@ type RateLimitInfo struct {
 
 // NewExamplePolicyPlugin creates a new instance of the policy plugin
 func NewExamplePolicyPlugin() *ExamplePolicyPlugin {
-	// Default configuration
-	config := &PolicyConfig{
-		MaxMessagesPerMinute:    60,
-		MaxRecipientsPerMessage: 50,
-		AllowedSenderDomains:    []string{"example.com", "trusted.org"},
-		BlockedRecipientDomains: []string{"blocked.com", "spam.org"},
-		AllowedRelayDomains:     []string{"example.com", "trusted.org"},
-		BlockBadReputation:      true,
-		MinReputationScore:      50,
-	}
-
-	// Initialize the plugin
-	plugin := &ExamplePolicyPlugin{
-		config:            config,
+	return &ExamplePolicyPlugin{
+		info: plugin.PluginInfo{
+			Name:        "example_policy",
+			Description: "Example policy plugin for Elemta SMTP server",
+			Version:     "1.0.0",
+			Type:        plugin.PluginTypeRule,
+			Author:      "Elemta Team",
+		},
+		config: &PolicyConfig{
+			MaxMessagesPerMinute:    60,
+			MaxRecipientsPerMessage: 100,
+			AllowedSenderDomains:    []string{},
+			BlockedRecipientDomains: []string{},
+			AllowedRelayDomains:     []string{},
+			BlockBadReputation:      true,
+			MinReputationScore:      50,
+		},
 		ipReputationCache: make(map[string]IPReputation),
 		allowedDomains:    make(map[string]bool),
 		rateLimits:        make(map[string]*RateLimitInfo),
 	}
+}
 
-	// Convert allowed domains to a map for faster lookup
-	for _, domain := range config.AllowedRelayDomains {
-		plugin.allowedDomains[domain] = true
-	}
-
-	return plugin
+// GetInfo returns information about the plugin
+func (p *ExamplePolicyPlugin) GetInfo() plugin.PluginInfo {
+	return p.info
 }
 
 // Init initializes the plugin
-func (p *ExamplePolicyPlugin) Init() error {
-	// Log initialization
-	fmt.Println("Initializing Example Policy Plugin")
+func (p *ExamplePolicyPlugin) Init(config map[string]interface{}) error {
+	// In a real implementation, this would parse the configuration
+	fmt.Println("Initializing example policy plugin")
 	return nil
 }
 
 // Close cleans up resources
 func (p *ExamplePolicyPlugin) Close() error {
 	// Clean up resources
-	p.ipReputationCache = nil
-	p.allowedDomains = nil
-	p.rateLimits = nil
+	fmt.Println("Closing example policy plugin")
 	return nil
 }
 
-// OnConnect is called when a client connects
-func (p *ExamplePolicyPlugin) OnConnect(ctx *plugin.Context) (*plugin.Result, error) {
-	session := ctx.Session
-	remoteIP := session.RemoteAddr.(*net.TCPAddr).IP.String()
+// GetStages returns the processing stages this plugin should be executed in
+func (p *ExamplePolicyPlugin) GetStages() []plugin.ProcessingStage {
+	return []plugin.ProcessingStage{
+		plugin.StageConnect,
+		plugin.StageMailFrom,
+		plugin.StageRcptTo,
+		plugin.StageDataComplete,
+	}
+}
 
-	// Check IP reputation
+// GetPriority returns the plugin priority (higher values run first)
+func (p *ExamplePolicyPlugin) GetPriority() plugin.PluginPriority {
+	return plugin.PriorityNormal
+}
+
+// Execute implements the plugin logic
+func (p *ExamplePolicyPlugin) Execute(ctx map[string]interface{}) (*plugin.PluginResult, error) {
+	// Get the current stage
+	stageVal, ok := ctx["stage"]
+	if !ok {
+		return &plugin.PluginResult{
+			Action:  plugin.ActionReject,
+			Message: "500 Internal server error: missing stage in context",
+		}, nil
+	}
+
+	stage, ok := stageVal.(plugin.ProcessingStage)
+	if !ok {
+		return &plugin.PluginResult{
+			Action:  plugin.ActionReject,
+			Message: "500 Internal server error: invalid stage type",
+		}, nil
+	}
+
+	// Execute the appropriate handler based on the stage
+	switch stage {
+	case plugin.StageConnect:
+		return p.onConnect(ctx)
+	case plugin.StageMailFrom:
+		return p.onMailFrom(ctx)
+	case plugin.StageRcptTo:
+		return p.onRcptTo(ctx)
+	case plugin.StageDataComplete:
+		return p.onData(ctx)
+	default:
+		return &plugin.PluginResult{
+			Action:  plugin.ActionContinue,
+			Message: "",
+		}, nil
+	}
+}
+
+// onConnect handles the CONNECT stage
+func (p *ExamplePolicyPlugin) onConnect(ctx map[string]interface{}) (*plugin.PluginResult, error) {
+	// Get the remote IP
+	ipVal, ok := ctx["remote_ip"]
+	if !ok {
+		return &plugin.PluginResult{
+			Action:  plugin.ActionContinue,
+			Message: "",
+		}, nil
+	}
+
+	ip, ok := ipVal.(string)
+	if !ok {
+		return &plugin.PluginResult{
+			Action:  plugin.ActionContinue,
+			Message: "",
+		}, nil
+	}
+
+	// Check IP reputation if enabled
 	if p.config.BlockBadReputation {
-		reputation, exists := p.ipReputationCache[remoteIP]
-		if exists && reputation.Score < p.config.MinReputationScore {
-			return &plugin.Result{
-				Action:  plugin.ActionReject,
-				Message: fmt.Sprintf("Connection rejected due to poor IP reputation: %d", reputation.Score),
-			}, nil
+		if rep, ok := p.ipReputationCache[ip]; ok {
+			if rep.Score < p.config.MinReputationScore {
+				return &plugin.PluginResult{
+					Action:  plugin.ActionReject,
+					Message: fmt.Sprintf("550 5.7.1 Connection rejected due to poor reputation score: %d", rep.Score),
+				}, nil
+			}
 		}
 	}
 
 	// Check rate limits
-	if !p.checkRateLimit(remoteIP) {
-		return &plugin.Result{
+	if !p.checkRateLimit(ip) {
+		return &plugin.PluginResult{
 			Action:  plugin.ActionReject,
-			Message: "Rate limit exceeded, please try again later",
+			Message: fmt.Sprintf("450 4.7.1 Rate limit exceeded for %s", ip),
 		}, nil
 	}
 
-	// Allow the connection
-	return &plugin.Result{
+	return &plugin.PluginResult{
 		Action:  plugin.ActionContinue,
-		Message: "Connection accepted",
+		Message: "",
 	}, nil
 }
 
-// OnMailFrom is called when a client issues a MAIL FROM command
-func (p *ExamplePolicyPlugin) OnMailFrom(ctx *plugin.Context) (*plugin.Result, error) {
-	session := ctx.Session
-	envelope := session.Envelope
-
-	// Extract domain from sender
-	parts := strings.Split(envelope.MailFrom.Address, "@")
-	if len(parts) != 2 {
-		return &plugin.Result{
-			Action:  plugin.ActionReject,
-			Message: "Invalid sender address format",
+// onMailFrom handles the MAIL FROM stage
+func (p *ExamplePolicyPlugin) onMailFrom(ctx map[string]interface{}) (*plugin.PluginResult, error) {
+	// Get the sender address
+	fromVal, ok := ctx["mail_from"]
+	if !ok {
+		return &plugin.PluginResult{
+			Action:  plugin.ActionContinue,
+			Message: "",
 		}, nil
 	}
 
-	senderDomain := strings.ToLower(parts[1])
+	from, ok := fromVal.(string)
+	if !ok {
+		return &plugin.PluginResult{
+			Action:  plugin.ActionContinue,
+			Message: "",
+		}, nil
+	}
 
 	// Check if sender domain is allowed
-	allowed := false
-	for _, domain := range p.config.AllowedSenderDomains {
-		if senderDomain == domain || strings.HasSuffix(senderDomain, "."+domain) {
-			allowed = true
-			break
+	if len(p.config.AllowedSenderDomains) > 0 {
+		parts := strings.Split(from, "@")
+		if len(parts) == 2 {
+			domain := strings.ToLower(parts[1])
+			allowed := false
+
+			for _, allowedDomain := range p.config.AllowedSenderDomains {
+				if domain == strings.ToLower(allowedDomain) {
+					allowed = true
+					break
+				}
+			}
+
+			if !allowed {
+				return &plugin.PluginResult{
+					Action:  plugin.ActionReject,
+					Message: fmt.Sprintf("550 5.7.1 Sender domain %s not allowed", domain),
+				}, nil
+			}
 		}
 	}
 
-	if !allowed {
-		return &plugin.Result{
-			Action:  plugin.ActionReject,
-			Message: fmt.Sprintf("Sender domain %s is not allowed", senderDomain),
-		}, nil
-	}
-
-	return &plugin.Result{
+	return &plugin.PluginResult{
 		Action:  plugin.ActionContinue,
-		Message: "Sender accepted",
+		Message: "",
 	}, nil
 }
 
-// OnRcptTo is called when a client issues a RCPT TO command
-func (p *ExamplePolicyPlugin) OnRcptTo(ctx *plugin.Context) (*plugin.Result, error) {
-	session := ctx.Session
-	envelope := session.Envelope
-
-	// Check if we've exceeded the maximum recipients per message
-	if len(envelope.RcptTo) >= p.config.MaxRecipientsPerMessage {
-		return &plugin.Result{
-			Action:  plugin.ActionReject,
-			Message: fmt.Sprintf("Maximum recipients per message (%d) exceeded", p.config.MaxRecipientsPerMessage),
+// onRcptTo handles the RCPT TO stage
+func (p *ExamplePolicyPlugin) onRcptTo(ctx map[string]interface{}) (*plugin.PluginResult, error) {
+	// Get the recipient address
+	toVal, ok := ctx["rcpt_to"]
+	if !ok {
+		return &plugin.PluginResult{
+			Action:  plugin.ActionContinue,
+			Message: "",
 		}, nil
 	}
 
-	// Extract domain from recipient
-	rcptTo := ctx.RcptTo
-	parts := strings.Split(rcptTo.Address, "@")
-	if len(parts) != 2 {
-		return &plugin.Result{
-			Action:  plugin.ActionReject,
-			Message: "Invalid recipient address format",
+	to, ok := toVal.(string)
+	if !ok {
+		return &plugin.PluginResult{
+			Action:  plugin.ActionContinue,
+			Message: "",
 		}, nil
 	}
-
-	recipientDomain := strings.ToLower(parts[1])
 
 	// Check if recipient domain is blocked
-	for _, domain := range p.config.BlockedRecipientDomains {
-		if recipientDomain == domain || strings.HasSuffix(recipientDomain, "."+domain) {
-			return &plugin.Result{
-				Action:  plugin.ActionReject,
-				Message: fmt.Sprintf("Recipient domain %s is blocked", recipientDomain),
-			}, nil
+	parts := strings.Split(to, "@")
+	if len(parts) == 2 {
+		domain := strings.ToLower(parts[1])
+
+		// Check blocked domains
+		for _, blockedDomain := range p.config.BlockedRecipientDomains {
+			if domain == strings.ToLower(blockedDomain) {
+				return &plugin.PluginResult{
+					Action:  plugin.ActionReject,
+					Message: fmt.Sprintf("550 5.7.1 Recipient domain %s is blocked", domain),
+				}, nil
+			}
+		}
+
+		// Check relay permissions
+		if !p.isLocalDomain(domain) {
+			// This is a relay attempt, check if allowed
+			allowed := false
+
+			for _, allowedDomain := range p.config.AllowedRelayDomains {
+				if domain == strings.ToLower(allowedDomain) {
+					allowed = true
+					break
+				}
+			}
+
+			if !allowed {
+				return &plugin.PluginResult{
+					Action:  plugin.ActionReject,
+					Message: fmt.Sprintf("550 5.7.1 Relay to domain %s not allowed", domain),
+				}, nil
+			}
 		}
 	}
 
-	// Check if we're allowed to relay to this domain
-	if !session.IsAuthenticated {
-		// For unauthenticated sessions, check if the domain is in our allowed relay domains
-		if _, ok := p.allowedDomains[recipientDomain]; !ok {
-			return &plugin.Result{
-				Action:  plugin.ActionReject,
-				Message: "Relay access denied",
-			}, nil
+	// Check recipient count
+	rcptCountVal, ok := ctx["rcpt_count"]
+	if ok {
+		if rcptCount, ok := rcptCountVal.(int); ok {
+			if rcptCount > p.config.MaxRecipientsPerMessage {
+				return &plugin.PluginResult{
+					Action:  plugin.ActionReject,
+					Message: fmt.Sprintf("550 5.5.3 Too many recipients, maximum is %d", p.config.MaxRecipientsPerMessage),
+				}, nil
+			}
 		}
 	}
 
-	return &plugin.Result{
+	return &plugin.PluginResult{
 		Action:  plugin.ActionContinue,
-		Message: "Recipient accepted",
+		Message: "",
 	}, nil
 }
 
-// OnData is called when a client sends message data
-func (p *ExamplePolicyPlugin) OnData(ctx *plugin.Context) (*plugin.Result, error) {
-	// This is where you could implement content-based policies
-	// For example, checking message size, scanning for keywords, etc.
+// onData handles the DATA stage
+func (p *ExamplePolicyPlugin) onData(ctx map[string]interface{}) (*plugin.PluginResult, error) {
+	// In a real implementation, this would check message content
+	// For example, scanning for spam, viruses, or other policy violations
 
-	// For this example, we'll just accept all messages
-	return &plugin.Result{
+	return &plugin.PluginResult{
 		Action:  plugin.ActionContinue,
-		Message: "Message accepted",
+		Message: "",
 	}, nil
 }
 
-// Helper method to check and update rate limits
+// isLocalDomain checks if a domain is local to this server
+func (p *ExamplePolicyPlugin) isLocalDomain(domain string) bool {
+	// In a real implementation, this would check if the domain is local
+	// For this example, we'll just return false
+	return false
+}
+
+// checkRateLimit checks if an IP has exceeded its rate limit
 func (p *ExamplePolicyPlugin) checkRateLimit(ip string) bool {
 	now := time.Now()
 
 	// Get or create rate limit info for this IP
-	info, exists := p.rateLimits[ip]
-	if !exists {
+	info, ok := p.rateLimits[ip]
+	if !ok {
 		info = &RateLimitInfo{
 			MessageCount: 0,
 			WindowStart:  now,
@@ -245,24 +347,22 @@ func (p *ExamplePolicyPlugin) checkRateLimit(ip string) bool {
 		p.rateLimits[ip] = info
 	}
 
-	// Check if we need to reset the window
+	// Check if the window has expired
 	if now.Sub(info.WindowStart) > time.Minute {
-		info.MessageCount = 0
+		// Reset the window
+		info.MessageCount = 1
 		info.WindowStart = now
+		return true
 	}
 
-	// Check if rate limit is exceeded
-	if info.MessageCount >= p.config.MaxMessagesPerMinute {
-		return false
-	}
-
-	// Increment message count
+	// Increment the message count
 	info.MessageCount++
-	return true
+
+	// Check if the rate limit has been exceeded
+	return info.MessageCount <= p.config.MaxMessagesPerMinute
 }
 
-// Create a new instance of the plugin
-var PolicyPlugin = NewExamplePolicyPlugin()
-
-// Export the plugin
-func main() {}
+// main is required for Go plugins
+func main() {
+	// This function is not used but is required for Go plugins
+}

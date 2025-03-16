@@ -20,6 +20,7 @@ const (
 	PluginTypeDKIM       = "dkim"       // DKIM signing/verification
 	PluginTypeSPF        = "spf"        // SPF verification
 	PluginTypeDMARC      = "dmarc"      // DMARC verification
+	PluginTypeARC        = "arc"        // ARC signing/verification
 	PluginTypeRateLimit  = "ratelimit"  // Rate limiting
 	PluginTypeGreylist   = "greylist"   // Greylisting
 	PluginTypeReputation = "reputation" // IP/domain reputation
