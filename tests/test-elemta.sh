@@ -26,6 +26,26 @@ check_result() {
   fi
 }
 
+# Function to check if monitoring is enabled
+check_monitoring() {
+  # Check if docker-compose-monitoring.yml exists
+  if [ ! -f "docker-compose-monitoring.yml" ]; then
+    echo -e "${YELLOW}Monitoring stack not found. Skipping monitoring tests.${NC}"
+    return 1
+  fi
+  
+  # Check if monitoring containers are running
+  GRAFANA_RUNNING=$(docker ps -q -f name=elemta_grafana)
+  PROMETHEUS_RUNNING=$(docker ps -q -f name=prometheus)
+  
+  if [ -z "$GRAFANA_RUNNING" ] || [ -z "$PROMETHEUS_RUNNING" ]; then
+    echo -e "${YELLOW}Monitoring stack not running. Skipping monitoring tests.${NC}"
+    return 1
+  fi
+  
+  return 0
+}
+
 # Main test function
 run_tests() {
   print_header "Testing Elemta Email Platform"
@@ -99,12 +119,74 @@ run_tests() {
     echo -e "${RED}✗ Rspamd web interface not accessible${NC}"
   fi
   
+  # Test monitoring stack if available
+  print_header "Testing Monitoring Stack"
+  
+  if check_monitoring; then
+    echo "Monitoring stack is available. Testing components..."
+    
+    # Test Grafana
+    echo "Testing Grafana on localhost:3000..."
+    GRAFANA_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000)
+    
+    if [[ "$GRAFANA_TEST" == "200" || "$GRAFANA_TEST" == "302" ]]; then
+      echo -e "${GREEN}✓ Grafana web interface accessible${NC}"
+      echo "Grafana is running at http://localhost:3000 (default credentials: admin/elemta123)"
+    else
+      echo -e "${RED}✗ Grafana web interface not accessible${NC}"
+    fi
+    
+    # Test Prometheus
+    echo "Testing Prometheus on localhost:9090..."
+    PROMETHEUS_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9090)
+    
+    if [[ "$PROMETHEUS_TEST" == "200" ]]; then
+      echo -e "${GREEN}✓ Prometheus web interface accessible${NC}"
+      echo "Prometheus is running at http://localhost:9090"
+    else
+      echo -e "${RED}✗ Prometheus web interface not accessible${NC}"
+    fi
+    
+    # Test AlertManager
+    echo "Testing AlertManager on localhost:9093..."
+    ALERTMANAGER_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9093)
+    
+    if [[ "$ALERTMANAGER_TEST" == "200" ]]; then
+      echo -e "${GREEN}✓ AlertManager web interface accessible${NC}"
+      echo "AlertManager is running at http://localhost:9093"
+    else
+      echo -e "${RED}✗ AlertManager web interface not accessible${NC}"
+    fi
+    
+    # Check if Grafana can connect to Prometheus
+    echo "Checking Grafana datasource connection to Prometheus..."
+    # This requires the Grafana API, which needs authentication
+    # For simplicity, we'll just check if Prometheus is accessible from Grafana container
+    DATASOURCE_TEST=$(docker exec elemta_grafana curl -s http://prometheus:9090/api/v1/status/buildinfo)
+    
+    if [[ -n "$DATASOURCE_TEST" && "$DATASOURCE_TEST" == *"version"* ]]; then
+      echo -e "${GREEN}✓ Grafana can connect to Prometheus${NC}"
+    else
+      echo -e "${RED}✗ Grafana may not be able to connect to Prometheus${NC}"
+    fi
+  else
+    echo "Monitoring stack tests skipped."
+  fi
+  
   # Summary
   print_header "Test Summary"
   echo -e "${YELLOW}Basic connectivity tests completed.${NC}"
   echo "SMTP service: localhost:2525"
   echo "Metrics endpoint: http://localhost:8080/metrics"
   echo "Rspamd web interface: http://localhost:11334"
+  
+  if check_monitoring; then
+    echo -e "\n${YELLOW}Monitoring stack:${NC}"
+    echo "Grafana: http://localhost:3000"
+    echo "Prometheus: http://localhost:9090"
+    echo "AlertManager: http://localhost:9093"
+  fi
+  
   echo -e "\n${YELLOW}Note:${NC} Some tests may have failed due to networking or configuration issues."
 }
 

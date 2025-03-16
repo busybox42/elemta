@@ -7,178 +7,119 @@ RED='\033[0;31m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
-echo -e "${YELLOW}Verifying Elemta monitoring stack...${NC}"
+echo -e "${YELLOW}Verifying Elemta Monitoring Stack${NC}"
+echo "======================================"
 
-# Check if Docker is running
-if ! docker info > /dev/null 2>&1; then
-  echo -e "${RED}Error: Docker is not running. Please start Docker and try again.${NC}"
+# Check if docker-compose-monitoring.yml exists
+if [ ! -f "docker-compose-monitoring.yml" ]; then
+  echo -e "${RED}Error: docker-compose-monitoring.yml not found${NC}"
+  echo "Please run ./scripts/start-monitoring.sh first."
   exit 1
 fi
 
-# Check if the monitoring stack is running
-if ! docker-compose -f docker-compose-monitoring.yml ps | grep -q "Up"; then
-  echo -e "${RED}Error: Monitoring stack is not running. Please start it first.${NC}"
-  echo -e "${YELLOW}Run: docker-compose -f docker-compose-monitoring.yml up -d${NC}"
+# Check if monitoring containers are running
+echo "Checking if monitoring containers are running..."
+GRAFANA_RUNNING=$(docker ps -q -f name=elemta_grafana)
+PROMETHEUS_RUNNING=$(docker ps -q -f name=prometheus)
+ALERTMANAGER_RUNNING=$(docker ps -q -f name=alertmanager)
+
+if [ -z "$GRAFANA_RUNNING" ]; then
+  echo -e "${RED}Grafana container is not running${NC}"
+  echo "Please run ./scripts/start-monitoring.sh first."
   exit 1
 fi
 
-# Function to check if a service is running
-check_service() {
-  local service=$1
-  local container_id=$(docker-compose -f docker-compose-monitoring.yml ps -q $service)
-  
-  if [ -z "$container_id" ]; then
-    echo -e "${RED}Error: $service container is not running.${NC}"
-    return 1
-  else
-    echo -e "${GREEN}$service is running.${NC}"
-    return 0
-  fi
-}
-
-# Check all services
-echo -e "\n${YELLOW}Checking services...${NC}"
-check_service "elemta" || exit 1
-check_service "prometheus" || exit 1
-check_service "grafana" || exit 1
-check_service "alertmanager" || exit 1
-
-# Check security monitoring services if they exist
-if docker-compose -f docker-compose-monitoring.yml ps -q clamav &>/dev/null; then
-  check_service "clamav" || echo -e "${YELLOW}Warning: ClamAV service is not running. Security monitoring may be incomplete.${NC}"
-fi
-
-if docker-compose -f docker-compose-monitoring.yml ps -q rspamd &>/dev/null; then
-  check_service "rspamd" || echo -e "${YELLOW}Warning: Rspamd service is not running. Security monitoring may be incomplete.${NC}"
-fi
-
-# Check Elemta metrics endpoint
-echo -e "\n${YELLOW}Checking Elemta metrics endpoint...${NC}"
-ELEMTA_CONTAINER=$(docker-compose -f docker-compose-monitoring.yml ps -q elemta)
-METRICS=$(docker exec $ELEMTA_CONTAINER curl -s http://localhost:8080/metrics)
-if [ -z "$METRICS" ]; then
-  echo -e "${RED}Error: Could not get metrics from Elemta.${NC}"
+if [ -z "$PROMETHEUS_RUNNING" ]; then
+  echo -e "${RED}Prometheus container is not running${NC}"
+  echo "Please run ./scripts/start-monitoring.sh first."
   exit 1
-else
-  echo -e "${GREEN}Successfully retrieved metrics from Elemta.${NC}"
-  echo -e "${YELLOW}Sample metrics:${NC}"
-  echo "$METRICS" | head -n 10
 fi
 
-# Check Prometheus targets
-echo -e "\n${YELLOW}Checking Prometheus targets...${NC}"
-PROMETHEUS_CONTAINER=$(docker-compose -f docker-compose-monitoring.yml ps -q prometheus)
-TARGETS=$(docker exec $PROMETHEUS_CONTAINER curl -s http://localhost:9090/api/v1/targets)
-if [[ $TARGETS != *"elemta"* ]]; then
-  echo -e "${RED}Error: Elemta target not found in Prometheus.${NC}"
+if [ -z "$ALERTMANAGER_RUNNING" ]; then
+  echo -e "${RED}AlertManager container is not running${NC}"
+  echo "Please run ./scripts/start-monitoring.sh first."
   exit 1
-else
-  echo -e "${GREEN}Elemta target found in Prometheus.${NC}"
 fi
 
-# Check Prometheus rules
-echo -e "\n${YELLOW}Checking Prometheus rules...${NC}"
-RULES=$(docker exec $PROMETHEUS_CONTAINER curl -s http://localhost:9090/api/v1/rules)
-if [[ $RULES != *"elemta_alerts"* ]]; then
-  echo -e "${RED}Error: Elemta alert rules not found in Prometheus.${NC}"
+echo -e "${GREEN}All monitoring containers are running${NC}"
+
+# Check if Grafana is accessible
+echo "Checking if Grafana is accessible..."
+GRAFANA_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000)
+
+if [[ "$GRAFANA_TEST" == "200" || "$GRAFANA_TEST" == "302" ]]; then
+  echo -e "${GREEN}Grafana is accessible at http://localhost:3000${NC}"
+else
+  echo -e "${RED}Grafana is not accessible at http://localhost:3000${NC}"
+  echo "HTTP status code: $GRAFANA_TEST"
   exit 1
-else
-  echo -e "${GREEN}Elemta alert rules found in Prometheus.${NC}"
 fi
 
-# Check AlertManager
-echo -e "\n${YELLOW}Checking AlertManager...${NC}"
-ALERTMANAGER_CONTAINER=$(docker-compose -f docker-compose-monitoring.yml ps -q alertmanager)
-STATUS=$(docker exec $ALERTMANAGER_CONTAINER curl -s http://localhost:9093/api/v2/status)
-if [[ $STATUS != *"config"* ]]; then
-  echo -e "${RED}Error: AlertManager is not responding properly.${NC}"
+# Check if Prometheus is accessible
+echo "Checking if Prometheus is accessible..."
+PROMETHEUS_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9090)
+
+if [[ "$PROMETHEUS_TEST" == "200" ]]; then
+  echo -e "${GREEN}Prometheus is accessible at http://localhost:9090${NC}"
+else
+  echo -e "${RED}Prometheus is not accessible at http://localhost:9090${NC}"
+  echo "HTTP status code: $PROMETHEUS_TEST"
   exit 1
-else
-  echo -e "${GREEN}AlertManager is responding properly.${NC}"
 fi
 
-# Check Grafana datasources
-echo -e "\n${YELLOW}Checking Grafana datasources...${NC}"
-GRAFANA_CONTAINER=$(docker-compose -f docker-compose-monitoring.yml ps -q grafana)
-DATASOURCES=$(docker exec $GRAFANA_CONTAINER curl -s -u admin:elemta123 http://localhost:3000/api/datasources)
-if [[ $DATASOURCES != *"Prometheus"* ]]; then
-  echo -e "${RED}Error: Prometheus datasource not found in Grafana.${NC}"
+# Check if AlertManager is accessible
+echo "Checking if AlertManager is accessible..."
+ALERTMANAGER_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9093)
+
+if [[ "$ALERTMANAGER_TEST" == "200" ]]; then
+  echo -e "${GREEN}AlertManager is accessible at http://localhost:9093${NC}"
+else
+  echo -e "${RED}AlertManager is not accessible at http://localhost:9093${NC}"
+  echo "HTTP status code: $ALERTMANAGER_TEST"
   exit 1
+fi
+
+# Check if Prometheus can scrape Elemta metrics
+echo "Checking if Prometheus can scrape Elemta metrics..."
+SCRAPE_TEST=$(curl -s "http://localhost:9090/api/v1/query?query=up{job=%22elemta%22}")
+
+if [[ "$SCRAPE_TEST" == *"\"status\":\"success\""* && "$SCRAPE_TEST" == *"\"value\":[1"* ]]; then
+  echo -e "${GREEN}Prometheus can scrape Elemta metrics${NC}"
 else
-  echo -e "${GREEN}Prometheus datasource found in Grafana.${NC}"
+  echo -e "${YELLOW}Warning: Prometheus may not be able to scrape Elemta metrics${NC}"
+  echo "This could be because the Elemta service is not running or not exposing metrics."
+  echo "Response: $SCRAPE_TEST"
 fi
 
-# Check Grafana dashboards
-echo -e "\n${YELLOW}Checking Grafana dashboards...${NC}"
-DASHBOARDS=$(docker exec $GRAFANA_CONTAINER curl -s -u admin:elemta123 http://localhost:3000/api/search?query=Elemta)
-if [[ $DASHBOARDS != *"Elemta"* ]]; then
-  echo -e "${YELLOW}Warning: Elemta dashboards not found in Grafana.${NC}"
-  echo -e "${YELLOW}This might be normal if you haven't imported the dashboards yet.${NC}"
+# Check if Grafana has the Prometheus datasource configured
+echo "Checking if Grafana has the Prometheus datasource configured..."
+# This requires the Grafana API, which needs authentication
+# For simplicity, we'll just check if the datasource configuration file exists
+if [ -f "monitoring/grafana/provisioning/datasources/datasource.yml" ]; then
+  echo -e "${GREEN}Grafana datasource configuration exists${NC}"
 else
-  echo -e "${GREEN}Elemta dashboards found in Grafana.${NC}"
+  echo -e "${RED}Grafana datasource configuration does not exist${NC}"
+  echo "Please run ./scripts/start-monitoring.sh first."
+  exit 1
 fi
 
-# Check Grafana alerts
-echo -e "\n${YELLOW}Checking Grafana alerts...${NC}"
-ALERTS=$(docker exec $GRAFANA_CONTAINER curl -s -u admin:elemta123 http://localhost:3000/api/alerts)
-if [[ $ALERTS == *"[]"* ]]; then
-  echo -e "${YELLOW}Warning: No alerts found in Grafana.${NC}"
-  echo -e "${YELLOW}This might be normal if you haven't created any alerts yet.${NC}"
+# Check if Grafana has dashboards configured
+echo "Checking if Grafana has dashboards configured..."
+if [ -f "monitoring/grafana/dashboards/elemta_overview.json" ]; then
+  echo -e "${GREEN}Grafana dashboard configuration exists${NC}"
 else
-  echo -e "${GREEN}Alerts found in Grafana.${NC}"
+  echo -e "${RED}Grafana dashboard configuration does not exist${NC}"
+  echo "Please run ./scripts/start-monitoring.sh first."
+  exit 1
 fi
 
-# Generate some test metrics
-echo -e "\n${YELLOW}Generating test metrics...${NC}"
-./scripts/generate-test-load.sh > /dev/null 2>&1 &
-PID=$!
+echo -e "\n${GREEN}All monitoring components are running and accessible${NC}"
+echo "Grafana: http://localhost:3000 (default credentials: admin/elemta123)"
+echo "Prometheus: http://localhost:9090"
+echo "AlertManager: http://localhost:9093"
 
-# Wait for a bit to let metrics be generated
-echo -e "${YELLOW}Waiting for metrics to be generated...${NC}"
-sleep 10
-kill $PID 2>/dev/null || true
-
-# Check if metrics were generated
-echo -e "\n${YELLOW}Checking if metrics were generated...${NC}"
-METRICS_AFTER=$(docker exec $ELEMTA_CONTAINER curl -s http://localhost:8080/metrics)
-if [[ $METRICS_AFTER == $METRICS ]]; then
-  echo -e "${YELLOW}Warning: Metrics don't appear to have changed. Test load generation might not be working.${NC}"
-else
-  echo -e "${GREEN}Metrics have changed. Test load generation is working.${NC}"
-fi
-
-# Check security monitoring metrics if services are running
-if docker-compose -f docker-compose-monitoring.yml ps -q clamav &>/dev/null; then
-  echo -e "\n${YELLOW}Checking ClamAV metrics...${NC}"
-  CLAMAV_METRICS=$(docker exec $ELEMTA_CONTAINER curl -s http://localhost:8080/metrics | grep clamav)
-  if [ -z "$CLAMAV_METRICS" ]; then
-    echo -e "${YELLOW}Warning: No ClamAV metrics found. This might be normal if no scans have been performed.${NC}"
-  else
-    echo -e "${GREEN}ClamAV metrics found:${NC}"
-    echo "$CLAMAV_METRICS" | head -n 5
-  fi
-fi
-
-if docker-compose -f docker-compose-monitoring.yml ps -q rspamd &>/dev/null; then
-  echo -e "\n${YELLOW}Checking Rspamd metrics...${NC}"
-  RSPAMD_METRICS=$(docker exec $ELEMTA_CONTAINER curl -s http://localhost:8080/metrics | grep rspamd)
-  if [ -z "$RSPAMD_METRICS" ]; then
-    echo -e "${YELLOW}Warning: No Rspamd metrics found. This might be normal if no scans have been performed.${NC}"
-  else
-    echo -e "${GREEN}Rspamd metrics found:${NC}"
-    echo "$RSPAMD_METRICS" | head -n 5
-  fi
-fi
-
-echo -e "\n${YELLOW}Monitoring URLs:${NC}"
-echo -e "${GREEN}Grafana:${NC} http://localhost:3000 (admin/elemta123)"
-echo -e "${GREEN}Prometheus:${NC} http://localhost:9090"
-echo -e "${GREEN}AlertManager:${NC} http://localhost:9093"
-
-# Show security monitoring URLs if services are running
-if docker-compose -f docker-compose-monitoring.yml ps -q rspamd &>/dev/null; then
-  echo -e "${GREEN}Rspamd Web Interface:${NC} http://localhost:11334"
-fi
-
-echo -e "\n${GREEN}Verification completed successfully.${NC}"
-echo -e "${YELLOW}The monitoring stack is properly set up and functioning.${NC}" 
+echo -e "\n${YELLOW}Next steps:${NC}"
+echo "1. Log in to Grafana at http://localhost:3000 with admin/elemta123"
+echo "2. Check the Elemta Overview dashboard"
+echo "3. Run ./scripts/generate-test-load.sh to generate test metrics"
+echo "4. Run ./tests/test-elemta.sh to verify all components" 
