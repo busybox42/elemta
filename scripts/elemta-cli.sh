@@ -2,29 +2,23 @@
 
 # Script to run Elemta CLI commands in Docker
 
-# Check if the elemta-cli container is running
-if ! docker ps | grep -q elemta-cli; then
-    echo "The elemta-cli container is not running."
+# Check if the elemta_node0 container is running
+if ! docker ps | grep -q "elemta_node0.*"; then
+    echo "The elemta_node0 container is not running."
     echo "Starting it now..."
     
     # Check if the container exists but is stopped
-    if docker ps -a | grep -q elemta-cli; then
-        docker start elemta-cli
+    if docker ps -a | grep -q elemta_node0; then
+        docker start elemta_node0
     else
-        # Check if the image exists
-        if ! docker images | grep -q elemta-cli; then
-            echo "Building the elemta-cli image..."
-            docker-compose -f docker-compose-cli.yml build
-        fi
-        
-        echo "Starting the elemta-cli container..."
-        docker run -d --name elemta-cli --network elemta_elemta_network -p 2526:25 -p 5871:587 -p 8083:8080 elemta-cli
+        echo "The elemta_node0 container doesn't exist. Please run docker-compose up -d first."
+        exit 1
     fi
     
-    # Wait for the container to be healthy
+    # Wait for the container to be ready
     echo "Waiting for the container to be ready..."
     for i in {1..10}; do
-        if docker ps | grep -q "elemta-cli.*healthy"; then
+        if docker ps | grep -q "elemta_node0"; then
             break
         fi
         echo "Waiting... ($i/10)"
@@ -32,11 +26,5 @@ if ! docker ps | grep -q elemta-cli; then
     done
 fi
 
-# Run the command
-if [ "$1" == "queue" ]; then
-    # Use elemta-queue for queue commands
-    docker exec -it elemta-cli /app/elemta-queue -config /app/config/elemta.toml "${@:2}"
-else
-    # Use elemta for other commands
-    docker exec -it elemta-cli /app/elemta "$@"
-fi 
+# Run the command directly using the elemta binary
+docker exec -it elemta_node0 /app/elemta "$@" 

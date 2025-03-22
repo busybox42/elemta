@@ -57,6 +57,9 @@ type Config struct {
 
 	// Metrics configuration
 	Metrics *MetricsConfig `toml:"metrics" json:"metrics"`
+
+	// API server configuration
+	API *APIConfig `toml:"api" json:"api"`
 }
 
 // MetricsConfig represents the configuration for metrics collection
@@ -172,6 +175,12 @@ type PluginConfig struct {
 	Enabled    bool     `json:"enabled"`
 	PluginPath string   `json:"plugin_path"`
 	Plugins    []string `json:"plugins"`
+}
+
+// APIConfig represents the configuration for the API server
+type APIConfig struct {
+	Enabled    bool   `toml:"enabled" json:"enabled"`         // Whether API server is enabled
+	ListenAddr string `toml:"listen_addr" json:"listen_addr"` // Address to listen on for API server
 }
 
 func findConfigFile(configPath string) (string, error) {
@@ -442,6 +451,10 @@ func DefaultConfig() *Config {
 		Metrics: &MetricsConfig{
 			Enabled:    false,
 			ListenAddr: ":8080",
+		},
+		API: &APIConfig{
+			Enabled:    false,
+			ListenAddr: ":8081",
 		},
 	}
 }

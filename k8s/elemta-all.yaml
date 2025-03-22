@@ -142,22 +142,22 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: elemta
+  name: elemta-node
   labels:
-    app: elemta
+    app: elemta-node
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: elemta
+      app: elemta-node
   template:
     metadata:
       labels:
-        app: elemta
+        app: elemta-node
     spec:
       containers:
       - name: elemta
-        image: elemta:latest
+        image: elemta_node:latest
         imagePullPolicy: Never
         command: ["/bin/sh", "-c"]
         args:
@@ -203,6 +203,10 @@ spec:
           value: "/app/config/elemta.conf"
         - name: DEBUG
           value: "true"
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         livenessProbe:
           tcpSocket:
             port: 25
@@ -326,7 +330,7 @@ kind: Service
 metadata:
   name: elemta
   labels:
-    app: elemta
+    app: elemta-node
 spec:
   type: NodePort
   ports:
@@ -336,7 +340,7 @@ spec:
     protocol: TCP
     name: smtp
   selector:
-    app: elemta
+    app: elemta-node
 ---
 apiVersion: v1
 kind: Service

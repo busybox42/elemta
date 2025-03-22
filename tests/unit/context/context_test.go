@@ -1,10 +1,10 @@
-package context_test
+package context
 
 import (
 	"testing"
 	"time"
 
-	"github.com/elemta/elemta/internal/context"
+	"github.com/busybox42/elemta/internal/context"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourusername/elemta/internal/plugin"
-	"github.com/yourusername/elemta/plugins"
+	"github.com/busybox42/elemta/internal/plugin"
+	"github.com/busybox42/elemta/plugins"
 )
 
 func TestGreylistPlugin(t *testing.T) {

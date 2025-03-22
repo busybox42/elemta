@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to check the queue format and structure
+# Script to check the format and structure of the queue directory
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -16,72 +16,47 @@ print_header() {
   echo -e "${BLUE}======================================${NC}"
 }
 
-# Check if the elemta-cli container is running
-if ! docker ps | grep -q elemta-cli; then
-    echo -e "${RED}Error: elemta-cli container is not running.${NC}"
-    echo "Please start the container first."
+# Check if the elemta container is running
+if ! docker ps | grep -q "elemta.*healthy"; then
+    echo -e "${RED}Error: elemta container is not running.${NC}"
+    echo "Please start the container with 'docker-compose up -d' first."
     exit 1
 fi
 
-print_header "Checking Queue Directory Structure"
+# Check the queue directory structure
+print_header "Queue Directory Structure"
+docker exec elemta ls -la /app/queue
 
-# Check queue directory structure
-echo -e "${YELLOW}Queue directory structure:${NC}"
-docker exec elemta-cli ls -la /app/queue
-
-# Check queue subdirectories
+# Check the contents of each queue subdirectory
 for dir in active deferred held failed data; do
-    echo -e "\n${YELLOW}Contents of /app/queue/$dir:${NC}"
-    docker exec elemta-cli ls -la /app/queue/$dir 2>/dev/null || echo "Directory does not exist"
+    print_header "Contents of $dir queue"
+    docker exec elemta ls -la /app/queue/$dir 2>/dev/null || echo "Directory does not exist"
 done
 
-print_header "Checking Queue Files Format"
-
-# Check a sample file from each queue type
+# Sample a queue entry if available
+print_header "Sample Queue Entry"
 for dir in active deferred held failed; do
-    echo -e "\n${YELLOW}Sample file from $dir queue:${NC}"
-    SAMPLE_FILE=$(docker exec elemta-cli ls -1 /app/queue/$dir 2>/dev/null | head -n 1)
-    
-    if [ -n "$SAMPLE_FILE" ]; then
-        echo "File: $SAMPLE_FILE"
-        echo -e "${YELLOW}File content:${NC}"
-        docker exec elemta-cli cat /app/queue/$dir/$SAMPLE_FILE
+    SAMPLE_FILE=$(docker exec elemta ls -1 /app/queue/$dir 2>/dev/null | head -n 1)
+    if [ ! -z "$SAMPLE_FILE" ]; then
+        echo -e "${GREEN}Found sample file in $dir queue: $SAMPLE_FILE${NC}"
+        echo -e "${YELLOW}Contents:${NC}"
+        docker exec elemta cat /app/queue/$dir/$SAMPLE_FILE
         
-        # If it's a metadata file, check the corresponding data file
-        if [[ "$SAMPLE_FILE" == *.meta ]]; then
-            MSG_ID=$(echo "$SAMPLE_FILE" | sed 's/\.meta$//')
-            echo -e "\n${YELLOW}Corresponding data file:${NC}"
-            docker exec elemta-cli ls -la /app/queue/data/$MSG_ID.eml 2>/dev/null || echo "Data file does not exist"
-        fi
-    else
-        echo "No files found in $dir queue"
+        # Check corresponding data file
+        MSG_ID="${SAMPLE_FILE%.json}"
+        echo -e "\n${GREEN}Checking data file for $MSG_ID${NC}"
+        docker exec elemta ls -la /app/queue/data/$MSG_ID.eml 2>/dev/null || echo "Data file does not exist"
+        break
     fi
 done
 
-print_header "Checking Queue Configuration"
-
 # Check queue configuration
-echo -e "${YELLOW}Queue configuration in elemta.toml:${NC}"
-docker exec elemta-cli cat /app/config/elemta.toml | grep -i queue
+print_header "Queue Configuration"
+echo -e "${GREEN}Queue configuration in elemta.toml:${NC}"
+docker exec elemta cat /app/config/elemta.toml | grep -i queue
 
-print_header "Checking Queue Command"
+# Check queue command help
+print_header "Queue Command Help"
+docker exec elemta /app/elemta queue --help
 
-# Check queue command
-echo -e "${YELLOW}Queue command help:${NC}"
-docker exec elemta-cli /app/elemta-queue --help
-
-print_header "Queue Statistics"
-
-# Check queue statistics
-echo -e "${YELLOW}Queue statistics:${NC}"
-./scripts/elemta-cli.sh queue -config /app/config/elemta.toml stats
-
-print_header "Queue Check Complete"
-
-echo -e "${GREEN}Queue check complete!${NC}"
-echo "If you're having issues with the queue, check the following:"
-echo "1. Make sure the queue directory structure is correct"
-echo "2. Make sure the queue files have the correct format"
-echo "3. Make sure the queue configuration is correct"
-echo "4. Try clearing the queue and creating new messages"
-echo "5. Check the logs for any errors" 
+echo -e "\n${GREEN}Queue check complete!${NC}" 

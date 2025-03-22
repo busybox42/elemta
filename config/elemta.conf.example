@@ -1,0 +1,36 @@
+# Elemta MTA Configuration Example
+
+# Server configuration
+server:
+  # Hostname to identify this server
+  hostname: mail.example.com
+  
+  # Network address to listen on
+  listen: :25
+  
+  # TLS configuration
+  tls: false
+  cert_file: /etc/elemta/certs/example.com.crt
+  key_file: /etc/elemta/certs/example.com.key
+
+# Queue directory
+queue_dir: /app/queue
+
+# Logging configuration
+logging:
+  level: info
+  format: text
+  file: /app/logs/elemta.log
+
+# Plugins configuration
+plugins:
+  directory: /app/plugins
+  enabled:
+    - greylisting
+    - spf
+    - dkim
+
+# Authentication configuration
+authentication:
+  required: false
+  type: none 

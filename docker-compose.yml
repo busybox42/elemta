@@ -2,22 +2,29 @@ version: '3.8'
 
 services:
   elemta:
+    image: elemta_node:latest
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: elemta
+    container_name: elemta_node0
     restart: unless-stopped
     ports:
-      - "2525:25"
-      - "8081:8080"
+      - "2525:2525"
+      - "8080:8080"  # Metrics port
+      # API server port handled by elemta-api service
     volumes:
       - elemta_queue:/app/queue
       - elemta_logs:/app/logs
-      - elemta_config:/app/config
       - elemta_plugins:/app/plugins
+      - ./config/elemta.toml:/app/config/elemta.conf
+      - ./scripts/api_server.py:/app/api_server.py
     environment:
       - TZ=UTC
       - DEBUG=true
+      - NODE_ID=0
+      - TEST_MODE=true
+      - ELEMTA_CONFIG_PATH=/app/config/elemta.conf
+      - API_PORT=8081
     tty: true
     stdin_open: true
     init: true
@@ -29,9 +36,32 @@ services:
       start_period: 5s
     networks:
       - elemta_network
+      - monitoring_network
     depends_on:
       - elemta-clamav
       - elemta-rspamd
+      - elemta-api
+
+  elemta-api:
+    image: python:3.9-slim
+    container_name: elemta_api
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./scripts/api_server.py:/app/api_server.py
+      - elemta_queue:/app/queue:ro
+    environment:
+      - API_PORT=8081
+    command: python3 /app/api_server.py
+    networks:
+      - elemta_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/api/queue/stats"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   elemta-clamav:
     image: clamav/clamav:latest
@@ -64,9 +94,78 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s
+      
+  # Monitoring services
+  elemta-metrics:
+    image: python:3.9-slim
+    container_name: elemta_metrics
+    ports:
+      - "8082:8080"  # Metrics endpoint
+    volumes:
+      - ./scripts/metrics_server.py:/app/metrics_server.py
+    command: python3 /app/metrics_server.py
+    networks:
+      - monitoring_network
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: elemta_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - monitoring_network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: elemta_grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=elemta123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - monitoring_network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: elemta_alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager:/etc/alertmanager
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - monitoring_network
+    restart: unless-stopped
+    depends_on:
+      - prometheus
 
 networks:
   elemta_network:
+    driver: bridge
+  monitoring_network:
     driver: bridge
 
 volumes:
@@ -74,11 +173,15 @@ volumes:
     driver: local
   elemta_logs:
     driver: local
-  elemta_config:
-    driver: local
   elemta_plugins:
     driver: local
   clamav_data:
     driver: local
   rspamd_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
     driver: local 

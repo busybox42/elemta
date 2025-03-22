@@ -19,21 +19,17 @@ print_header() {
 # Step 1: Undeploy any existing containers
 print_header "Undeploying existing containers"
 docker-compose down --remove-orphans || true
-docker stop elemta-cli || true
-docker rm elemta-cli || true
 docker network prune -f || true
 echo -e "${GREEN}Undeployment complete!${NC}"
 
-# Step 2: Build the Docker images
-print_header "Building Docker images"
+# Step 2: Build the Docker image
+print_header "Building Docker image"
 docker build -t elemta:latest .
-docker build -t elemta-cli:latest -f Dockerfile.cli .
 echo -e "${GREEN}Docker build complete!${NC}"
 
 # Step 3: Deploy with Docker Compose
 print_header "Deploying with Docker Compose"
 docker-compose up -d
-docker run -d --name elemta-cli --network elemta_elemta_network -p 2526:25 -p 5871:587 -p 8083:8080 elemta-cli:latest
 echo -e "${GREEN}Docker deployment complete!${NC}"
 
 # Step 4: Wait for containers to be ready
@@ -42,16 +38,6 @@ echo "Waiting for elemta container..."
 for i in {1..10}; do
   if docker ps | grep -q "elemta.*healthy"; then
     echo "Elemta container is ready!"
-    break
-  fi
-  echo "Waiting... ($i/10)"
-  sleep 3
-done
-
-echo "Waiting for elemta-cli container..."
-for i in {1..10}; do
-  if docker ps | grep -q "elemta-cli.*healthy"; then
-    echo "Elemta-cli container is ready!"
     break
   fi
   echo "Waiting... ($i/10)"

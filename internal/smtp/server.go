@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/busybox42/elemta/internal/api"
 	"github.com/busybox42/elemta/internal/plugin"
 )
 
@@ -22,6 +23,7 @@ type Server struct {
 	authenticator Authenticator
 	metrics       *Metrics
 	metricsServer *http.Server
+	apiServer     *api.Server
 }
 
 // NewServer creates a new SMTP server
@@ -123,6 +125,23 @@ func (s *Server) Start() error {
 		go s.updateQueueMetrics()
 	}
 
+	// Start API server if enabled
+	if s.config.API != nil && s.config.API.Enabled {
+		apiServer, err := api.NewServer(&api.Config{
+			Enabled:    s.config.API.Enabled,
+			ListenAddr: s.config.API.ListenAddr,
+		}, s.config.QueueDir)
+
+		if err != nil {
+			log.Printf("Warning: failed to create API server: %v", err)
+		} else {
+			s.apiServer = apiServer
+			if err := s.apiServer.Start(); err != nil {
+				log.Printf("Warning: failed to start API server: %v", err)
+			}
+		}
+	}
+
 	// Handle connections in a goroutine
 	go s.acceptConnections()
 
@@ -201,6 +220,13 @@ func (s *Server) Close() error {
 			if err := auth.Close(); err != nil {
 				log.Printf("Error closing authenticator: %v", err)
 			}
+		}
+	}
+
+	// Stop API server if running
+	if s.apiServer != nil {
+		if err := s.apiServer.Stop(); err != nil {
+			log.Printf("Error stopping API server: %v", err)
 		}
 	}
 
