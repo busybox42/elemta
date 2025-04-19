@@ -109,12 +109,13 @@ services:
     container_name: elemta-dovecot
     hostname: elemta-dovecot
     ports:
-      - "14143:1143"
-      - "2424:1024"
+      - "14143:14143"  # IMAP port
+      - "2424:2424"    # LMTP port
     command: >
       sh -c "apk add --no-cache dovecot dovecot-lmtpd netcat-openbsd &&
              adduser -D -h /var/mail -u 5000 vmail &&
-             mkdir -p /var/mail/recipient@example.com /var/mail/sender@example.com &&
+             mkdir -p /var/mail/recipient@example.com/{new,cur,tmp} &&
+             mkdir -p /var/mail/sender@example.com/{new,cur,tmp} &&
              chown -R vmail:vmail /var/mail &&
              chmod -R 700 /var/mail &&
              mkdir -p /etc/dovecot /var/log &&
@@ -126,13 +127,13 @@ services:
              echo 'service lmtp {' >> /etc/dovecot/dovecot.conf &&
              echo '  inet_listener lmtp {' >> /etc/dovecot/dovecot.conf &&
              echo '    address = 0.0.0.0' >> /etc/dovecot/dovecot.conf &&
-             echo '    port = 1024' >> /etc/dovecot/dovecot.conf &&
+             echo '    port = 2424' >> /etc/dovecot/dovecot.conf &&
              echo '  }' >> /etc/dovecot/dovecot.conf &&
              echo '}' >> /etc/dovecot/dovecot.conf &&
              echo 'service imap {' >> /etc/dovecot/dovecot.conf &&
              echo '  inet_listener imap {' >> /etc/dovecot/dovecot.conf &&
              echo '    address = 0.0.0.0' >> /etc/dovecot/dovecot.conf &&
-             echo '    port = 1143' >> /etc/dovecot/dovecot.conf &&
+             echo '    port = 14143' >> /etc/dovecot/dovecot.conf &&
              echo '  }' >> /etc/dovecot/dovecot.conf &&
              echo '}' >> /etc/dovecot/dovecot.conf &&
              echo 'passdb {' >> /etc/dovecot/dovecot.conf &&
@@ -152,12 +153,21 @@ services:
              echo 'auth_verbose = yes' >> /etc/dovecot/dovecot.conf &&
              echo 'recipient@example.com:{PLAIN}password:5000:5000::/var/mail/recipient@example.com::' > /etc/dovecot/passwd &&
              echo 'sender@example.com:{PLAIN}password:5000:5000::/var/mail/sender@example.com::' >> /etc/dovecot/passwd &&
+             echo 'Creating test message for testing...' &&
+             echo 'From: sender@example.com' > /var/mail/recipient@example.com/cur/test-message:2,S &&
+             echo 'To: recipient@example.com' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
+             echo 'Subject: Test Message' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
+             echo '' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
+             echo 'This is a test message.' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
+             chown vmail:vmail /var/mail/recipient@example.com/cur/test-message:2,S &&
+             chmod 600 /var/mail/recipient@example.com/cur/test-message:2,S &&
+             echo 'Starting Dovecot...' &&
              dovecot -F"
     networks:
       - elemta_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "1143"]
+      test: ["CMD", "nc", "-z", "localhost", "14143"]
       interval: 30s
       timeout: 10s
       retries: 3

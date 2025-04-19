@@ -28,7 +28,7 @@ listen_addr = "0.0.0.0:8081"
 [delivery]
 mode = "lmtp"  # Use LMTP protocol to deliver to Dovecot
 host = "elemta-dovecot"
-port = 1024
+port = 2424
 test_mode = true  # Enable test mode delivery
 default_domain = "example.com"  # Default domain for local delivery
 
