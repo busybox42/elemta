@@ -413,6 +413,9 @@ func (qm *QueueManager) Start() {
 // Stop halts queue processing
 func (qm *QueueManager) Stop() {
 	qm.running = false
+
+	// Give goroutines a moment to notice the running flag change
+	time.Sleep(200 * time.Millisecond)
 }
 
 // ensureQueueDirectories creates the necessary queue directories
@@ -555,19 +558,25 @@ func (qm *QueueManager) cleanupQueue() {
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 
-	for {
-		if !qm.running {
-			return
-		}
-
+	for qm.running {
 		select {
 		case <-ticker.C:
+			// Check if we should stop
+			if !qm.running {
+				return
+			}
+
 			qm.logger.Info("starting queue cleanup")
 
 			// Get all messages from all queues
 			var allMessages []*QueuedMessage
 
 			for _, qType := range []QueueType{QueueTypeActive, QueueTypeDeferred, QueueTypeHeld, QueueTypeFailed} {
+				// Check if we should stop
+				if !qm.running {
+					return
+				}
+
 				qDir := filepath.Join(qm.config.QueueDir, string(qType))
 				messages, err := qm.getQueuedMessagesFromDir(qDir)
 				if err != nil {
@@ -582,6 +591,11 @@ func (qm *QueueManager) cleanupQueue() {
 			now := time.Now()
 
 			for _, msg := range allMessages {
+				// Check if we should stop
+				if !qm.running {
+					return
+				}
+
 				// Skip messages in the failed queue
 				if msg.QueueType == QueueTypeFailed {
 					continue
@@ -614,6 +628,9 @@ func (qm *QueueManager) cleanupQueue() {
 			}
 
 			qm.logger.Info("queue cleanup completed")
+		default:
+			// Add a small sleep to prevent CPU spinning and allow for quick exit
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
@@ -1059,13 +1076,14 @@ func (qm *QueueManager) processActiveQueue() {
 	ticker := time.NewTicker(time.Second * 1)
 	defer ticker.Stop()
 
-	for {
-		if !qm.running {
-			return
-		}
-
+	for qm.running {
 		select {
 		case <-ticker.C:
+			// Check if we should stop
+			if !qm.running {
+				return
+			}
+
 			// Get messages from active queue
 			activeQueue := filepath.Join(qm.config.QueueDir, string(QueueTypeActive))
 			messages, err := qm.getQueuedMessagesFromDir(activeQueue)
@@ -1084,6 +1102,11 @@ func (qm *QueueManager) processActiveQueue() {
 
 			// Process each message
 			for _, msg := range messages {
+				// Skip if we're not running anymore
+				if !qm.running {
+					return
+				}
+
 				// Skip if we're already processing this message
 				qm.activeMu.Lock()
 				if qm.activeJobs[msg.ID] {
@@ -1119,6 +1142,9 @@ func (qm *QueueManager) processActiveQueue() {
 					break
 				}
 			}
+		default:
+			// Add a small sleep to prevent CPU spinning and allow for quick exit
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
@@ -1128,13 +1154,14 @@ func (qm *QueueManager) processDeferredQueue() {
 	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
 
-	for {
-		if !qm.running {
-			return
-		}
-
+	for qm.running {
 		select {
 		case <-ticker.C:
+			// Check if we should stop
+			if !qm.running {
+				return
+			}
+
 			// Get messages from deferred queue
 			deferredQueue := filepath.Join(qm.config.QueueDir, string(QueueTypeDeferred))
 			messages, err := qm.getQueuedMessagesFromDir(deferredQueue)
@@ -1145,6 +1172,11 @@ func (qm *QueueManager) processDeferredQueue() {
 
 			now := time.Now()
 			for _, msg := range messages {
+				// Check if we should stop
+				if !qm.running {
+					return
+				}
+
 				// If it's time to retry, move to active queue
 				if now.After(msg.NextRetry) {
 					msg.QueueType = QueueTypeActive
@@ -1159,6 +1191,9 @@ func (qm *QueueManager) processDeferredQueue() {
 					}
 				}
 			}
+		default:
+			// Add a small sleep to prevent CPU spinning and allow for quick exit
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
@@ -1184,13 +1219,14 @@ func (qm *QueueManager) updateQueueStats() {
 	ticker := time.NewTicker(time.Second * 30)
 	defer ticker.Stop()
 
-	for {
-		if !qm.running {
-			return
-		}
-
+	for qm.running {
 		select {
 		case <-ticker.C:
+			// Check if we should stop
+			if !qm.running {
+				return
+			}
+
 			stats := QueueStats{
 				LastUpdated: time.Now(),
 			}
@@ -1240,6 +1276,9 @@ func (qm *QueueManager) updateQueueStats() {
 				"total_processed", stats.TotalProcessed,
 				"total_delivered", stats.TotalDelivered,
 				"total_failed", stats.TotalFailed)
+		default:
+			// Add a small sleep to prevent CPU spinning and allow for quick exit
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }

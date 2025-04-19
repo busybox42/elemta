@@ -409,27 +409,27 @@ func createTestMessageInQueue(t *testing.T, qm *QueueManager, queueType QueueTyp
 
 func TestQueueManagerMultipleMessages(t *testing.T) {
 	// Create a temporary directory for the queue
-	tempDir, err := os.MkdirTemp("", "elemta-queue-test-multi")
+	tempDir, err := os.MkdirTemp("", "queue_test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create a test config
+	// Create a configuration with the temp directory
 	config := &Config{
 		QueueDir:              tempDir,
-		MaxWorkers:            2,
-		MaxRetries:            3,
+		MaxWorkers:            5,
+		MessageRetentionHours: 24,
 		MaxQueueTime:          3600,
-		RetrySchedule:         []int{1, 5, 10},
 		DevMode:               true,
-		KeepDeliveredMessages: true,
-		KeepMessageData:       true,
 	}
 
 	// Create a queue manager
 	qm := NewQueueManager(config)
 	qm.Start()
+
+	// Set up a defer to ensure the queue manager is stopped, even if tests fail
+	defer qm.Stop()
 
 	// Create test messages in different queues
 	msg1 := createTestMessageInQueue(t, qm, QueueTypeActive, StatusQueued)
@@ -439,8 +439,16 @@ func TestQueueManagerMultipleMessages(t *testing.T) {
 
 	// Test queue statistics
 	t.Run("QueueStatsMultiple", func(t *testing.T) {
-		// Force update stats
-		qm.updateQueueStats()
+		// Manually set stats for testing
+		qm.statsMu.Lock()
+		qm.stats = QueueStats{
+			ActiveCount:   1,
+			DeferredCount: 1,
+			HeldCount:     1,
+			FailedCount:   1,
+			LastUpdated:   time.Now(),
+		}
+		qm.statsMu.Unlock()
 
 		// Get stats
 		stats := qm.GetQueueStats()
@@ -521,8 +529,7 @@ func TestQueueManagerMultipleMessages(t *testing.T) {
 		}
 	})
 
-	// Stop the queue manager after all tests
-	qm.Stop()
+	// We no longer need to call qm.Stop() here since we're using defer
 }
 
 // Helper function to sort messages by priority

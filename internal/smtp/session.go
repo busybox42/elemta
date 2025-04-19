@@ -443,7 +443,14 @@ func (s *Session) handleAuthPlain(cmd string) error {
 	username := parts[1]
 	password := parts[2]
 
-	return s.authenticate(username, password)
+	// Authenticate and handle any errors
+	err = s.authenticate(username, password)
+	if err != nil {
+		// Error already handled in authenticate method
+		return nil
+	}
+
+	return nil
 }
 
 // handleAuthLogin handles LOGIN authentication
@@ -476,7 +483,14 @@ func (s *Session) handleAuthLogin() error {
 	}
 	password := string(passwordBytes)
 
-	return s.authenticate(username, password)
+	// Authenticate and handle any errors
+	err = s.authenticate(username, password)
+	if err != nil {
+		// Error already handled in authenticate method
+		return nil
+	}
+
+	return nil
 }
 
 // authenticate performs the actual authentication
@@ -490,6 +504,7 @@ func (s *Session) authenticate(username, password string) error {
 	// Perform authentication
 	if s.authenticator == nil {
 		metrics.AuthFailures.Inc()
+		s.write("535 5.7.8 Authentication failed: authenticator not configured\r\n")
 		return errors.New("authenticator not configured")
 	}
 
@@ -497,12 +512,14 @@ func (s *Session) authenticate(username, password string) error {
 	if err != nil {
 		s.logger.Error("Authentication failed", "username", username, "error", err)
 		metrics.AuthFailures.Inc()
+		s.write("535 5.7.8 Authentication failed\r\n")
 		return err
 	}
 
 	if !authenticated {
 		s.logger.Warn("Authentication failed", "username", username)
 		metrics.AuthFailures.Inc()
+		s.write("535 5.7.8 Authentication credentials invalid\r\n")
 		return fmt.Errorf("authentication failed for user %s", username)
 	}
 
@@ -513,5 +530,7 @@ func (s *Session) authenticate(username, password string) error {
 	// Track successful authentication
 	metrics.AuthSuccesses.Inc()
 
+	// Send success message
+	s.write("235 2.7.0 Authentication successful\r\n")
 	return nil
 }
