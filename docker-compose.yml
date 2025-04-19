@@ -10,8 +10,6 @@ services:
     restart: unless-stopped
     ports:
       - "2525:2525"
-      - "8080:8080"  # Metrics port
-      # API server port handled by elemta-api service
     volumes:
       - elemta_queue:/app/queue
       - elemta_logs:/app/logs
@@ -29,11 +27,10 @@ services:
     stdin_open: true
     init: true
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      test: ["CMD", "nc", "-z", "localhost", "2525"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 5s
     networks:
       - elemta_network
       - monitoring_network
@@ -53,15 +50,17 @@ services:
       - elemta_queue:/app/queue:ro
     environment:
       - API_PORT=8081
-    command: python3 /app/api_server.py
+    command: >
+      bash -c "apt-get update && apt-get install -y curl && 
+      python3 -u /app/api_server.py"
     networks:
       - elemta_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/api/queue/stats"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
       retries: 3
-      start_period: 5s
+      start_period: 15s
 
   elemta-clamav:
     image: clamav/clamav:latest
@@ -73,10 +72,10 @@ services:
       - clamav_data:/var/lib/clamav
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "3310"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
+      interval: 45s
+      timeout: 15s
+      retries: 5
+      start_period: 180s
 
   elemta-rspamd:
     image: rspamd/rspamd:latest
@@ -89,7 +88,8 @@ services:
     ports:
       - "11334:11334"  # Web interface
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:11334/ping || exit 1"]
+      # Use pidof to check if rspamd is running
+      test: ["CMD-SHELL", "pidof rspamd || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -100,13 +100,21 @@ services:
     image: python:3.9-slim
     container_name: elemta_metrics
     ports:
-      - "8082:8080"  # Metrics endpoint
+      - "8080:8080"
     volumes:
       - ./scripts/metrics_server.py:/app/metrics_server.py
-    command: python3 /app/metrics_server.py
+    command: >
+      bash -c "apt-get update && apt-get install -y curl && 
+      python3 /app/metrics_server.py"
     networks:
       - monitoring_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   prometheus:
     image: prom/prometheus:latest
@@ -125,6 +133,12 @@ services:
     networks:
       - monitoring_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   grafana:
     image: grafana/grafana:latest
@@ -144,6 +158,12 @@ services:
     depends_on:
       - prometheus
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   alertmanager:
     image: prom/alertmanager:latest
@@ -159,6 +179,12 @@ services:
     networks:
       - monitoring_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     depends_on:
       - prometheus
 
