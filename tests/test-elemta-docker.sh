@@ -11,8 +11,10 @@ NC='\033[0m' # No Color
 # Enable debug mode if DEBUG is set
 [ -n "$DEBUG" ] && set -x
 
-# Test configuration
-ELEMTA_PROJECT_NAME=${ELEMTA_PROJECT_NAME:-elemta}
+# Test configuration - IMPORTANT: container naming convention in docker-compose.yml
+# Some containers have prefix elemta- (elemta-clamav, elemta-rspamd)
+# Some containers have prefix elemta_ (elemta_api, elemta_metrics, elemta_node0)
+# This script handles both naming conventions
 
 # Counters for test results
 TOTAL_TESTS=0
@@ -50,49 +52,81 @@ skip_test() {
     fi
 }
 
-# Function to check if a container is running
+# Function to check if a container is running - handles both naming conventions
 check_container() {
-    local container="$ELEMTA_PROJECT_NAME-$1"
+    local service_name=$1
+    local container_name
+    
+    # Handle different naming conventions in docker-compose.yml
+    case $service_name in
+        # Services with elemta- prefix
+        clamav|rspamd)
+            container_name="elemta-$service_name"
+            ;;
+        # Services with elemta_ prefix
+        api|metrics|node0|prometheus|grafana|alertmanager)
+            container_name="elemta_$service_name"
+            ;;
+        *)
+            container_name="elemta_$service_name"
+            ;;
+    esac
     
     # Check if container exists and is running
-    docker ps -q -f name="$container" | grep -q .
+    docker ps -q -f name="$container_name" | grep -q .
     if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Container $container is running${NC}"
+        echo -e "${GREEN}✓ Container $container_name is running${NC}"
         return 0
     else
-        echo -e "${RED}✗ Container $container is not running${NC}"
+        echo -e "${RED}✗ Container $container_name is not running${NC}"
         return 1
     fi
 }
 
-# Function to check container health status
+# Function to check container health status - handles both naming conventions
 check_container_health() {
-    local container="$ELEMTA_PROJECT_NAME-$1"
+    local service_name=$1
+    local container_name
+    
+    # Handle different naming conventions in docker-compose.yml
+    case $service_name in
+        # Services with elemta- prefix
+        clamav|rspamd)
+            container_name="elemta-$service_name"
+            ;;
+        # Services with elemta_ prefix
+        api|metrics|node0|prometheus|grafana|alertmanager)
+            container_name="elemta_$service_name"
+            ;;
+        *)
+            container_name="elemta_$service_name"
+            ;;
+    esac
     
     # Check if container exists and is running
-    if ! docker ps -q -f name="$container" | grep -q .; then
-        echo -e "${RED}✗ Container $container is not running${NC}"
+    if ! docker ps -q -f name="$container_name" | grep -q .; then
+        echo -e "${RED}✗ Container $container_name is not running${NC}"
         return 1
     fi
     
     # Get health status
-    local health=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null)
+    local health=$(docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null)
     
     # If container has no health check
     if [ -z "$health" ] || [ "$health" = "<nil>" ]; then
-        echo -e "${YELLOW}! Container $container has no health check${NC}"
+        echo -e "${YELLOW}! Container $container_name has no health check${NC}"
         return 0
     fi
     
     if [ "$health" = "healthy" ]; then
-        echo -e "${GREEN}✓ Container $container is healthy${NC}"
+        echo -e "${GREEN}✓ Container $container_name is healthy${NC}"
         return 0
     else
-        echo -e "${RED}✗ Container $container health status: $health${NC}"
+        echo -e "${RED}✗ Container $container_name health status: $health${NC}"
         
         # Show last health check log
         echo -e "${YELLOW}  Last health check:${NC}"
-        docker inspect --format='{{json .State.Health.Log}}' "$container" | jq -r '.[-1].Output' | sed 's/^/    /'
+        docker inspect --format='{{json .State.Health.Log}}' "$container_name" | jq -r '.[-1].Output' | sed 's/^/    /'
         return 1
     fi
 }
@@ -114,7 +148,8 @@ check_monitoring() {
 test_container_health() {
     print_header "Testing Container Health Status"
     
-    local containers=("smtp" "api" "redis" "postgres" "clamav" "rspamd")
+    # Only check containers that actually exist in docker-compose.yml
+    local containers=("node0" "api" "metrics" "clamav" "rspamd" "prometheus" "grafana" "alertmanager")
     local all_healthy=true
     
     for container in "${containers[@]}"; do
@@ -129,7 +164,22 @@ test_container_health() {
     print_header "Checking Container Logs for Errors"
     
     for container in "${containers[@]}"; do
-        local container_name="$ELEMTA_PROJECT_NAME-$container"
+        # Handle different naming conventions
+        local container_name
+        case $container in
+            # Services with elemta- prefix
+            clamav|rspamd)
+                container_name="elemta-$container"
+                ;;
+            # Services with elemta_ prefix
+            api|metrics|node0|prometheus|grafana|alertmanager)
+                container_name="elemta_$container"
+                ;;
+            *)
+                container_name="elemta_$container"
+                ;;
+        esac
+        
         echo -e "${YELLOW}Checking logs for $container_name:${NC}"
         
         # Get the last 10 lines that contain ERROR or error
@@ -155,8 +205,8 @@ run_tests() {
     # Test SMTP service directly
     print_header "Testing SMTP Service"
     
-    # Check if SMTP container is running
-    if ! check_container "smtp"; then
+    # Check if SMTP container is running (service is "elemta" in docker-compose.yml, container is elemta_node0)
+    if ! check_container "node0"; then
         skip_test "SMTP connection test" "SMTP container not running"
     else
         # Simple connection test with timeout
@@ -172,9 +222,9 @@ run_tests() {
     # Test metrics endpoint
     print_header "Testing Metrics Endpoint"
     
-    # Check if API container is running
-    if ! check_container "api"; then
-        skip_test "Metrics endpoint test" "API container not running"
+    # Check if metrics container is running
+    if ! check_container "metrics"; then
+        skip_test "Metrics endpoint test" "Metrics container not running"
     else
         # Try to fetch metrics
         local metrics=$(curl -s -f http://localhost:8080/metrics 2>/dev/null)
@@ -199,7 +249,7 @@ run_tests() {
         check_result $? "ClamAV service connectivity" "Failed to connect to ClamAV"
         
         # Check ClamAV version using Docker exec
-        docker exec "$ELEMTA_PROJECT_NAME-clamav" clamdscan --version &>/dev/null
+        docker exec "elemta-clamav" clamdscan --version &>/dev/null
         check_result $? "ClamAV command execution" "Failed to execute clamdscan command"
     fi
   
