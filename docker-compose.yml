@@ -113,7 +113,8 @@ services:
       - "2424:2424"    # LMTP port
     command: >
       sh -c "apk add --no-cache dovecot dovecot-lmtpd netcat-openbsd &&
-             adduser -D -h /var/mail -u 5000 vmail &&
+             adduser -D -h /var/mail -u 5000 vmail 2>/dev/null || echo 'User vmail already exists' &&
+             mkdir -p /var/mail &&
              mkdir -p /var/mail/recipient@example.com/{new,cur,tmp} &&
              mkdir -p /var/mail/sender@example.com/{new,cur,tmp} &&
              chown -R vmail:vmail /var/mail &&
@@ -154,6 +155,7 @@ services:
              echo 'recipient@example.com:{PLAIN}password:5000:5000::/var/mail/recipient@example.com::' > /etc/dovecot/passwd &&
              echo 'sender@example.com:{PLAIN}password:5000:5000::/var/mail/sender@example.com::' >> /etc/dovecot/passwd &&
              echo 'Creating test message for testing...' &&
+             mkdir -p /var/mail/recipient@example.com/cur &&
              echo 'From: sender@example.com' > /var/mail/recipient@example.com/cur/test-message:2,S &&
              echo 'To: recipient@example.com' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
              echo 'Subject: Test Message' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
