@@ -143,6 +143,86 @@ test_smtp_service() {
     fi
 }
 
+# Test email sending
+test_email_sending() {
+    print_header "Testing email sending"
+    
+    # Create a test email file
+    cat > test-email.txt << EOF
+From: sender@example.com
+To: recipient@example.com
+Subject: Test email from Elemta Docker test
+
+This is a test email sent by the automated test script.
+EOF
+    
+    echo "Sending test email using swaks..."
+    # Check if swaks is available
+    if command -v swaks > /dev/null 2>&1; then
+        # Use swaks for better SMTP testing
+        swaks --server $SMTP_HOST --port $SMTP_PORT \
+              --from sender@example.com \
+              --to recipient@example.com \
+              --header "Subject: Test email from Elemta Docker test" \
+              --body "This is a test email sent by the automated test script." \
+              --timeout $((TIMEOUT * 2)) > email_response.log 2>&1
+        
+        email_result=$?
+    else
+        # Fallback to simplified netcat approach when swaks isn't available
+        echo "Swaks not found, falling back to netcat..."
+        {
+            echo "EHLO test.example.com"
+            sleep 1
+            echo "MAIL FROM:<sender@example.com>"
+            sleep 1
+            echo "RCPT TO:<recipient@example.com>"
+            sleep 1
+            echo "DATA"
+            sleep 1
+            echo "From: sender@example.com"
+            echo "To: recipient@example.com"
+            echo "Subject: Test email from Elemta Docker test"
+            echo ""
+            echo "This is a test email sent by the automated test script."
+            echo "."
+            sleep 1
+            echo "QUIT"
+        } | timeout $((TIMEOUT * 2)) nc $SMTP_HOST $SMTP_PORT > email_response.log 2>&1
+        
+        email_result=$?
+    fi
+    
+    # Check for error conditions
+    if [ $email_result -eq 124 ] || [ $email_result -eq 142 ]; then
+        echo "Email sending timed out after $((TIMEOUT * 2)) seconds"
+        check_result 1 "Email sending (timeout)"
+    else
+        # Display the SMTP response
+        echo "SMTP server response:"
+        cat email_response.log
+        
+        # Check if email response contains success indicators or failure indicators
+        if grep -q -i "error\|fail\|reject" email_response.log; then
+            check_result 1 "Email was successfully sent"
+        elif grep -q -i "250 OK\|completed\|accepted\|sent successfully\|250 " email_response.log; then
+            check_result 0 "Email was successfully sent"
+        else
+            # If we can't clearly determine success or failure, check the exit code
+            check_result $email_result "Email was successfully sent"
+        fi
+    fi
+    
+    # Try to check if email was processed by examining the queue
+    echo "Checking if email was processed..."
+    docker exec elemta_node0 ls -la /app/queue > queue_status.log 2>&1
+    cat queue_status.log
+    
+    # Success criteria - check if queue directories exist
+    grep -q "total" queue_status.log
+    check_result $? "Email queue is accessible"
+}
+
 # Test API service
 test_api_service() {
     print_header "Testing API service"
@@ -255,6 +335,7 @@ run_tests() {
     test_container_status
     test_network_connectivity
     test_smtp_service
+    test_email_sending
     test_api_service
     test_metrics_service
     test_clamav_service
@@ -279,7 +360,7 @@ run_tests() {
     rm -f container_status.log container_health.log smtp_capabilities.log
     rm -f api_health.log metrics.log rspamd_web.log
     rm -f prometheus_health.log grafana_health.log alertmanager_health.log
-    rm -f volume_list.log
+    rm -f volume_list.log test-email.txt email_response.log queue_status.log
     
     # Return non-zero if any tests failed
     if [ $FAILED_TESTS -gt 0 ]; then
