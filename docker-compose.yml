@@ -85,6 +85,12 @@ services:
       - elemta_network
     volumes:
       - rspamd_data:/var/lib/rspamd
+      - ./docker/rspamd/override.d/worker-controller.conf:/etc/rspamd/override.d/worker-controller.conf
+      - ./docker/rspamd/override.d/worker-proxy.conf:/etc/rspamd/override.d/worker-proxy.conf
+      - ./docker/rspamd/override.d/worker-normal.conf:/etc/rspamd/override.d/worker-normal.conf
+      - ./docker/rspamd/override.d/modules.conf:/etc/rspamd/override.d/modules.conf
+      - ./docker/rspamd/override.d/logging.conf:/etc/rspamd/override.d/logging.conf
+      - ./docker/rspamd/override.d/actions.conf:/etc/rspamd/override.d/actions.conf
     ports:
       - "11334:11334"  # Web interface
     healthcheck:
