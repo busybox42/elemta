@@ -117,7 +117,7 @@ services:
              mkdir -p /var/mail/recipient@example.com /var/mail/sender@example.com &&
              chown -R vmail:vmail /var/mail &&
              chmod -R 700 /var/mail &&
-             mkdir -p /etc/dovecot &&
+             mkdir -p /etc/dovecot /var/log &&
              echo 'protocols = imap lmtp' > /etc/dovecot/dovecot.conf &&
              echo 'listen = *' >> /etc/dovecot/dovecot.conf &&
              echo 'ssl = no' >> /etc/dovecot/dovecot.conf &&
@@ -144,6 +144,12 @@ services:
              echo '  args = /etc/dovecot/passwd' >> /etc/dovecot/dovecot.conf &&
              echo '  default_fields = uid=5000 gid=5000 home=/var/mail/%u' >> /etc/dovecot/dovecot.conf &&
              echo '}' >> /etc/dovecot/dovecot.conf &&
+             echo 'log_path = /dev/stdout' >> /etc/dovecot/dovecot.conf &&
+             echo 'info_log_path = /dev/stdout' >> /etc/dovecot/dovecot.conf &&
+             echo 'debug_log_path = /dev/stdout' >> /etc/dovecot/dovecot.conf &&
+             echo 'mail_debug = yes' >> /etc/dovecot/dovecot.conf &&
+             echo 'auth_debug = yes' >> /etc/dovecot/dovecot.conf &&
+             echo 'auth_verbose = yes' >> /etc/dovecot/dovecot.conf &&
              echo 'recipient@example.com:{PLAIN}password:5000:5000::/var/mail/recipient@example.com::' > /etc/dovecot/passwd &&
              echo 'sender@example.com:{PLAIN}password:5000:5000::/var/mail/sender@example.com::' >> /etc/dovecot/passwd &&
              dovecot -F"
