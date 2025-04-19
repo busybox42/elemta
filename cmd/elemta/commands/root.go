@@ -61,3 +61,8 @@ func init() {
 func GetConfig() *config.Config {
 	return cfg
 }
+
+// GetRootCmd returns the root command for testing purposes
+func GetRootCmd() *cobra.Command {
+	return rootCmd
+}
