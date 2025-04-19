@@ -23,6 +23,8 @@ services:
       - TEST_MODE=true
       - ELEMTA_CONFIG_PATH=/app/config/elemta.conf
       - API_PORT=8081
+      - DELIVERY_HOST=elemta-dovecot
+      - DELIVERY_PORT=2424
     tty: true
     stdin_open: true
     init: true
@@ -38,6 +40,7 @@ services:
       - elemta-clamav
       - elemta-rspamd
       - elemta-api
+      - elemta-dovecot
 
   elemta-api:
     image: python:3.9-slim
@@ -100,6 +103,26 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s
+  
+  elemta-dovecot:
+    image: dovecot/dovecot:latest
+    container_name: elemta-dovecot
+    hostname: elemta-dovecot
+    ports:
+      - "14143:143"
+      - "2424:24"
+    volumes:
+      - ./docker/dovecot/conf:/etc/dovecot
+      - dovecot-mail:/var/mail
+    networks:
+      - elemta-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "143"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
       
   # Monitoring services
   elemta-metrics:
@@ -210,6 +233,10 @@ volumes:
   clamav_data:
     driver: local
   rspamd_data:
+    driver: local
+  dovecot_data:
+    driver: local
+  dovecot_logs:
     driver: local
   prometheus_data:
     driver: local
