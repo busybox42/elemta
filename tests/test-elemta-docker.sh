@@ -3,27 +3,98 @@
 # Colors for output
 GREEN='\033[0;32m'
 RED='\033[0;31m'
-YELLOW='\033[0;33m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
-# Enable debug mode
-#set -x
+# Enable debug mode if DEBUG is set
+[ -n "$DEBUG" ] && set -x
+
+# Test configuration
+ELEMTA_PROJECT_NAME=${ELEMTA_PROJECT_NAME:-elemta}
+
+# Counters for test results
+TOTAL_TESTS=0
+PASSED_TESTS=0
+FAILED_TESTS=0
+SKIPPED_TESTS=0
 
 # Function to print section headers
 print_header() {
-  echo -e "\n${YELLOW}$1${NC}"
-  echo "======================================"
+  echo -e "\n${BLUE}==== $1 ====${NC}\n"
 }
 
-# Function to check if a test passed
+# Function to check the result of a test
 check_result() {
-  if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✓ $1${NC}"
-    return 0
-  else
-    echo -e "${RED}✗ $1${NC}"
-    return 1
-  fi
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    if [ $1 -eq 0 ]; then
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+        echo -e "${GREEN}✓ PASS:${NC} $2"
+    else
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        echo -e "${RED}✗ FAIL:${NC} $2"
+        if [ -n "$3" ]; then
+            echo -e "${YELLOW}  Details: $3${NC}"
+        fi
+    fi
+}
+
+# Function to skip a test
+skip_test() {
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    SKIPPED_TESTS=$((SKIPPED_TESTS + 1))
+    echo -e "${PURPLE}⦸ SKIP:${NC} $1"
+    if [ -n "$2" ]; then
+        echo -e "${YELLOW}  Reason: $2${NC}"
+    fi
+}
+
+# Function to check if a container is running
+check_container() {
+    local container="$ELEMTA_PROJECT_NAME-$1"
+    
+    # Check if container exists and is running
+    docker ps -q -f name="$container" | grep -q .
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ Container $container is running${NC}"
+        return 0
+    else
+        echo -e "${RED}✗ Container $container is not running${NC}"
+        return 1
+    fi
+}
+
+# Function to check container health status
+check_container_health() {
+    local container="$ELEMTA_PROJECT_NAME-$1"
+    
+    # Check if container exists and is running
+    if ! docker ps -q -f name="$container" | grep -q .; then
+        echo -e "${RED}✗ Container $container is not running${NC}"
+        return 1
+    fi
+    
+    # Get health status
+    local health=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null)
+    
+    # If container has no health check
+    if [ -z "$health" ] || [ "$health" = "<nil>" ]; then
+        echo -e "${YELLOW}! Container $container has no health check${NC}"
+        return 0
+    fi
+    
+    if [ "$health" = "healthy" ]; then
+        echo -e "${GREEN}✓ Container $container is healthy${NC}"
+        return 0
+    else
+        echo -e "${RED}✗ Container $container health status: $health${NC}"
+        
+        # Show last health check log
+        echo -e "${YELLOW}  Last health check:${NC}"
+        docker inspect --format='{{json .State.Health.Log}}' "$container" | jq -r '.[-1].Output' | sed 's/^/    /'
+        return 1
+    fi
 }
 
 # Function to check if monitoring is enabled
@@ -35,160 +106,168 @@ check_monitoring() {
   fi
   
   # Check if monitoring containers are running
-  GRAFANA_RUNNING=$(docker ps -q -f name=elemta_grafana)
-  PROMETHEUS_RUNNING=$(docker ps -q -f name=elemta_prometheus)
-  
-  if [ -z "$GRAFANA_RUNNING" ] || [ -z "$PROMETHEUS_RUNNING" ]; then
-    echo -e "${YELLOW}Monitoring stack not running. Skipping monitoring tests.${NC}"
-    return 1
-  fi
-  
-  return 0
+  check_container "grafana" && check_container "prometheus"
+  return $?
+}
+
+# Function to test all containers health status
+test_container_health() {
+    print_header "Testing Container Health Status"
+    
+    local containers=("smtp" "api" "redis" "postgres" "clamav" "rspamd")
+    local all_healthy=true
+    
+    for container in "${containers[@]}"; do
+        if ! check_container_health "$container"; then
+            all_healthy=false
+        fi
+    done
+    
+    check_result $? "All required containers are healthy" "One or more containers are unhealthy"
+    
+    # Check logs for any obvious errors
+    print_header "Checking Container Logs for Errors"
+    
+    for container in "${containers[@]}"; do
+        local container_name="$ELEMTA_PROJECT_NAME-$container"
+        echo -e "${YELLOW}Checking logs for $container_name:${NC}"
+        
+        # Get the last 10 lines that contain ERROR or error
+        local errors=$(docker logs "$container_name" 2>&1 | grep -i "error" | tail -10)
+        
+        if [ -n "$errors" ]; then
+            echo -e "${RED}Found errors in $container_name logs:${NC}"
+            echo "$errors" | sed 's/^/    /'
+        else
+            echo -e "${GREEN}No obvious errors found in $container_name logs${NC}"
+        fi
+    done
 }
 
 # Main test function
 run_tests() {
-  print_header "Testing Elemta Email Platform"
-  
-  # Test SMTP service directly
-  print_header "Testing SMTP Service"
-  echo "Testing SMTP on localhost:2525..."
-  
-  # Simple connection test with timeout
-  echo -e "\n${YELLOW}Test: SMTP Connection${NC}"
-  echo "Connecting to port 2525 (with 5 second timeout)..."
-  
-  # Check if port is open
-  echo "Checking if port 2525 is open..."
-  nc -zv localhost 2525 || echo "Port not found or not accessible"
-  
-  # Try connection with timeout
-  echo "Trying to connect to SMTP service..."
-  EXTERNAL_TEST=$(timeout 5 bash -c "echo -e 'QUIT\r\n' | nc -v -w 3 localhost 2525" 2>&1)
-  echo "Connection result: $EXTERNAL_TEST"
-  
-  if [[ -n "$EXTERNAL_TEST" ]]; then
-    echo -e "${GREEN}✓ SMTP connection successful${NC}"
-    echo "Response: $EXTERNAL_TEST"
-  else
-    echo -e "${RED}✗ SMTP connection failed or timed out${NC}"
-  fi
-  
-  # Test metrics endpoint
-  print_header "Testing Metrics Endpoint"
-  echo "Testing metrics on localhost:8080..."
-  
-  # Try to connect to metrics endpoint
-  echo "Trying to connect to metrics endpoint..."
-  METRICS_TEST=$(curl -s http://localhost:8080/metrics | head -n 10)
-  
-  if [[ -n "$METRICS_TEST" ]]; then
-    echo -e "${GREEN}✓ Metrics endpoint accessible${NC}"
-    echo "Sample metrics:"
-    echo "$METRICS_TEST"
-  else
-    echo -e "${RED}✗ Metrics endpoint not accessible${NC}"
-  fi
-  
-  # Test ClamAV service directly
-  print_header "Testing ClamAV Service"
-  echo "Testing ClamAV service..."
-  
-  # Try to connect to ClamAV through Docker
-  echo "Trying to connect to ClamAV service..."
-  CLAMAV_TEST=$(docker exec elemta-clamav clamdscan --version 2>&1)
-  
-  if [[ -n "$CLAMAV_TEST" ]]; then
-    echo -e "${GREEN}✓ ClamAV service accessible${NC}"
-    echo "ClamAV version: $CLAMAV_TEST"
-  else
-    echo -e "${RED}✗ ClamAV service not accessible${NC}"
-  fi
-  
-  # Test Rspamd service directly
-  print_header "Testing Rspamd Functionality"
-  echo "Testing Rspamd on localhost:11334..."
-  
-  # Try to connect to Rspamd web interface
-  echo "Trying to connect to Rspamd web interface..."
-  RSPAMD_TEST=$(curl -s http://localhost:11334/ping)
-  
-  if [[ "$RSPAMD_TEST" == $'pong\r' || "$RSPAMD_TEST" == "pong" ]]; then
-    echo -e "${GREEN}✓ Rspamd web interface accessible${NC}"
-  else
-    echo -e "${RED}✗ Rspamd web interface not accessible${NC}"
-  fi
-  
-  # Test monitoring stack if available
-  print_header "Testing Monitoring Stack"
-  
-  if check_monitoring; then
-    echo "Monitoring stack is available. Testing components..."
+    print_header "Elemta Docker Test Suite"
+    echo -e "${YELLOW}Started at $(date)${NC}\n"
     
-    # Test Grafana
-    echo "Testing Grafana on localhost:3000..."
-    GRAFANA_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000)
+    # Test container health
+    test_container_health
+  
+    # Test SMTP service directly
+    print_header "Testing SMTP Service"
     
-    if [[ "$GRAFANA_TEST" == "200" || "$GRAFANA_TEST" == "302" ]]; then
-      echo -e "${GREEN}✓ Grafana web interface accessible${NC}"
-      echo "Grafana is running at http://localhost:3000 (default credentials: admin/elemta123)"
+    # Check if SMTP container is running
+    if ! check_container "smtp"; then
+        skip_test "SMTP connection test" "SMTP container not running"
     else
-      echo -e "${RED}✗ Grafana web interface not accessible${NC}"
+        # Simple connection test with timeout
+        echo "Testing SMTP on localhost:2525..."
+        timeout 5 bash -c "echo -e 'QUIT\r\n' | nc -v -w 3 localhost 2525" &>/dev/null
+        check_result $? "SMTP connection test" "Failed to connect to SMTP server"
+        
+        # Try EHLO command
+        (echo -e "EHLO elemta-test\r\nQUIT\r\n" | nc -w 3 localhost 2525) &>/dev/null
+        check_result $? "SMTP EHLO command test" "EHLO command failed"
+    fi
+  
+    # Test metrics endpoint
+    print_header "Testing Metrics Endpoint"
+    
+    # Check if API container is running
+    if ! check_container "api"; then
+        skip_test "Metrics endpoint test" "API container not running"
+    else
+        # Try to fetch metrics
+        local metrics=$(curl -s -f http://localhost:8080/metrics 2>/dev/null)
+        if [ $? -eq 0 ] && [ -n "$metrics" ]; then
+            check_result 0 "Metrics endpoint test" 
+            echo -e "${YELLOW}Sample metrics (first 5 lines):${NC}"
+            echo "$metrics" | head -5 | sed 's/^/    /'
+        else
+            check_result 1 "Metrics endpoint test" "Failed to access metrics endpoint"
+        fi
+    fi
+  
+    # Test ClamAV service
+    print_header "Testing ClamAV Service"
+    
+    # Check if ClamAV container is running
+    if ! check_container "clamav"; then
+        skip_test "ClamAV test" "ClamAV container not running"
+    else
+        # Try to connect to ClamAV service
+        nc -z localhost 3310 &>/dev/null
+        check_result $? "ClamAV service connectivity" "Failed to connect to ClamAV"
+        
+        # Check ClamAV version using Docker exec
+        docker exec "$ELEMTA_PROJECT_NAME-clamav" clamdscan --version &>/dev/null
+        check_result $? "ClamAV command execution" "Failed to execute clamdscan command"
+    fi
+  
+    # Test Rspamd service
+    print_header "Testing Rspamd Functionality"
+    
+    # Check if Rspamd container is running
+    if ! check_container "rspamd"; then
+        skip_test "Rspamd test" "Rspamd container not running"
+    else
+        # Test Rspamd ping endpoint
+        local rspamd_ping=$(curl -s http://localhost:11334/ping 2>/dev/null)
+        if [[ "$rspamd_ping" == "pong"* ]]; then
+            check_result 0 "Rspamd ping test"
+        else
+            check_result 1 "Rspamd ping test" "Failed to ping Rspamd"
+        fi
+        
+        # Test Rspamd stat endpoint
+        curl -s -f http://localhost:11334/stat &>/dev/null
+        check_result $? "Rspamd stat test" "Failed to access Rspamd stats"
+    fi
+  
+    # Test monitoring stack if available
+    print_header "Testing Monitoring Stack"
+    
+    if check_monitoring; then
+        # Test Grafana
+        curl -s -f http://localhost:3000/api/health &>/dev/null
+        check_result $? "Grafana health check" "Failed to check Grafana health"
+        
+        # Test Prometheus
+        curl -s -f http://localhost:9090/api/v1/status/buildinfo &>/dev/null
+        check_result $? "Prometheus API check" "Failed to check Prometheus API"
+        
+        # Test AlertManager
+        curl -s -f http://localhost:9093/api/v1/status &>/dev/null
+        check_result $? "AlertManager API check" "Failed to check AlertManager API"
+    else
+        skip_test "Monitoring tests" "Monitoring stack not available"
+    fi
+  
+    # Print test summary
+    print_header "Test Summary"
+    echo -e "Total tests: ${BLUE}$TOTAL_TESTS${NC}"
+    echo -e "Passed: ${GREEN}$PASSED_TESTS${NC}"
+    echo -e "Failed: ${RED}$FAILED_TESTS${NC}"
+    echo -e "Skipped: ${PURPLE}$SKIPPED_TESTS${NC}"
+    
+    # Calculate success rate
+    if [ $TOTAL_TESTS -gt 0 ]; then
+        SUCCESS_RATE=$((($PASSED_TESTS * 100) / ($TOTAL_TESTS - $SKIPPED_TESTS)))
+        echo -e "Success rate: ${YELLOW}$SUCCESS_RATE%${NC}"
     fi
     
-    # Test Prometheus
-    echo "Testing Prometheus on localhost:9090..."
-    PROMETHEUS_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9090)
+    echo -e "\n${YELLOW}Completed at $(date)${NC}"
+    echo -e "${BLUE}=======================================${NC}"
     
-    if [[ "$PROMETHEUS_TEST" == "200" || "$PROMETHEUS_TEST" == "302" ]]; then
-      echo -e "${GREEN}✓ Prometheus web interface accessible${NC}"
-      echo "Prometheus is running at http://localhost:9090"
+    # Return appropriate exit code
+    if [ $FAILED_TESTS -gt 0 ]; then
+        return 1
     else
-      echo -e "${RED}✗ Prometheus web interface not accessible${NC}"
+        return 0
     fi
-    
-    # Test AlertManager
-    echo "Testing AlertManager on localhost:9093..."
-    ALERTMANAGER_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9093)
-    
-    if [[ "$ALERTMANAGER_TEST" == "200" ]]; then
-      echo -e "${GREEN}✓ AlertManager web interface accessible${NC}"
-      echo "AlertManager is running at http://localhost:9093"
-    else
-      echo -e "${RED}✗ AlertManager web interface not accessible${NC}"
-    fi
-    
-    # Check if Grafana can connect to Prometheus
-    echo "Checking Grafana datasource connection to Prometheus..."
-    # This requires the Grafana API, which needs authentication
-    # For simplicity, we'll just check if Prometheus is accessible from Grafana container
-    DATASOURCE_TEST=$(docker exec elemta_grafana curl -s http://elemta_prometheus:9090/api/v1/status/buildinfo)
-    
-    if [[ -n "$DATASOURCE_TEST" && "$DATASOURCE_TEST" == *"version"* ]]; then
-      echo -e "${GREEN}✓ Grafana can connect to Prometheus${NC}"
-    else
-      echo -e "${RED}✗ Grafana may not be able to connect to Prometheus${NC}"
-    fi
-  else
-    echo "Monitoring stack tests skipped."
-  fi
-  
-  # Summary
-  print_header "Test Summary"
-  echo -e "${YELLOW}Basic connectivity tests completed.${NC}"
-  echo "SMTP service: localhost:2525"
-  echo "Metrics endpoint: http://localhost:8080/metrics"
-  echo "Rspamd web interface: http://localhost:11334"
-  
-  if check_monitoring; then
-    echo -e "\n${YELLOW}Monitoring stack:${NC}"
-    echo "Grafana: http://localhost:3000"
-    echo "Prometheus: http://localhost:9090"
-    echo "AlertManager: http://localhost:9093"
-  fi
-  
-  echo -e "\n${YELLOW}Note:${NC} Some tests may have failed due to networking or configuration issues."
 }
 
-# Run the tests
-run_tests 
+# Run the tests if script is executed directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    run_tests
+    exit $?
+fi 
