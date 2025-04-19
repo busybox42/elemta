@@ -105,17 +105,53 @@ services:
       start_period: 120s
   
   elemta-dovecot:
-    build: ./docker/dovecot
+    image: alpine:latest
     container_name: elemta-dovecot
     hostname: elemta-dovecot
     ports:
-      - "14143:143"
-      - "2424:24"
+      - "14143:1143"
+      - "2424:1024"
+    command: >
+      sh -c "apk add --no-cache dovecot dovecot-lmtpd netcat-openbsd &&
+             adduser -D -h /var/mail -u 5000 vmail &&
+             mkdir -p /var/mail/recipient@example.com /var/mail/sender@example.com &&
+             chown -R vmail:vmail /var/mail &&
+             chmod -R 700 /var/mail &&
+             mkdir -p /etc/dovecot &&
+             echo 'protocols = imap lmtp' > /etc/dovecot/dovecot.conf &&
+             echo 'listen = *' >> /etc/dovecot/dovecot.conf &&
+             echo 'ssl = no' >> /etc/dovecot/dovecot.conf &&
+             echo 'mail_location = maildir:/var/mail/%u' >> /etc/dovecot/dovecot.conf &&
+             echo 'auth_mechanisms = plain login' >> /etc/dovecot/dovecot.conf &&
+             echo 'service lmtp {' >> /etc/dovecot/dovecot.conf &&
+             echo '  inet_listener lmtp {' >> /etc/dovecot/dovecot.conf &&
+             echo '    address = 0.0.0.0' >> /etc/dovecot/dovecot.conf &&
+             echo '    port = 1024' >> /etc/dovecot/dovecot.conf &&
+             echo '  }' >> /etc/dovecot/dovecot.conf &&
+             echo '}' >> /etc/dovecot/dovecot.conf &&
+             echo 'service imap {' >> /etc/dovecot/dovecot.conf &&
+             echo '  inet_listener imap {' >> /etc/dovecot/dovecot.conf &&
+             echo '    address = 0.0.0.0' >> /etc/dovecot/dovecot.conf &&
+             echo '    port = 1143' >> /etc/dovecot/dovecot.conf &&
+             echo '  }' >> /etc/dovecot/dovecot.conf &&
+             echo '}' >> /etc/dovecot/dovecot.conf &&
+             echo 'passdb {' >> /etc/dovecot/dovecot.conf &&
+             echo '  driver = passwd-file' >> /etc/dovecot/dovecot.conf &&
+             echo '  args = /etc/dovecot/passwd' >> /etc/dovecot/dovecot.conf &&
+             echo '}' >> /etc/dovecot/dovecot.conf &&
+             echo 'userdb {' >> /etc/dovecot/dovecot.conf &&
+             echo '  driver = passwd-file' >> /etc/dovecot/dovecot.conf &&
+             echo '  args = /etc/dovecot/passwd' >> /etc/dovecot/dovecot.conf &&
+             echo '  default_fields = uid=5000 gid=5000 home=/var/mail/%u' >> /etc/dovecot/dovecot.conf &&
+             echo '}' >> /etc/dovecot/dovecot.conf &&
+             echo 'recipient@example.com:{PLAIN}password:5000:5000::/var/mail/recipient@example.com::' > /etc/dovecot/passwd &&
+             echo 'sender@example.com:{PLAIN}password:5000:5000::/var/mail/sender@example.com::' >> /etc/dovecot/passwd &&
+             dovecot -F"
     networks:
       - elemta_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "143"]
+      test: ["CMD", "nc", "-z", "localhost", "1143"]
       interval: 30s
       timeout: 10s
       retries: 3
