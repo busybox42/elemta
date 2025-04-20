@@ -108,7 +108,8 @@ func TestSessionBasic(t *testing.T) {
 
 	// Create session
 	authenticator := newMockAuthenticator(false, false)
-	session := NewSession(conn, config, authenticator)
+	queueManager := NewQueueManager(config)
+	session := NewSession(conn, config, authenticator, queueManager)
 
 	// Simulate client commands
 	commands := []string{
@@ -310,7 +311,8 @@ func TestSessionAuthentication(t *testing.T) {
 			authenticator := newMockAuthenticator(tc.authEnabled, tc.authRequired)
 
 			// Create session
-			session := NewSession(conn, config, authenticator)
+			queueManager := NewQueueManager(config)
+			session := NewSession(conn, config, authenticator, queueManager)
 
 			// Write commands to the mock connection
 			for _, cmd := range tc.commands {

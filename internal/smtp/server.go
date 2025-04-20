@@ -6,8 +6,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/busybox42/elemta/internal/api"
@@ -24,6 +22,7 @@ type Server struct {
 	metrics       *Metrics
 	metricsServer *http.Server
 	apiServer     *api.Server
+	queueManager  *QueueManager
 }
 
 // NewServer creates a new SMTP server
@@ -67,46 +66,20 @@ func NewServer(config *Config) (*Server, error) {
 	// Initialize metrics
 	metrics := GetMetrics()
 
-	server := &Server{
+	// Create queue manager
+	queueManager := NewQueueManager(config)
+
+	return &Server{
 		config:        config,
-		running:       false,
 		pluginManager: pluginManager,
 		authenticator: authenticator,
 		metrics:       metrics,
-	}
-
-	// Initialize scanner manager
-	scannerManager := NewScannerManager(config, server)
-	if err := scannerManager.Initialize(context.Background()); err != nil {
-		log.Printf("Warning: Error initializing scanner manager: %v", err)
-		// Continue even if scanner initialization fails
-		// This prevents the server from crashing if scanners are misconfigured
-	}
-
-	return server, nil
+		queueManager:  queueManager,
+	}, nil
 }
 
 // Start starts the SMTP server
 func (s *Server) Start() error {
-	if s.running {
-		return fmt.Errorf("server already running")
-	}
-
-	// Ensure queue directory exists
-	if s.config.QueueDir != "" {
-		if err := os.MkdirAll(s.config.QueueDir, 0755); err != nil {
-			return fmt.Errorf("failed to create queue directory: %w", err)
-		}
-
-		// Create subdirectories for different queue types
-		for _, dir := range []string{"active", "deferred", "held", "failed", "data"} {
-			queueSubDir := filepath.Join(s.config.QueueDir, dir)
-			if err := os.MkdirAll(queueSubDir, 0755); err != nil {
-				return fmt.Errorf("failed to create queue subdirectory %s: %w", dir, err)
-			}
-		}
-	}
-
 	var err error
 	s.listener, err = net.Listen("tcp", s.config.ListenAddr)
 	if err != nil {
@@ -115,6 +88,10 @@ func (s *Server) Start() error {
 
 	s.running = true
 	log.Printf("Elemta MTA starting on %s", s.config.ListenAddr)
+
+	// Start the queue manager
+	s.queueManager.Start()
+	log.Printf("Queue manager started processing queued messages")
 
 	// Start metrics server if enabled
 	if s.config.Metrics != nil && s.config.Metrics.Enabled {
@@ -176,7 +153,7 @@ func (s *Server) acceptConnections() {
 // handleConnection handles a single connection
 func (s *Server) handleConnection(conn net.Conn) {
 	defer conn.Close()
-	session := NewSession(conn, s.config, s.authenticator)
+	session := NewSession(conn, s.config, s.authenticator, s.queueManager)
 
 	// Track connection metrics
 	s.metrics.TrackConnectionDuration(func() error {
@@ -196,6 +173,12 @@ func (s *Server) Close() error {
 		if err := s.listener.Close(); err != nil {
 			log.Printf("Error closing listener: %v", err)
 		}
+	}
+
+	// Stop the queue manager
+	if s.queueManager != nil {
+		s.queueManager.Stop()
+		log.Printf("Queue manager stopped")
 	}
 
 	// Close metrics server if it was started

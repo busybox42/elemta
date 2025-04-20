@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"encoding/base64"
 
@@ -39,9 +40,12 @@ type Session struct {
 	authenticated bool
 	username      string
 	authenticator Authenticator
+	started       time.Time
+	sessionID     string
+	queueManager  *QueueManager
 }
 
-func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Session {
+func NewSession(conn net.Conn, config *Config, authenticator Authenticator, queueManager *QueueManager) *Session {
 	remoteAddr := conn.RemoteAddr().String()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
@@ -62,6 +66,9 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Ses
 		authenticated: false,
 		username:      "",
 		authenticator: authenticator,
+		started:       time.Now(),
+		sessionID:     uuid.New().String(),
+		queueManager:  queueManager,
 	}
 }
 
@@ -354,8 +361,7 @@ func (s *Session) saveMessage() error {
 	}
 
 	// Use the QueueManager to enqueue the message with normal priority
-	qm := NewQueueManager(s.config)
-	if err := qm.EnqueueMessage(s.message, PriorityNormal); err != nil {
+	if err := s.queueManager.EnqueueMessage(s.message, PriorityNormal); err != nil {
 		s.logger.Error("failed to enqueue message", "error", err)
 		return err
 	}
