@@ -77,6 +77,13 @@ queue:
   keep_delivered_messages: true
   keep_message_data: true
   queue_priority_enabled: true
+
+# Queue processor configuration
+queue_processor:
+  enabled: true
+  interval: 10
+  workers: 5
+  debug: true
 ```
 
 ### TOML Format
@@ -110,6 +117,13 @@ retry_schedule = [60, 300, 900, 3600, 10800, 21600, 43200]
 keep_delivered_messages = true
 keep_message_data = true
 queue_priority_enabled = true
+
+# Queue processor configuration
+[queue_processor]
+enabled = true
+interval = 10
+workers = 5
+debug = true
 ```
 
 ## Configuration Options
@@ -157,6 +171,15 @@ queue_priority_enabled = true
 | `queue.keep_message_data` | Keep message data after delivery | `true` |
 | `queue.queue_priority_enabled` | Enable message prioritization | `true` |
 
+### Queue Processor Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `queue_processor.enabled` | Enable queue processing | `true` |
+| `queue_processor.interval` | Queue processing interval in seconds | `10` |
+| `queue_processor.workers` | Number of concurrent queue processor workers | `5` |
+| `queue_processor.debug` | Enable debug logging for queue processor | `false` |
+
 ### Plugin Options
 
 | Option | Description | Default |
@@ -177,6 +200,7 @@ For example:
 - `hostname` becomes `ELEMTA_HOSTNAME`
 - `tls.enabled` becomes `ELEMTA_TLS_ENABLED`
 - `queue.max_workers` becomes `ELEMTA_QUEUE_MAX_WORKERS`
+- `queue_processor.enabled` becomes `ELEMTA_QUEUE_PROCESSOR_ENABLED`
 
 Environment variables take precedence over configuration file values.
 

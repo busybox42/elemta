@@ -1,251 +1,277 @@
-# Queue Management System
+# Queue Management in Elemta
 
-Elemta includes a robust queue management system for reliable email delivery. This document explains how the queue system works and how to use the queue management CLI tool.
+Elemta includes a robust queue management system for reliable email handling. This document describes the queue architecture, message processing, and CLI commands for managing the queue.
 
 ## Queue Architecture
 
-The queue system is designed with multiple tiers to handle different message states:
+The queue system consists of four types of queues:
 
-1. **Active Queue**: Messages that are actively being processed for delivery.
-2. **Deferred Queue**: Messages that have failed delivery and are waiting for retry based on a backoff schedule.
-3. **Held Queue**: Messages that have been manually held for review.
-4. **Failed Queue**: Messages that have permanently failed after exceeding retry limits or other fatal errors.
+1. **Active Queue**: Contains messages that are actively being processed or waiting to be processed.
+2. **Deferred Queue**: Contains messages that have failed delivery but will be retried later according to the retry schedule.
+3. **Held Queue**: Contains messages that have been manually placed on hold by an administrator.
+4. **Failed Queue**: Contains messages that have permanently failed delivery after exhausting all retry attempts.
+
+## Queue Processing
+
+Messages are processed by the queue processor, which runs as part of the SMTP server. The queue processor is responsible for:
+
+1. Scanning the active queue for new messages
+2. Attempting delivery of messages in the active queue
+3. Moving messages to the appropriate queue based on delivery status
+4. Retrying delivery of messages according to the retry schedule
+
+### Queue Processor Configuration
+
+The queue processor can be configured with the following options:
+
+```yaml
+queue_processor:
+  enabled: true             # Enable/disable queue processing
+  interval: 10              # Scanning interval in seconds
+  workers: 5                # Number of concurrent delivery workers
+  debug: false              # Enable debug logging for queue processor
+```
+
+Or in TOML format:
+
+```toml
+[queue_processor]
+enabled = true              # Enable/disable queue processing
+interval = 10               # Scanning interval in seconds
+workers = 5                 # Number of concurrent delivery workers
+debug = false               # Enable debug logging for queue processor
+```
 
 ## Message Prioritization
 
-Messages can be assigned different priority levels:
+Elemta supports message prioritization with four priority levels:
 
-- **Low**: For non-urgent messages.
-- **Normal**: Default priority for most messages.
-- **High**: For important messages that should be delivered before normal messages.
-- **Critical**: For urgent messages that should be delivered as soon as possible.
+1. **Critical** (Priority 4): Highest priority, processed first
+2. **High** (Priority 3): Processed after Critical messages
+3. **Normal** (Priority 2): Default priority level
+4. **Low** (Priority 1): Lowest priority, processed last
+
+Messages with higher priority are always processed before messages with lower priority.
 
 ## Retry Logic
 
-When a message delivery fails, it is moved to the deferred queue with an exponential backoff schedule:
+When a message delivery fails, Elemta will retry delivery according to the configured retry schedule. The default retry schedule uses an exponential backoff:
 
-1. The first retry happens after 1 minute.
-2. Subsequent retries follow an exponential backoff pattern (e.g., 5 minutes, 15 minutes, 30 minutes, 1 hour, etc.).
-3. The backoff schedule is configurable in the configuration file.
-4. After the maximum number of retries, the message is moved to the failed queue.
+1. 1 minute (60 seconds)
+2. 5 minutes (300 seconds)
+3. 15 minutes (900 seconds)
+4. 1 hour (3600 seconds)
+5. 3 hours (10800 seconds)
+6. 6 hours (21600 seconds)
+7. 12 hours (43200 seconds)
 
-## Queue Management CLI
-
-The `elemta-queue` command-line tool allows you to manage the queue system.
-
-### Installation
-
-The CLI tool is included with the Elemta installation. Make sure it's in your PATH.
-
-### Basic Usage
-
-```bash
-elemta-queue [options] command [args]
-```
-
-### Options
-
-- `-config <path>`: Path to the configuration file.
-- `-queue <type>`: Queue type to operate on (active, deferred, held, failed, all). Default is "all".
-
-### Commands
-
-#### List Messages
-
-List all messages in the queue:
-
-```bash
-elemta-queue list
-```
-
-List messages in a specific queue:
-
-```bash
-elemta-queue -queue active list
-elemta-queue -queue deferred list
-elemta-queue -queue held list
-elemta-queue -queue failed list
-```
-
-#### View Message Details
-
-View detailed information about a specific message:
-
-```bash
-elemta-queue view <message-id>
-```
-
-This shows:
-- Message metadata (ID, from, to, status, priority, etc.)
-- Delivery attempts
-- Error information
-- Message content
-
-#### Retry a Message
-
-Force immediate retry of a message from any queue:
-
-```bash
-elemta-queue retry <message-id>
-```
-
-This moves the message to the active queue for immediate delivery.
-
-#### Hold a Message
-
-Hold a message for manual review:
-
-```bash
-elemta-queue hold <message-id> [reason]
-```
-
-This moves the message to the held queue with an optional reason.
-
-#### Release a Message
-
-Release a held message back to the active queue:
-
-```bash
-elemta-queue release <message-id>
-```
-
-#### Delete a Message
-
-Delete a message from any queue:
-
-```bash
-elemta-queue delete <message-id>
-```
-
-#### Flush Queue
-
-Delete all messages from all queues:
-
-```bash
-elemta-queue flush
-```
-
-Delete all messages from a specific queue:
-
-```bash
-elemta-queue -queue active flush
-elemta-queue -queue deferred flush
-elemta-queue -queue held flush
-elemta-queue -queue failed flush
-```
-
-#### Show Queue Statistics
-
-Display statistics about the queue:
-
-```bash
-elemta-queue stats
-```
-
-This shows:
-- Number of messages in each queue
-- Total message count
-- Data size
-
-## Configuration
-
-The queue system can be configured in the Elemta configuration file (YAML or TOML format):
-
-### YAML Configuration
+You can configure a custom retry schedule in the configuration file:
 
 ```yaml
 queue:
-  queue_dir: "./queue"
-  max_workers: 10
-  max_retries: 5
-  max_queue_time: 172800
   retry_schedule:
-    - 60
-    - 300
-    - 900
-    - 3600
-    - 10800
-    - 21600
-    - 43200
-  keep_delivered_messages: true
-  keep_message_data: true
-  queue_priority_enabled: true
+    - 60     # 1 minute
+    - 300    # 5 minutes
+    - 900    # 15 minutes
+    - 3600   # 1 hour
+    - 10800  # 3 hours
+    - 21600  # 6 hours
+    - 43200  # 12 hours
 ```
 
-### TOML Configuration
+## Queue Management CLI
 
-```toml
-[queue]
-queue_dir = "./queue"
-max_workers = 10
-max_retries = 5
-max_queue_time = 172800
-retry_schedule = [60, 300, 900, 3600, 10800, 21600, 43200]
-keep_delivered_messages = true
-keep_message_data = true
-queue_priority_enabled = true
+Elemta provides a command-line interface for managing the queue. The CLI commands are available through the `elemta queue` command.
+
+### List Messages
+
+```bash
+# List all messages in the active queue
+elemta queue list active
+
+# List all messages in the deferred queue
+elemta queue list deferred
+
+# List all messages in the held queue
+elemta queue list held
+
+# List all messages in the failed queue
+elemta queue list failed
+
+# List all messages in all queues
+elemta queue list all
 ```
 
-### Configuration Options
+### View Message Details
 
-- `queue_dir`: Directory where queue files are stored.
-- `max_workers`: Maximum number of concurrent delivery workers.
-- `max_retries`: Maximum number of delivery attempts before giving up.
-- `max_queue_time`: Maximum time (in seconds) a message can stay in the queue before being moved to the failed queue.
-- `retry_schedule`: Custom retry schedule in seconds. If empty, exponential backoff is used.
-- `keep_delivered_messages`: Whether to keep delivered messages for archiving.
-- `keep_message_data`: Whether to keep message data after delivery.
-- `queue_priority_enabled`: Whether to enable queue prioritization.
+```bash
+# View details of a specific message
+elemta queue view <message-id>
 
-## Programmatic API
+# View message content
+elemta queue content <message-id>
+```
 
-The queue system can also be accessed programmatically through the Go API:
+### Retry Message
 
-```go
-import "github.com/busybox42/elemta/internal/smtp"
+```bash
+# Retry a specific message
+elemta queue retry <message-id>
 
-// Create a queue manager
-qm := smtp.NewQueueManager(config)
-qm.Start()
-defer qm.Stop()
+# Retry all messages in the failed queue
+elemta queue retry-all failed
 
-// Enqueue a message
-msg := smtp.NewMessage()
-msg.from = "sender@example.com"
-msg.to = []string{"recipient@example.com"}
-msg.data = []byte("From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nThis is a test message.")
-err := qm.EnqueueMessage(msg, smtp.PriorityNormal)
+# Retry all messages in the deferred queue
+elemta queue retry-all deferred
+```
 
-// Hold a message
-err = qm.HoldMessage(messageID, "Manual review required")
+### Hold Message
 
-// Release a message
-err = qm.ReleaseMessage(messageID)
+```bash
+# Hold a specific message
+elemta queue hold <message-id>
 
-// Get queue statistics
-stats := qm.GetQueueStats()
+# Hold all messages in the active queue
+elemta queue hold-all active
+
+# Hold all messages in the deferred queue
+elemta queue hold-all deferred
+```
+
+### Release Message
+
+```bash
+# Release a held message
+elemta queue release <message-id>
+
+# Release all messages in the held queue
+elemta queue release-all
+```
+
+### Delete Message
+
+```bash
+# Delete a specific message
+elemta queue delete <message-id>
+
+# Delete all messages in the failed queue
+elemta queue delete-all failed
+```
+
+### Flush Queue
+
+```bash
+# Flush the active queue
+elemta queue flush active
+
+# Flush the deferred queue
+elemta queue flush deferred
+
+# Flush the held queue
+elemta queue flush held
+
+# Flush the failed queue
+elemta queue flush failed
+
+# Flush all queues
+elemta queue flush all
+```
+
+### Queue Statistics
+
+```bash
+# Show queue statistics
+elemta queue stats
 ```
 
 ## Queue Directory Structure
 
-The queue directory has the following structure:
+The queue is stored in the file system with the following directory structure:
 
 ```
 queue/
-├── active/       # Active queue messages
-├── deferred/     # Deferred queue messages
-├── held/         # Held queue messages
-├── failed/       # Failed queue messages
-├── data/         # Message content data
-└── delivered/    # Archived delivered messages (if enabled)
+├── active/
+├── deferred/
+├── held/
+└── failed/
 ```
 
-Each message has:
-1. A metadata file (JSON) in the appropriate queue directory
-2. A data file in the data directory containing the raw message content
+Each message is stored as two files:
+1. `<message-id>.json`: Contains message metadata
+2. `<message-id>.eml`: Contains the raw message content
+
+## Queue Integration with SMTP Server
+
+When the SMTP server receives a message, it:
+
+1. Creates a new message in the active queue
+2. Stores the message metadata and content
+3. Returns success to the SMTP client
+
+The queue processor then:
+
+1. Scans the active queue for new messages
+2. Attempts delivery of each message
+3. Updates the message status based on delivery result
+4. Moves the message to the appropriate queue if needed
+
+This decoupled approach ensures that the SMTP server can quickly accept messages without waiting for delivery to complete.
+
+## Configuration Options
+
+The queue system can be configured with the following options:
+
+### YAML Format
+
+```yaml
+# Queue configuration
+queue:
+  queue_dir: "/var/spool/elemta/queue"   # Queue storage directory
+  max_workers: 10                        # Maximum delivery workers
+  max_retries: 5                         # Maximum delivery attempts
+  max_queue_time: 172800                 # Maximum time in queue (seconds)
+  retry_schedule:                        # Custom retry schedule
+    - 60     # 1 minute
+    - 300    # 5 minutes
+    - 900    # 15 minutes
+    - 3600   # 1 hour
+    - 10800  # 3 hours
+    - 21600  # 6 hours
+    - 43200  # 12 hours
+  keep_delivered_messages: false         # Keep delivered messages
+  keep_message_data: true                # Keep message data after delivery
+  queue_priority_enabled: true           # Enable message prioritization
+
+# Queue processor configuration
+queue_processor:
+  enabled: true                          # Enable queue processing
+  interval: 10                           # Queue processing interval (seconds)
+  workers: 5                             # Number of concurrent workers
+  debug: false                           # Enable debug logging
+```
+
+### TOML Format
+
+```toml
+# Queue configuration
+[queue]
+queue_dir = "/var/spool/elemta/queue"    # Queue storage directory
+max_workers = 10                         # Maximum delivery workers
+max_retries = 5                          # Maximum delivery attempts
+max_queue_time = 172800                  # Maximum time in queue (seconds)
+retry_schedule = [60, 300, 900, 3600, 10800, 21600, 43200]  # Custom retry schedule
+keep_delivered_messages = false          # Keep delivered messages
+keep_message_data = true                 # Keep message data after delivery
+queue_priority_enabled = true            # Enable message prioritization
+
+# Queue processor configuration
+[queue_processor]
+enabled = true                           # Enable queue processing
+interval = 10                            # Queue processing interval (seconds)
+workers = 5                              # Number of concurrent workers
+debug = false                            # Enable debug logging
+```
 
 ## Monitoring
 
-The queue system logs detailed information about message processing, which can be used for monitoring and troubleshooting. The `elemta-queue stats` command provides a quick overview of the current queue state.
-
-For more advanced monitoring, consider integrating with a monitoring system like Prometheus and Grafana to track queue metrics over time. 
+Elemta exposes queue metrics for monitoring. See [Monitoring](monitoring.md) for more information. 

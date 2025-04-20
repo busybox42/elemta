@@ -6,25 +6,25 @@ server:
   hostname: mail.example.com
   
   # Network address to listen on
-  listen: :25
+  listen: 0.0.0.0
   
   # TLS configuration
-  tls: false
+  tls: true
   cert_file: /etc/elemta/certs/example.com.crt
   key_file: /etc/elemta/certs/example.com.key
 
 # Queue directory
-queue_dir: /app/queue
+queue_dir: /var/spool/elemta/queue
 
 # Logging configuration
 logging:
   level: info
   format: text
-  file: /app/logs/elemta.log
+  file: /var/log/elemta/elemta.log
 
 # Plugins configuration
 plugins:
-  directory: /app/plugins
+  directory: /etc/elemta/plugins
   enabled:
     - greylisting
     - spf
@@ -33,4 +33,149 @@ plugins:
 # Authentication configuration
 authentication:
   required: false
-  type: none 
+  type: none
+
+# Queue processor configuration
+queue_processor:
+  enabled: true
+  interval: 10
+  workers: 5
+  debug: false
+
+# Maximum concurrent connections
+max_connections: 100
+
+# Maximum message size in bytes
+max_message_size: 52428800
+
+# Maximum recipients per message
+max_recipients: 100
+
+# Maximum SMTP commands per connection
+max_commands: 100
+
+# SMTP read timeout in seconds
+read_timeout: 300
+
+# SMTP write timeout in seconds
+write_timeout: 300
+
+# Welcome banner
+banner: "Elemta SMTP Server"
+
+# Do not resolve PTR records for SMTP clients
+disable_dns_resolving: false
+
+# Maximum workers for queue processing
+max_workers: 10
+
+# Maximum retries for delivery
+max_retries: 5
+
+# Maximum time in queue in seconds (172800 = 48 hours)
+max_queue_time: 172800
+
+# Retry schedule in seconds
+retry_schedule: [60, 300, 900, 3600, 10800, 21600, 43200]
+
+# Keep delivered messages
+keep_delivered_messages: false
+
+# Keep message data after delivery
+keep_message_data: true
+
+# Enable queue priority
+queue_priority_enabled: true
+
+# Maximum size in MB before rotation
+max_size: 100
+
+# Max number of log files to keep
+max_files: 5
+
+# Max age in days for log files
+max_age: 30
+
+# Compress rotated logs
+compress: true
+
+# API configuration
+api:
+  enabled: true
+  listen: 0.0.0.0
+  port: 8080
+  auth_token: "change-me-to-a-secure-token"
+  tls_enabled: true
+  tls_cert_file: /etc/elemta/ssl/api-cert.pem
+  tls_key_file: /etc/elemta/ssl/api-key.pem
+
+# Delivery configuration
+delivery:
+  mode: smtp
+  host: localhost
+  port: 25
+  timeout: 30
+  max_retries: 5
+  use_tls: true
+  verify_tls: true
+  use_auth: false
+  auth_username: ""
+  auth_password: ""
+  pipe_command: "/usr/sbin/sendmail -i -f %f %t"
+  file_path: "/var/spool/mail/%d/%u"
+
+# DKIM configuration
+dkim:
+  enabled: true
+  domain: example.com
+  selector: default
+  key_file: /etc/elemta/dkim/private.key
+  headers: "From,To,Subject,Date,Message-ID,MIME-Version,Content-Type"
+  canonicalization: relaxed/relaxed
+
+# SPF configuration
+spf:
+  enabled: true
+  reject_level: fail
+  check_helo: true
+
+# DMARC configuration
+dmarc:
+  enabled: true
+  reject_level: reject
+
+# Greylisting configuration
+greylisting:
+  enabled: true
+  initial_delay: 300
+  valid_period: 604800
+  max_entries: 100000
+  data_file: /var/lib/elemta/greylisting.db
+
+# Blacklist configuration
+blacklist:
+  enabled: true
+  file: /etc/elemta/blacklist.txt
+  dns_blacklists: "zen.spamhaus.org,bl.spamcop.net"
+  dns_timeout: 5
+
+# Whitelist configuration
+whitelist:
+  enabled: true
+  file: /etc/elemta/whitelist.txt
+
+# Rate limiting configuration
+ratelimit:
+  enabled: true
+  max_messages: 100
+  period: 3600
+  max_recipients: 1000
+  max_connections: 20
+  data_file: /var/lib/elemta/ratelimit.db
+
+# Test configuration
+test:
+  enabled: false
+  discard: false
+  forward: "test@example.com"
+  always_accept: false 
