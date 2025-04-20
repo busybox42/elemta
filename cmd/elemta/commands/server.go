@@ -50,6 +50,15 @@ func startServer() {
 		}
 	}
 
+	// Configure Queue Processor from config
+	smtpConfig.QueueProcessorEnabled = cfg.QueueProcessor.Enabled
+	smtpConfig.QueueProcessInterval = cfg.QueueProcessor.Interval
+	smtpConfig.QueueWorkers = cfg.QueueProcessor.Workers
+	fmt.Printf("Queue processor config: enabled=%v, interval=%d, workers=%d\n",
+		cfg.QueueProcessor.Enabled,
+		cfg.QueueProcessor.Interval,
+		cfg.QueueProcessor.Workers)
+
 	// Create SMTP server
 	fmt.Println("Creating SMTP server...")
 	server, err := smtp.NewServer(smtpConfig)
@@ -71,6 +80,7 @@ func startServer() {
 	fmt.Printf("  Server listening on: %s\n", cfg.Server.Listen)
 	fmt.Printf("  Queue directory: %s\n", cfg.QueueDir)
 	fmt.Printf("  Max message size: %d bytes\n", smtpConfig.MaxSize)
+	fmt.Printf("  Queue processor: %v\n", smtpConfig.QueueProcessorEnabled)
 
 	log.Printf("Elemta MTA starting on %s", cfg.Server.Listen)
 	fmt.Println("SMTP server started successfully!")

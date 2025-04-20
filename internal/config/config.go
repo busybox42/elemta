@@ -41,6 +41,14 @@ type Config struct {
 		Required bool   `yaml:"required" toml:"required"`
 		Type     string `yaml:"type" toml:"type"`
 	} `yaml:"authentication" toml:"authentication"`
+
+	// Queue processor configuration
+	QueueProcessor struct {
+		Enabled  bool `yaml:"enabled" toml:"enabled"`
+		Interval int  `yaml:"interval" toml:"interval"`
+		Workers  int  `yaml:"workers" toml:"workers"`
+		Debug    bool `yaml:"debug" toml:"debug"`
+	} `yaml:"queue_processor" toml:"queue_processor"`
 }
 
 // DefaultConfig returns the default configuration
@@ -65,6 +73,12 @@ func DefaultConfig() *Config {
 	// Set default authentication
 	cfg.Authentication.Required = false
 	cfg.Authentication.Type = "none"
+
+	// Set default queue processor configuration
+	cfg.QueueProcessor.Enabled = true
+	cfg.QueueProcessor.Interval = 10
+	cfg.QueueProcessor.Workers = 5
+	cfg.QueueProcessor.Debug = false
 
 	return cfg
 }
