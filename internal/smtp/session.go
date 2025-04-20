@@ -12,7 +12,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"encoding/base64"
 
@@ -40,12 +39,10 @@ type Session struct {
 	authenticated bool
 	username      string
 	authenticator Authenticator
-	started       time.Time
-	sessionID     string
 	queueManager  *QueueManager
 }
 
-func NewSession(conn net.Conn, config *Config, authenticator Authenticator, queueManager *QueueManager) *Session {
+func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Session {
 	remoteAddr := conn.RemoteAddr().String()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
@@ -66,9 +63,6 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator, queu
 		authenticated: false,
 		username:      "",
 		authenticator: authenticator,
-		started:       time.Now(),
-		sessionID:     uuid.New().String(),
-		queueManager:  queueManager,
 	}
 }
 
@@ -360,7 +354,13 @@ func (s *Session) saveMessage() error {
 		}
 	}
 
-	// Use the QueueManager to enqueue the message with normal priority
+	// Use the shared QueueManager to enqueue the message with normal priority
+	if s.queueManager == nil {
+		// Fallback to create a new one if we don't have a shared instance
+		s.logger.Warn("no shared queue manager, creating new instance")
+		s.queueManager = NewQueueManager(s.config)
+	}
+
 	if err := s.queueManager.EnqueueMessage(s.message, PriorityNormal); err != nil {
 		s.logger.Error("failed to enqueue message", "error", err)
 		return err

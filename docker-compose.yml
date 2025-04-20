@@ -13,7 +13,7 @@ services:
     volumes:
       - elemta_queue:/app/queue
       - elemta_logs:/app/logs
-      - elemta_plugins:/app/plugins
+      - ./plugins:/app/plugins
       - ./config/elemta.toml:/app/config/elemta.conf
       - ./scripts/api_server.py:/app/api_server.py
     environment:
@@ -115,26 +115,44 @@ services:
       sh -c "apk add --no-cache dovecot dovecot-lmtpd netcat-openbsd &&
              adduser -D -h /var/mail -u 5000 vmail 2>/dev/null || echo 'User vmail already exists' &&
              mkdir -p /var/mail &&
-             mkdir -p /var/mail/recipient@example.com/{new,cur,tmp} &&
-             mkdir -p /var/mail/sender@example.com/{new,cur,tmp} &&
+             mkdir -p /var/mail/recipient@example.com/new &&
+             mkdir -p /var/mail/recipient@example.com/cur &&
+             mkdir -p /var/mail/recipient@example.com/tmp &&
+             mkdir -p /var/mail/sender@example.com/new &&
+             mkdir -p /var/mail/sender@example.com/cur &&
+             mkdir -p /var/mail/sender@example.com/tmp &&
              chown -R vmail:vmail /var/mail &&
              chmod -R 700 /var/mail &&
              mkdir -p /etc/dovecot /var/log &&
+             touch /var/log/dovecot.log &&
+             chown vmail:vmail /var/log/dovecot.log &&
              echo 'protocols = imap lmtp' > /etc/dovecot/dovecot.conf &&
              echo 'listen = *' >> /etc/dovecot/dovecot.conf &&
              echo 'ssl = no' >> /etc/dovecot/dovecot.conf &&
+             echo 'mail_debug = yes' >> /etc/dovecot/dovecot.conf && 
+             echo 'auth_debug = yes' >> /etc/dovecot/dovecot.conf && 
+             echo 'auth_debug_passwords = yes' >> /etc/dovecot/dovecot.conf && 
+             echo 'auth_verbose = yes' >> /etc/dovecot/dovecot.conf &&
              echo 'mail_location = maildir:/var/mail/%u' >> /etc/dovecot/dovecot.conf &&
+             echo 'lmtp_save_to_detail_mailbox = yes' >> /etc/dovecot/dovecot.conf &&
              echo 'auth_mechanisms = plain login' >> /etc/dovecot/dovecot.conf &&
              echo 'service lmtp {' >> /etc/dovecot/dovecot.conf &&
              echo '  inet_listener lmtp {' >> /etc/dovecot/dovecot.conf &&
              echo '    address = 0.0.0.0' >> /etc/dovecot/dovecot.conf &&
              echo '    port = 2424' >> /etc/dovecot/dovecot.conf &&
              echo '  }' >> /etc/dovecot/dovecot.conf &&
+             echo '  user = vmail' >> /etc/dovecot/dovecot.conf &&
              echo '}' >> /etc/dovecot/dovecot.conf &&
              echo 'service imap {' >> /etc/dovecot/dovecot.conf &&
              echo '  inet_listener imap {' >> /etc/dovecot/dovecot.conf &&
              echo '    address = 0.0.0.0' >> /etc/dovecot/dovecot.conf &&
              echo '    port = 14143' >> /etc/dovecot/dovecot.conf &&
+             echo '  }' >> /etc/dovecot/dovecot.conf &&
+             echo '}' >> /etc/dovecot/dovecot.conf &&
+             echo 'service auth {' >> /etc/dovecot/dovecot.conf &&
+             echo '  unix_listener auth-userdb {' >> /etc/dovecot/dovecot.conf &&
+             echo '    mode = 0600' >> /etc/dovecot/dovecot.conf &&
+             echo '    user = vmail' >> /etc/dovecot/dovecot.conf &&
              echo '  }' >> /etc/dovecot/dovecot.conf &&
              echo '}' >> /etc/dovecot/dovecot.conf &&
              echo 'passdb {' >> /etc/dovecot/dovecot.conf &&
@@ -146,16 +164,12 @@ services:
              echo '  args = /etc/dovecot/passwd' >> /etc/dovecot/dovecot.conf &&
              echo '  default_fields = uid=5000 gid=5000 home=/var/mail/%u' >> /etc/dovecot/dovecot.conf &&
              echo '}' >> /etc/dovecot/dovecot.conf &&
-             echo 'log_path = /dev/stdout' >> /etc/dovecot/dovecot.conf &&
-             echo 'info_log_path = /dev/stdout' >> /etc/dovecot/dovecot.conf &&
-             echo 'debug_log_path = /dev/stdout' >> /etc/dovecot/dovecot.conf &&
-             echo 'mail_debug = yes' >> /etc/dovecot/dovecot.conf &&
-             echo 'auth_debug = yes' >> /etc/dovecot/dovecot.conf &&
-             echo 'auth_verbose = yes' >> /etc/dovecot/dovecot.conf &&
+             echo 'log_path = /var/log/dovecot.log' >> /etc/dovecot/dovecot.conf &&
+             echo 'info_log_path = /var/log/dovecot.log' >> /etc/dovecot/dovecot.conf &&
+             echo 'debug_log_path = /var/log/dovecot.log' >> /etc/dovecot/dovecot.conf &&
              echo 'recipient@example.com:{PLAIN}password:5000:5000::/var/mail/recipient@example.com::' > /etc/dovecot/passwd &&
              echo 'sender@example.com:{PLAIN}password:5000:5000::/var/mail/sender@example.com::' >> /etc/dovecot/passwd &&
              echo 'Creating test message for testing...' &&
-             mkdir -p /var/mail/recipient@example.com/cur &&
              echo 'From: sender@example.com' > /var/mail/recipient@example.com/cur/test-message:2,S &&
              echo 'To: recipient@example.com' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
              echo 'Subject: Test Message' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
@@ -167,6 +181,8 @@ services:
              dovecot -F"
     networks:
       - elemta_network
+    volumes:
+      - dovecot_data:/var/mail
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "14143"]
@@ -290,4 +306,5 @@ volumes:
   grafana_data:
     driver: local
   alertmanager_data:
-    driver: local 
+    driver: local
+  dovecot_data: 

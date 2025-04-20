@@ -31,6 +31,10 @@ type Config struct {
 	SMTPTimeout             int  `toml:"smtp_timeout" json:"smtp_timeout"`                             // Timeout for SMTP operations
 	MaxConnectionsPerDomain int  `toml:"max_connections_per_domain" json:"max_connections_per_domain"` // Maximum concurrent connections per domain
 
+	// Queue processor options
+	QueueProcessorEnabled bool `toml:"queue_processor_enabled" json:"queue_processor_enabled"` // Whether queue processing is enabled
+	QueueProcessInterval  int  `toml:"queue_process_interval" json:"queue_process_interval"`   // How often to process the queue in seconds
+
 	// Authentication configuration
 	Auth *AuthConfig `toml:"auth" json:"auth"`
 
@@ -60,6 +64,22 @@ type Config struct {
 
 	// API server configuration
 	API *APIConfig `toml:"api" json:"api"`
+
+	// Delivery configuration
+	Delivery *DeliveryConfig `toml:"delivery" json:"delivery"`
+}
+
+// DeliveryConfig represents configuration for message delivery
+type DeliveryConfig struct {
+	Mode          string `toml:"mode" json:"mode"`                     // Delivery mode (smtp, lmtp, etc.)
+	Host          string `toml:"host" json:"host"`                     // Host to deliver to
+	Port          int    `toml:"port" json:"port"`                     // Port to deliver to
+	Timeout       int    `toml:"timeout" json:"timeout"`               // Timeout for delivery operations
+	MaxRetries    int    `toml:"max_retries" json:"max_retries"`       // Maximum number of delivery retries
+	RetryDelay    int    `toml:"retry_delay" json:"retry_delay"`       // Delay between retries in seconds
+	TestMode      bool   `toml:"test_mode" json:"test_mode"`           // Whether to use test mode delivery
+	DefaultDomain string `toml:"default_domain" json:"default_domain"` // Default domain for local delivery
+	Debug         bool   `toml:"debug" json:"debug"`                   // Enable debug logging for delivery
 }
 
 // MetricsConfig represents the configuration for metrics collection
@@ -316,7 +336,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	if config.Antivirus == nil {
 		config.Antivirus = &AntivirusConfig{
 			ClamAV: &ClamAVConfig{
-				Enabled:   false,
+				Enabled:   true, // Enable virus scanning
 				Address:   "localhost:3310",
 				Timeout:   30,
 				ScanLimit: 25 * 1024 * 1024, // 25 MB
@@ -335,7 +355,7 @@ func LoadConfig(configPath string) (*Config, error) {
 				Threshold: 5.0,
 			},
 			Rspamd: &RspamdConfig{
-				Enabled:   false,
+				Enabled:   true, // Enable spam scanning
 				Address:   "http://localhost:11333",
 				Timeout:   30,
 				ScanLimit: 25 * 1024 * 1024, // 25 MB
@@ -387,6 +407,12 @@ func DefaultConfig() *Config {
 		MaxRetries:    10,
 		MaxQueueTime:  172800,
 		RetrySchedule: []int{60, 300, 900, 3600, 10800, 21600, 43200},
+
+		// Queue processor settings
+		QueueProcessorEnabled: true, // Enable queue processing by default
+		QueueProcessInterval:  10,   // Process queue every 10 seconds by default
+		QueueWorkers:          5,    // Default to 5 queue worker goroutines
+
 		Auth: &AuthConfig{
 			Enabled:        false,
 			Required:       false,
@@ -415,7 +441,7 @@ func DefaultConfig() *Config {
 		},
 		Antivirus: &AntivirusConfig{
 			ClamAV: &ClamAVConfig{
-				Enabled:   false,
+				Enabled:   true, // Enable virus scanning
 				Address:   "localhost:3310",
 				Timeout:   30,
 				ScanLimit: 25 * 1024 * 1024, // 25 MB
@@ -430,7 +456,7 @@ func DefaultConfig() *Config {
 				Threshold: 5.0,
 			},
 			Rspamd: &RspamdConfig{
-				Enabled:   false,
+				Enabled:   true, // Enable spam scanning
 				Address:   "http://localhost:11333",
 				Timeout:   30,
 				ScanLimit: 25 * 1024 * 1024, // 25 MB
@@ -455,6 +481,17 @@ func DefaultConfig() *Config {
 		API: &APIConfig{
 			Enabled:    false,
 			ListenAddr: ":8081",
+		},
+		Delivery: &DeliveryConfig{
+			Mode:          "smtp",
+			Host:          "localhost",
+			Port:          25,
+			Timeout:       60,
+			MaxRetries:    3,
+			RetryDelay:    10,
+			TestMode:      false,
+			DefaultDomain: "localdomain",
+			Debug:         false,
 		},
 	}
 }

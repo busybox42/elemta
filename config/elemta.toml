@@ -9,13 +9,13 @@ queue_dir = "/app/queue"
 max_size = 10485760  # 10MB message size limit
 
 [logging]
-level = "info"
+level = "debug"
 format = "text"
 file = "/app/logs/elemta.log"
 
 [plugins]
 directory = "/app/plugins"
-enabled = ["greylisting", "spf", "dkim"]
+enabled = ["greylisting", "spf", "dkim", "clamav", "rspamd"]
 
 [authentication]
 required = false
@@ -29,10 +29,36 @@ listen_addr = "0.0.0.0:8081"
 mode = "lmtp"  # Use LMTP protocol to deliver to Dovecot
 host = "elemta-dovecot"
 port = 2424
+timeout = 30
+max_retries = 5
 test_mode = true  # Enable test mode delivery
 default_domain = "example.com"  # Default domain for local delivery
+debug = true
 
 [test]
 enabled = true
 discard_real_delivery = false  # Don't discard, actually deliver
 admin_email = "admin@example.com"
+
+[queue_processor]
+enabled = true  # Enable queue processing
+interval = 10    # Process the queue every 10 seconds
+workers = 5              # Number of concurrent workers
+debug = true            # Enable queue debug logging
+
+# ClamAV anti-virus configuration
+[plugins.clamav]
+enabled = true
+host = "elemta-clamav"
+port = 3310
+timeout = 30
+reject_on_failure = false
+max_size = 10485760  # 10MB scan limit
+
+# Rspamd anti-spam configuration
+[plugins.rspamd] 
+enabled = true
+host = "elemta-rspamd"
+port = 11334
+timeout = 30
+reject_on_failure = false

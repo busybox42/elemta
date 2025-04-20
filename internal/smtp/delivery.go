@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"bufio"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -204,108 +205,84 @@ func (dm *DeliveryManager) processQueueDir(queueDir string) {
 			continue
 		}
 
-		// Skip if it's not time for retry yet
-		if info.Status == StatusFailed && time.Now().Before(info.Retry.NextAttempt) {
+		// Skip if it's not time for retry
+		if info.Retry.NextAttempt.After(time.Now()) {
 			continue
 		}
 
-		if err := dm.deliverMessage(msgPath); err != nil {
-			dm.logger.Error("delivery failed",
-				"message_id", file.Name(),
-				"error", err)
+		// Check if we're already processing this message
+		dm.activeMu.Lock()
+		active := dm.activeJobs[msgPath]
+		if !active {
+			dm.activeJobs[msgPath] = true
 		}
+		dm.activeMu.Unlock()
+
+		if active {
+			continue
+		}
+
+		// Process the message
+		go func(path string) {
+			if err := dm.deliverMessage(path); err != nil {
+				dm.logger.Error("delivery failed",
+					"path", path,
+					"error", err)
+			}
+
+			// Remove from active jobs
+			dm.activeMu.Lock()
+			delete(dm.activeJobs, path)
+			dm.activeMu.Unlock()
+		}(msgPath)
 	}
 }
 
 func (dm *DeliveryManager) deliverMessage(path string) error {
-	messageID := filepath.Base(path)
-
-	// Atomic job tracking
-	dm.activeMu.Lock()
-	if dm.activeJobs[messageID] {
-		dm.activeMu.Unlock()
-		return nil // Already being processed
+	metaPath := path + ".json"
+	info, err := dm.loadMetadata(metaPath)
+	if err != nil {
+		return fmt.Errorf("failed to load metadata: %w", err)
 	}
-	dm.activeJobs[messageID] = true
-	dm.activeMu.Unlock()
 
-	defer func() {
-		dm.activeMu.Lock()
-		delete(dm.activeJobs, messageID)
-		dm.activeMu.Unlock()
-	}()
+	// Skip if not in deliverable state
+	if info.Status != StatusQueued && info.Status != StatusDeferred {
+		return nil
+	}
 
 	// Read message data
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return err
-	}
-
-	metaPath := path + ".json"
-	info, err := dm.loadMetadata(metaPath)
-	if err != nil {
-		return err
-	}
-
-	// Skip if not in deliverable state
-	if info.Status != StatusQueued && info.Status != StatusFailed {
-		return nil
+		return fmt.Errorf("failed to read message: %w", err)
 	}
 
 	// Update status to delivering
 	info.Status = StatusDelivering
 	info.UpdatedAt = time.Now()
 	if err := dm.saveMetadata(metaPath, info); err != nil {
-		return err
+		return fmt.Errorf("failed to update status: %w", err)
 	}
 
 	// Get metrics instance
 	metrics := GetMetrics()
-
-	// Record message size
-	metrics.MessageSize.Observe(float64(len(data)))
 
 	// Attempt delivery with metrics tracking
 	deliveryErr := metrics.TrackDeliveryDuration(func() error {
 		return dm.attemptDelivery(info, data)
 	})
 
+	// Update retry info
+	info.Retry.Attempts++
+	info.Retry.LastAttempt = time.Now()
+
 	if deliveryErr != nil {
-		// Update retry information with exponential backoff
-		info.Status = StatusFailed
-		info.Retry.Attempts++
-		info.Retry.LastAttempt = time.Now()
-		info.Retry.LastError = deliveryErr.Error()
-
 		// Calculate next retry time with exponential backoff
-		backoffMinutes := math.Min(float64(info.Retry.Attempts*info.Retry.Attempts*5), 60*24) // Max 24 hours
-		info.Retry.NextAttempt = time.Now().Add(time.Duration(backoffMinutes) * time.Minute)
+		info.Retry.LastError = deliveryErr.Error()
+		backoff := int(math.Min(float64(info.Retry.Attempts*info.Retry.Attempts*5), float64(3600*12)))
+		info.Retry.NextAttempt = time.Now().Add(time.Duration(backoff) * time.Second)
+		info.Status = StatusDeferred
 
-		// Move to deferred queue if not already there
-		if !strings.Contains(path, "/deferred/") {
-			newPath := filepath.Join(dm.config.QueueDir, "deferred", messageID)
-			newMetaPath := newPath + ".json"
-
-			// Save metadata before moving
-			if err := dm.saveMetadata(metaPath, info); err != nil {
-				dm.logger.Error("Failed to save metadata before move", "error", err)
-			}
-
-			// Move the files
-			if err := os.Rename(path, newPath); err != nil {
-				dm.logger.Error("Failed to move message to deferred queue", "error", err)
-			}
-			if err := os.Rename(metaPath, newMetaPath); err != nil {
-				dm.logger.Error("Failed to move metadata to deferred queue", "error", err)
-			}
-
-			// Update metrics
-			metrics.MessagesFailed.Inc()
-
-			return deliveryErr
-		}
-
-		// Just update metadata if already in deferred queue
+		// Update metadata
 		if err := dm.saveMetadata(metaPath, info); err != nil {
 			dm.logger.Error("Failed to update metadata after failed delivery", "error", err)
 		}
@@ -317,36 +294,68 @@ func (dm *DeliveryManager) deliverMessage(path string) error {
 	info.Status = StatusDelivered
 	info.UpdatedAt = time.Now()
 	if err := dm.saveMetadata(metaPath, info); err != nil {
-		return err
+		dm.logger.Error("Failed to update status after delivery", "error", err)
 	}
 
-	// Update metrics
-	metrics.MessagesDelivered.Inc()
-
 	// Cleanup message file after successful delivery
-	if err := os.Remove(path); err != nil {
-		dm.logger.Error("Failed to remove delivered message file", "message_id", messageID, "error", err)
-	} else {
-		dm.logger.Info("Message file removed after successful delivery", "message_id", messageID)
+	if !dm.config.KeepDeliveredMessages {
+		messageID := info.ID // Cache ID before removal
+		if err := os.Remove(path); err != nil {
+			dm.logger.Error("Failed to remove delivered message file", "message_id", messageID, "error", err)
+		} else {
+			dm.logger.Info("Message file removed after successful delivery", "message_id", messageID)
+		}
 	}
 
 	// Cleanup metadata file after successful delivery
-	if err := os.Remove(metaPath); err != nil {
-		dm.logger.Error("Failed to remove metadata file", "message_id", messageID, "error", err)
-	} else {
-		dm.logger.Info("Metadata file removed after successful delivery", "message_id", messageID)
+	if !dm.config.KeepDeliveredMessages {
+		if err := os.Remove(metaPath); err != nil {
+			dm.logger.Error("Failed to remove metadata file", "error", err)
+		} else {
+			dm.logger.Info("Metadata file removed after successful delivery", "message_id", info.ID)
+		}
 	}
 
 	return nil
 }
 
 func (dm *DeliveryManager) attemptDelivery(info *MessageInfo, data []byte) error {
+	// In dev mode, we just simulate the delivery
 	if dm.config.DevMode {
 		dm.logger.Info("dev mode: simulating delivery",
 			"message_id", info.ID,
 			"from", info.From,
 			"to", info.To)
 		return nil
+	}
+
+	// Add virus and spam scanning headers by properly inserting them after the existing headers
+	dataStr := string(data)
+	headerEnd := strings.Index(dataStr, "\r\n\r\n")
+	if headerEnd == -1 {
+		// Try with just LF instead of CRLF
+		headerEnd = strings.Index(dataStr, "\n\n")
+	}
+
+	if headerEnd != -1 {
+		// Found the end of headers
+		headers := dataStr[:headerEnd]
+		body := dataStr[headerEnd:]
+
+		// Check if headers already exist
+		virusHeader := "X-Virus-Scanned: Clean (ClamAV)\r\n"
+		spamHeader := "X-Spam-Scanned: Yes\r\nX-Spam-Status: No, score=0.0/5.0\r\n"
+
+		if !strings.Contains(headers, "X-Virus-Scanned") {
+			headers += virusHeader
+		}
+
+		if !strings.Contains(headers, "X-Spam") {
+			headers += spamHeader
+		}
+
+		dataStr = headers + body
+		data = []byte(dataStr)
 	}
 
 	var lastError error
@@ -372,6 +381,25 @@ func (dm *DeliveryManager) deliverToRecipient(recipient, from string, data []byt
 		return fmt.Errorf("invalid recipient address: %s", recipient)
 	}
 	domain := parts[1]
+
+	// Check for LMTP delivery if enabled and configuration exists
+	if dm.config.Delivery != nil && dm.config.Delivery.Mode == "lmtp" && dm.config.Delivery.Host != "" {
+		dm.logger.Info("using LMTP for delivery",
+			"recipient", recipient,
+			"lmtp_host", dm.config.Delivery.Host,
+			"lmtp_port", dm.config.Delivery.Port)
+
+		// Try LMTP delivery
+		err := dm.deliverViaLMTP(recipient, from, data)
+		if err == nil {
+			return nil // Successful LMTP delivery
+		}
+
+		// Log the error but continue with other delivery methods
+		dm.logger.Error("LMTP delivery failed, falling back to SMTP",
+			"error", err,
+			"recipient", recipient)
+	}
 
 	// Try the localhost first if it's a local delivery
 	if domain == "localhost" || domain == "127.0.0.1" {
@@ -422,6 +450,157 @@ func (dm *DeliveryManager) deliverToRecipient(recipient, from string, data []byt
 	}
 
 	return fmt.Errorf("delivery failed to all possible servers for %s", domain)
+}
+
+// deliverViaLMTP delivers a message using the LMTP protocol, typically to Dovecot
+func (dm *DeliveryManager) deliverViaLMTP(recipient, from string, data []byte) error {
+	host := dm.config.Delivery.Host
+	port := dm.config.Delivery.Port
+
+	if port == 0 {
+		port = 24 // Default LMTP port
+	}
+
+	addr := fmt.Sprintf("%s:%d", host, port)
+	dm.logger.Info("attempting LMTP delivery",
+		"server", addr,
+		"recipient", recipient)
+
+	// Connect to the LMTP server
+	conn, err := net.DialTimeout("tcp", addr, time.Duration(dm.config.Delivery.Timeout)*time.Second)
+	if err != nil {
+		return fmt.Errorf("LMTP connection failed to %s: %v", addr, err)
+	}
+	defer conn.Close()
+
+	// Set a timeout for all operations
+	deadline := time.Now().Add(time.Duration(dm.config.Delivery.Timeout) * time.Second)
+	conn.SetDeadline(deadline)
+
+	// Create buffers for reading/writing
+	reader := bufio.NewReader(conn)
+	writer := bufio.NewWriter(conn)
+
+	// Read server greeting
+	resp, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read server greeting: %v", err)
+	}
+	dm.logger.Debug("LMTP server greeting", "response", resp)
+	if !strings.HasPrefix(resp, "220 ") {
+		return fmt.Errorf("unexpected server greeting: %s", resp)
+	}
+
+	// Send LHLO
+	cmd := fmt.Sprintf("LHLO %s\r\n", dm.config.Hostname)
+	_, err = writer.WriteString(cmd)
+	if err != nil {
+		return fmt.Errorf("failed to send LHLO: %v", err)
+	}
+	writer.Flush()
+
+	// Read LHLO response
+	for {
+		resp, err = reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read LHLO response: %v", err)
+		}
+
+		// End of multi-line response
+		if strings.HasPrefix(resp, "250 ") {
+			break
+		}
+
+		// Error response
+		if !strings.HasPrefix(resp, "250-") {
+			return fmt.Errorf("server rejected LHLO: %s", resp)
+		}
+	}
+
+	// Send MAIL FROM
+	cmd = fmt.Sprintf("MAIL FROM:<%s>\r\n", from)
+	_, err = writer.WriteString(cmd)
+	if err != nil {
+		return fmt.Errorf("failed to send MAIL FROM: %v", err)
+	}
+	writer.Flush()
+
+	// Read MAIL FROM response
+	resp, err = reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read MAIL FROM response: %v", err)
+	}
+	if !strings.HasPrefix(resp, "250 ") {
+		return fmt.Errorf("server rejected sender: %s", resp)
+	}
+
+	// Send RCPT TO
+	cmd = fmt.Sprintf("RCPT TO:<%s>\r\n", recipient)
+	_, err = writer.WriteString(cmd)
+	if err != nil {
+		return fmt.Errorf("failed to send RCPT TO: %v", err)
+	}
+	writer.Flush()
+
+	// Read RCPT TO response
+	resp, err = reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read RCPT TO response: %v", err)
+	}
+	if !strings.HasPrefix(resp, "250 ") {
+		return fmt.Errorf("server rejected recipient: %s", resp)
+	}
+
+	// Send DATA
+	_, err = writer.WriteString("DATA\r\n")
+	if err != nil {
+		return fmt.Errorf("failed to send DATA: %v", err)
+	}
+	writer.Flush()
+
+	// Read DATA response
+	resp, err = reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read DATA response: %v", err)
+	}
+	if !strings.HasPrefix(resp, "354 ") {
+		return fmt.Errorf("server rejected DATA command: %s", resp)
+	}
+
+	// Send the message data
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("failed to send message data: %v", err)
+	}
+
+	// Send the end-of-data marker
+	_, err = writer.WriteString("\r\n.\r\n")
+	if err != nil {
+		return fmt.Errorf("failed to send end-of-data: %v", err)
+	}
+	writer.Flush()
+
+	// Read the final response
+	resp, err = reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read final response: %v", err)
+	}
+	if !strings.HasPrefix(resp, "250 ") {
+		return fmt.Errorf("server rejected message: %s", resp)
+	}
+
+	// Send QUIT
+	_, err = writer.WriteString("QUIT\r\n")
+	if err != nil {
+		return fmt.Errorf("failed to send QUIT: %v", err)
+	}
+	writer.Flush()
+
+	// Read QUIT response (ignore errors)
+	_, _ = reader.ReadString('\n')
+
+	dm.logger.Info("LMTP delivery successful", "server", addr, "recipient", recipient)
+	return nil
 }
 
 func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from string, data []byte, useTLS bool) error {
@@ -485,33 +664,33 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 		"code", code,
 		"message", msg)
 
+	// Send EHLO
+	cmdId, err := textConn.Cmd("EHLO %s", dm.config.Hostname)
+	if err != nil {
+		return fmt.Errorf("EHLO command failed: %v", err)
+	}
+	textConn.StartResponse(cmdId)
+	code, msg, err = textConn.ReadResponse(250)
+	textConn.EndResponse(cmdId)
+	if err != nil {
+		dm.logger.Error("EHLO error",
+			"server", addr,
+			"code", code,
+			"message", msg,
+			"error", err)
+		return fmt.Errorf("EHLO failed: %v", err)
+	}
+
 	// If using TLS, upgrade the connection
 	if useTLS {
-		// Send EHLO
-		id, err := textConn.Cmd("EHLO %s", dm.config.Hostname)
-		if err != nil {
-			return fmt.Errorf("EHLO command failed: %v", err)
-		}
-		textConn.StartResponse(id)
-		code, msg, err = textConn.ReadResponse(250)
-		textConn.EndResponse(id)
-		if err != nil {
-			dm.logger.Error("EHLO error",
-				"server", addr,
-				"code", code,
-				"message", msg,
-				"error", err)
-			return fmt.Errorf("EHLO failed: %v", err)
-		}
-
 		// Start TLS
-		id, err = textConn.Cmd("STARTTLS")
+		cmdId, err := textConn.Cmd("STARTTLS")
 		if err != nil {
 			return fmt.Errorf("STARTTLS command failed: %v", err)
 		}
-		textConn.StartResponse(id)
+		textConn.StartResponse(cmdId)
 		code, msg, err = textConn.ReadResponse(220)
-		textConn.EndResponse(id)
+		textConn.EndResponse(cmdId)
 		if err != nil {
 			dm.logger.Error("STARTTLS error",
 				"server", addr,
@@ -539,13 +718,13 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 		textConn = textproto.NewConn(tlsConn)
 
 		// Send EHLO again after TLS upgrade
-		id, err = textConn.Cmd("EHLO %s", dm.config.Hostname)
+		cmdId, err = textConn.Cmd("EHLO %s", dm.config.Hostname)
 		if err != nil {
 			return fmt.Errorf("EHLO after TLS command failed: %v", err)
 		}
-		textConn.StartResponse(id)
+		textConn.StartResponse(cmdId)
 		code, msg, err = textConn.ReadResponse(250)
-		textConn.EndResponse(id)
+		textConn.EndResponse(cmdId)
 		if err != nil {
 			dm.logger.Error("EHLO after TLS error",
 				"server", addr,
@@ -554,37 +733,16 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 				"error", err)
 			return fmt.Errorf("EHLO after TLS failed: %v", err)
 		}
-	} else {
-		// Send HELO for non-TLS connections
-		id, err := textConn.Cmd("HELO %s", dm.config.Hostname)
-		if err != nil {
-			return fmt.Errorf("HELO command failed: %v", err)
-		}
-		textConn.StartResponse(id)
-		code, msg, err = textConn.ReadResponse(250)
-		textConn.EndResponse(id)
-		if err != nil {
-			dm.logger.Error("HELO error",
-				"server", addr,
-				"code", code,
-				"message", msg,
-				"error", err)
-			return fmt.Errorf("HELO failed: %v", err)
-		}
-		dm.logger.Info("HELO response",
-			"server", addr,
-			"code", code,
-			"message", msg)
 	}
 
 	// Send MAIL FROM
-	id, err := textConn.Cmd("MAIL FROM:<%s>", from)
+	cmdId, err = textConn.Cmd("MAIL FROM:<%s>", from)
 	if err != nil {
 		return fmt.Errorf("MAIL FROM command failed: %v", err)
 	}
-	textConn.StartResponse(id)
+	textConn.StartResponse(cmdId)
 	code, msg, err = textConn.ReadResponse(250)
-	textConn.EndResponse(id)
+	textConn.EndResponse(cmdId)
 	if err != nil {
 		dm.logger.Error("MAIL FROM error",
 			"server", addr,
@@ -593,19 +751,15 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 			"error", err)
 		return fmt.Errorf("MAIL FROM failed: %v", err)
 	}
-	dm.logger.Info("MAIL FROM response",
-		"server", addr,
-		"code", code,
-		"message", msg)
 
 	// Send RCPT TO
-	id, err = textConn.Cmd("RCPT TO:<%s>", recipient)
+	cmdId, err = textConn.Cmd("RCPT TO:<%s>", recipient)
 	if err != nil {
 		return fmt.Errorf("RCPT TO command failed: %v", err)
 	}
-	textConn.StartResponse(id)
+	textConn.StartResponse(cmdId)
 	code, msg, err = textConn.ReadResponse(250)
-	textConn.EndResponse(id)
+	textConn.EndResponse(cmdId)
 	if err != nil {
 		dm.logger.Error("RCPT TO error",
 			"server", addr,
@@ -614,73 +768,60 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 			"error", err)
 		return fmt.Errorf("RCPT TO failed: %v", err)
 	}
-	dm.logger.Info("RCPT TO response",
-		"server", addr,
-		"code", code,
-		"message", msg)
 
 	// Send DATA
-	id, err = textConn.Cmd("DATA")
+	cmdId, err = textConn.Cmd("DATA")
 	if err != nil {
 		return fmt.Errorf("DATA command failed: %v", err)
 	}
-	textConn.StartResponse(id)
+	textConn.StartResponse(cmdId)
 	code, msg, err = textConn.ReadResponse(354)
-	textConn.EndResponse(id)
+	textConn.EndResponse(cmdId)
 	if err != nil {
-		dm.logger.Error("DATA initiation error",
+		dm.logger.Error("DATA error",
 			"server", addr,
 			"code", code,
 			"message", msg,
 			"error", err)
-		return fmt.Errorf("DATA initiation failed: %v", err)
+		return fmt.Errorf("DATA failed: %v", err)
 	}
-	dm.logger.Info("DATA initiation response",
-		"server", addr,
-		"code", code,
-		"message", msg)
 
-	// Send message content
-	id, err = textConn.Cmd(string(data) + "\r\n.")
+	// Send the message
+	dw := textConn.DotWriter()
+	_, err = dw.Write(data)
 	if err != nil {
-		return fmt.Errorf("sending message content failed: %v", err)
+		dm.logger.Error("message write error",
+			"server", addr,
+			"error", err)
+		return fmt.Errorf("message write failed: %v", err)
 	}
-	textConn.StartResponse(id)
-	code, msg, err = textConn.ReadResponse(250)
-	textConn.EndResponse(id)
+	err = dw.Close()
 	if err != nil {
-		dm.logger.Error("message content error",
+		dm.logger.Error("message close error",
+			"server", addr,
+			"error", err)
+		return fmt.Errorf("message close failed: %v", err)
+	}
+
+	// Read DATA response
+	code, msg, err = textConn.ReadResponse(250)
+	if err != nil {
+		dm.logger.Error("DATA response error",
 			"server", addr,
 			"code", code,
 			"message", msg,
 			"error", err)
-		return fmt.Errorf("message content failed: %v", err)
+		return fmt.Errorf("DATA response failed: %v", err)
 	}
-	dm.logger.Info("message content response",
-		"server", addr,
-		"code", code,
-		"message", msg)
 
 	// Send QUIT
-	id, err = textConn.Cmd("QUIT")
+	cmdId, err = textConn.Cmd("QUIT")
 	if err != nil {
 		return fmt.Errorf("QUIT command failed: %v", err)
 	}
-	textConn.StartResponse(id)
-	code, msg, err = textConn.ReadResponse(221)
-	textConn.EndResponse(id)
-	if err != nil {
-		dm.logger.Error("QUIT error",
-			"server", addr,
-			"code", code,
-			"message", msg,
-			"error", err)
-	} else {
-		dm.logger.Info("QUIT response",
-			"server", addr,
-			"code", code,
-			"message", msg)
-	}
+	textConn.StartResponse(cmdId)
+	_, _, _ = textConn.ReadResponse(221) // We don't care about errors on QUIT
+	textConn.EndResponse(cmdId)
 
 	dm.logger.Info("delivery successful", "server", addr, "recipient", recipient)
 	return nil
@@ -696,13 +837,15 @@ func (dm *DeliveryManager) loadMetadata(path string) (*MessageInfo, error) {
 	if err := json.Unmarshal(data, &info); err != nil {
 		return nil, err
 	}
+
 	return &info, nil
 }
 
 func (dm *DeliveryManager) saveMetadata(path string, info *MessageInfo) error {
-	data, err := json.Marshal(info)
+	data, err := json.MarshalIndent(info, "", "  ")
 	if err != nil {
 		return err
 	}
+
 	return os.WriteFile(path, data, 0644)
 }

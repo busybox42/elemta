@@ -9,6 +9,10 @@ linux-package-builder/build_tmp/
 # Temporary files
 config/examples/elemta-fixed.conf
 .cursor/
+*.txt
+latest_email.txt
+test-message*.txt
+fixme.txt
 
 # Logs
 *.log
@@ -52,3 +56,26 @@ Thumbs.db
 # Temporary files
 *.tmp
 .tmp/
+
+# Testing and diagnostic scripts
+diagnose-queue.sh
+direct-deliver.sh
+direct-deliver2.sh
+elemta-fix.sh
+fix-elemta*.sh
+fix-lmtp-delivery.sh
+fix-queue-processor.sh
+process-queue.sh
+test-*.sh
+*-docker.sh
+!tests/test-elemta-docker.sh
+!tests/test-elemta.sh
+
+# Local configuration files
+elemta.toml
+simple-rspamd.conf
+test-rspamd.conf
+
+# Docker test files
+docker/dovecot/conf/passwd
+docker/rspamd/override.d/

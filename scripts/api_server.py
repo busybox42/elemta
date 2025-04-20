@@ -14,7 +14,13 @@ class APIRequestHandler(http.server.BaseHTTPRequestHandler):
         print(f"Received request: {self.path}")
         
         try:
-            if self.path == '/api/queue/stats':
+            if self.path == '/health':
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "ok"}).encode())
+            elif self.path == '/api/queue/stats':
                 self.serve_queue_stats()
             elif self.path == '/api/queue':
                 self.serve_all_queues()

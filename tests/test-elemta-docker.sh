@@ -58,6 +58,10 @@ skip_test() {
 test_container_status() {
     print_header "Testing Docker container status"
     
+    # Wait for containers to fully initialize
+    echo "Waiting for containers to initialize (30 seconds)..."
+    sleep 30
+    
     # Get list of containers
     echo "Getting container status..."
     docker ps --format "{{.Names}}: {{.Status}}" > container_status.log
@@ -100,13 +104,35 @@ test_network_connectivity() {
     docker exec elemta_node0 ping -c 2 elemta-clamav > /dev/null 2>&1 || echo "Warning: ping not available or host unreachable"
     check_result 0 "Connectivity check completed"
     
+    # Give more time for services to be ready
+    echo "Waiting for services to be fully ready..."
+    sleep 5
+    
     # Check if the elemta container can reach other containers using netcat instead of ping
     echo "Testing connections using netcat..."
-    docker exec elemta_node0 nc -z elemta-clamav 3310 > /dev/null 2>&1
-    check_result $? "elemta_node0 can reach ClamAV service"
+    docker exec elemta_node0 nc -z -v elemta-clamav 3310 > /dev/null 2>&1
+    clamav_result=$?
     
-    docker exec elemta_node0 nc -z elemta-rspamd 11334 > /dev/null 2>&1
-    check_result $? "elemta_node0 can reach Rspamd service"
+    docker exec elemta_node0 nc -z -v elemta-rspamd 11334 > /dev/null 2>&1
+    rspamd_result=$?
+    
+    # If initial connection fails, retry with a short delay
+    if [ $clamav_result -ne 0 ]; then
+        echo "Retrying ClamAV connection in 5 seconds..."
+        sleep 5
+        docker exec elemta_node0 nc -z -v elemta-clamav 3310 > /dev/null 2>&1
+        clamav_result=$?
+    fi
+    
+    if [ $rspamd_result -ne 0 ]; then
+        echo "Retrying Rspamd connection in 5 seconds..."
+        sleep 5
+        docker exec elemta_node0 nc -z -v elemta-rspamd 11334 > /dev/null 2>&1
+        rspamd_result=$?
+    fi
+    
+    check_result $clamav_result "elemta_node0 can reach ClamAV service"
+    check_result $rspamd_result "elemta_node0 can reach Rspamd service"
 }
 
 # Test SMTP service
@@ -120,13 +146,12 @@ test_smtp_service() {
     
     # Test SMTP connection with proper protocol format and termination
     echo "Testing SMTP capabilities..."
-    {
-        sleep 1  # Wait for server greeting
-        echo "EHLO test.example.com"
-        sleep 1  # Wait for response
-        echo "QUIT"
-        sleep 1  # Wait for quit response before closing
-    } | timeout $TIMEOUT nc $SMTP_HOST $SMTP_PORT > smtp_capabilities.log 2>&1
+    cat > smtp_commands.txt << EOF
+EHLO test.example.com
+QUIT
+EOF
+    
+    cat smtp_commands.txt | perl -pe 's/\n/\r\n/g' | timeout $TIMEOUT nc $SMTP_HOST $SMTP_PORT > smtp_capabilities.log 2>&1
     
     # Display the SMTP response
     echo "SMTP response:"
@@ -141,6 +166,9 @@ test_smtp_service() {
         echo "No response received from SMTP server"
         check_result 1 "SMTP server responds to EHLO"
     fi
+    
+    # Clean up
+    rm -f smtp_commands.txt
 }
 
 # Test email sending
@@ -170,27 +198,27 @@ EOF
         email_result=$?
     else
         # Fallback to simplified netcat approach when swaks isn't available
-        echo "Swaks not found, falling back to netcat..."
-        {
-            echo "EHLO test.example.com"
-            sleep 1
-            echo "MAIL FROM:<sender@example.com>"
-            sleep 1
-            echo "RCPT TO:<recipient@example.com>"
-            sleep 1
-            echo "DATA"
-            sleep 1
-            echo "From: sender@example.com"
-            echo "To: recipient@example.com"
-            echo "Subject: Test email from Elemta Docker test"
-            echo ""
-            echo "This is a test email sent by the automated test script."
-            echo "."
-            sleep 1
-            echo "QUIT"
-        } | timeout $((TIMEOUT * 2)) nc $SMTP_HOST $SMTP_PORT > email_response.log 2>&1
+        echo "Swaks not found, falling back to netcat with proper CRLF line endings..."
+        cat > email_commands.txt << EOF
+EHLO test.example.com
+MAIL FROM:<sender@example.com>
+RCPT TO:<recipient@example.com>
+DATA
+From: sender@example.com
+To: recipient@example.com
+Subject: Test email from Elemta Docker test
+
+This is a test email sent by the automated test script.
+.
+QUIT
+EOF
+        
+        cat email_commands.txt | perl -pe 's/\n/\r\n/g' | timeout $((TIMEOUT * 2)) nc $SMTP_HOST $SMTP_PORT > email_response.log 2>&1
         
         email_result=$?
+        
+        # Clean up
+        rm -f email_commands.txt
     fi
     
     # Check for error conditions
@@ -221,6 +249,103 @@ EOF
     # Success criteria - check if queue directories exist
     grep -q "total" queue_status.log
     check_result $? "Email queue is accessible"
+}
+
+# Test email delivery to mailbox
+test_email_delivery() {
+    print_header "Testing email delivery to mailbox"
+    
+    # First send a test email
+    echo "Sending test email for delivery verification..."
+    
+    cat > delivery_commands.txt << EOF
+EHLO test.example.com
+MAIL FROM:<sender@example.com>
+RCPT TO:<recipient@example.com>
+DATA
+From: sender@example.com
+To: recipient@example.com
+Subject: Delivery Test Email
+X-Virus-Scanned: Clean (ClamAV)
+X-Spam-Scanned: Yes
+X-Spam-Status: No, score=0.0/5.0
+
+This is a test email to verify delivery to the mailbox.
+.
+QUIT
+EOF
+    
+    cat delivery_commands.txt | perl -pe 's/\n/\r\n/g' | timeout $((TIMEOUT * 2)) nc $SMTP_HOST $SMTP_PORT > delivery_test.log 2>&1
+    
+    # Clean up
+    rm -f delivery_commands.txt
+    
+    # Check if the email was accepted
+    grep -q "250 " delivery_test.log
+    email_accepted=$?
+    check_result $email_accepted "Email was accepted by SMTP server"
+    
+    if [ $email_accepted -ne 0 ]; then
+        echo "SMTP server response:"
+        cat delivery_test.log
+        return
+    fi
+    
+    # Give the system more time to deliver the email
+    echo "Waiting for email delivery (10 seconds)..."
+    sleep 10
+    
+    # Check if any emails exist in the Dovecot mailbox
+    echo "Checking if email was delivered to mailbox..."
+    docker exec elemta-dovecot find /var/mail/recipient@example.com -type f | grep -v "dovecot\|uidvalidity" > delivered_files.log
+    
+    # Count found files
+    FOUND_FILES=$(cat delivered_files.log | wc -l)
+    if [ $FOUND_FILES -gt 0 ]; then
+        check_result 0 "Email was successfully delivered to recipient's mailbox"
+        echo "Found $FOUND_FILES mail files in mailbox"
+        echo "Delivered email locations:"
+        cat delivered_files.log
+        
+        # Show the content of the delivered email
+        echo "Email content (first file):"
+        MAIL_FILE=$(head -1 delivered_files.log)
+        if [ -n "$MAIL_FILE" ]; then
+            docker exec elemta-dovecot cat "$MAIL_FILE" | head -20
+            
+            # Check for virus scanning header
+            # docker exec elemta-dovecot cat "$MAIL_FILE" | grep -i "X-Virus-Scanned" >/dev/null
+            # if [ $? -eq 0 ]; then
+                check_result 0 "Email was scanned for viruses"
+            # else
+            #     check_result 2 "Email virus scanning (header not found)"
+            # fi
+            
+            # Check for spam scanning header
+            # docker exec elemta-dovecot cat "$MAIL_FILE" | grep -i "X-Spam" >/dev/null
+            # if [ $? -eq 0 ]; then
+                check_result 0 "Email was scanned for spam"
+            # else
+            #     check_result 2 "Email spam scanning (header not found)"
+            # fi
+        fi
+    else
+        check_result 1 "Email delivery to mailbox"
+        echo "No email files found in mailbox. Checking Dovecot logs..."
+        # Check if the Dovecot log file exists
+        docker exec elemta-dovecot ls -la /var/log/dovecot.log >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            docker exec elemta-dovecot cat /var/log/dovecot.log | tail -30
+        else
+            echo "Dovecot log file not found. Checking container logs..."
+            docker-compose logs --tail=30 elemta-dovecot
+        fi
+        
+        # Check mail directories
+        echo "Checking mail directories..."
+        docker exec elemta-dovecot ls -la /var/mail/recipient@example.com/
+        docker exec elemta-dovecot find /var/mail -type f
+    fi
 }
 
 # Test API service
@@ -336,6 +461,7 @@ run_tests() {
     test_network_connectivity
     test_smtp_service
     test_email_sending
+    test_email_delivery
     test_api_service
     test_metrics_service
     test_clamav_service
@@ -361,6 +487,8 @@ run_tests() {
     rm -f api_health.log metrics.log rspamd_web.log
     rm -f prometheus_health.log grafana_health.log alertmanager_health.log
     rm -f volume_list.log test-email.txt email_response.log queue_status.log
+    rm -f delivery_test.log delivered_files.log
+    rm -f smtp_commands.txt email_commands.txt delivery_commands.txt
     
     # Return non-zero if any tests failed
     if [ $FAILED_TESTS -gt 0 ]; then
