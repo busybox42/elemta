@@ -58,10 +58,6 @@ skip_test() {
 test_container_status() {
     print_header "Testing Docker container status"
     
-    # Wait for containers to fully initialize
-    echo "Waiting for containers to initialize (30 seconds)..."
-    sleep 30
-    
     # Get list of containers
     echo "Getting container status..."
     docker ps --format "{{.Names}}: {{.Status}}" > container_status.log
@@ -103,10 +99,6 @@ test_network_connectivity() {
     echo "Testing network connectivity between containers..."
     docker exec elemta_node0 ping -c 2 elemta-clamav > /dev/null 2>&1 || echo "Warning: ping not available or host unreachable"
     check_result 0 "Connectivity check completed"
-    
-    # Give more time for services to be ready
-    echo "Waiting for services to be fully ready..."
-    sleep 5
     
     # Check if the elemta container can reach other containers using netcat instead of ping
     echo "Testing connections using netcat..."

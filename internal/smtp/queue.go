@@ -3,6 +3,7 @@ package smtp
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"net"
 	"os"
@@ -131,6 +132,51 @@ type QueueStats struct {
 	TotalDelivered int       `json:"total_delivered"`
 	TotalFailed    int       `json:"total_failed"`
 	LastUpdated    time.Time `json:"last_updated"`
+}
+
+// QueueProcessorConfig represents the queue processor configuration section
+type QueueProcessorConfig struct {
+	Enabled       bool `toml:"enabled" json:"enabled"`
+	Interval      int  `toml:"interval" json:"interval"`
+	MaxConcurrent int  `toml:"max_concurrent" json:"max_concurrent"`
+	MaxRetries    int  `toml:"max_retries" json:"max_retries"`
+}
+
+// StartQueueProcessor starts the queue processor if enabled
+func (s *Server) StartQueueProcessor() {
+	if s.queueManager == nil {
+		log.Printf("Error: No queue manager initialized")
+		return
+	}
+
+	// Check both possible configuration locations
+	var enabled bool
+	var interval int
+
+	// Check if we have a queue_processor section
+	if s.config.QueueProcessorEnabled {
+		enabled = true
+		interval = s.config.QueueProcessInterval
+		log.Printf("Queue processor enabled via top-level config: %v, interval: %d seconds",
+			enabled, interval)
+	} else {
+		enabled = false
+		interval = 0
+		log.Printf("Queue processor disabled via config")
+	}
+
+	if enabled {
+		log.Printf("Starting queue processor with interval %d seconds", interval)
+
+		// Set queue processing parameters
+		s.queueManager.config.QueueProcessorEnabled = true
+		s.queueManager.config.QueueProcessInterval = interval
+
+		// Start the queue processor
+		s.queueManager.Start()
+	} else {
+		log.Printf("Queue processor disabled, not starting")
+	}
 }
 
 // RateLimiter represents a rate limiter for a domain or IP
@@ -601,17 +647,31 @@ func (qm *QueueManager) cleanupQueue() {
 					continue
 				}
 
+				// Check if message is too old based on queue time
 				age := now.Sub(msg.CreatedAt)
-				if age > maxAge {
+				expired := false
+				expiredReason := ""
+
+				if age > maxAge && maxAge > 0 {
+					expired = true
+					expiredReason = fmt.Sprintf("Message expired after %s", age.String())
+				}
+
+				// Also check the ExpiryTime field if it's set
+				if !msg.ExpiryTime.IsZero() && now.After(msg.ExpiryTime) {
+					expired = true
+					expiredReason = fmt.Sprintf("Message reached expiry time %s", msg.ExpiryTime.Format(time.RFC3339))
+				}
+
+				if expired {
 					qm.logger.Info("removing expired message from queue",
 						"id", msg.ID,
-						"age", age.String(),
-						"max_age", maxAge.String())
+						"reason", expiredReason)
 
 					// Move to failed queue
 					msg.QueueType = QueueTypeFailed
 					msg.Status = StatusFailed
-					msg.FailReason = fmt.Sprintf("Message expired after %s", age.String())
+					msg.FailReason = expiredReason
 					msg.UpdatedAt = now
 
 					if err := qm.moveMessage(msg, msg.QueueType, QueueTypeFailed); err != nil {
@@ -1336,6 +1396,12 @@ func (qm *QueueManager) loadQueuedMessage(path string) (*QueuedMessage, error) {
 	}
 	if msg.EnvelopeOptions == nil {
 		msg.EnvelopeOptions = make(map[string]string)
+	}
+
+	// Set expiry time if not set or invalid (far in the past or future)
+	if msg.ExpiryTime.IsZero() || msg.ExpiryTime.Year() < 2000 || msg.ExpiryTime.Year() > 2100 {
+		// Set a reasonable default expiry time (7 days from now)
+		msg.ExpiryTime = time.Now().Add(time.Duration(qm.config.MessageRetentionHours) * time.Hour)
 	}
 
 	return &msg, nil
