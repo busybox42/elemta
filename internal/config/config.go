@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
@@ -19,6 +20,37 @@ type Config struct {
 		CertFile string `yaml:"cert_file" toml:"cert_file"`
 		KeyFile  string `yaml:"key_file" toml:"key_file"`
 	} `yaml:"server" toml:"server"`
+
+	// Enhanced TLS configuration
+	TLS struct {
+		Enabled        bool     `yaml:"enabled" toml:"enabled"`
+		ListenAddr     string   `yaml:"listen_addr" toml:"listen_addr"`
+		CertFile       string   `yaml:"cert_file" toml:"cert_file"`
+		KeyFile        string   `yaml:"key_file" toml:"key_file"`
+		MinVersion     string   `yaml:"min_version" toml:"min_version"`
+		MaxVersion     string   `yaml:"max_version" toml:"max_version"`
+		Ciphers        []string `yaml:"ciphers" toml:"ciphers"`
+		Curves         []string `yaml:"curves" toml:"curves"`
+		ClientAuth     string   `yaml:"client_auth" toml:"client_auth"`
+		EnableStartTLS bool     `yaml:"enable_starttls" toml:"enable_starttls"`
+
+		// Let's Encrypt configuration
+		LetsEncrypt struct {
+			Enabled  bool   `yaml:"enabled" toml:"enabled"`
+			Domain   string `yaml:"domain" toml:"domain"`
+			Email    string `yaml:"email" toml:"email"`
+			CacheDir string `yaml:"cache_dir" toml:"cache_dir"`
+			Staging  bool   `yaml:"staging" toml:"staging"`
+		} `yaml:"letsencrypt" toml:"letsencrypt"`
+
+		// Certificate renewal configuration
+		Renewal struct {
+			AutoRenew      bool          `yaml:"auto_renew" toml:"auto_renew"`
+			RenewalDays    int           `yaml:"renewal_days" toml:"renewal_days"`
+			CheckInterval  time.Duration `yaml:"check_interval" toml:"check_interval"`
+			RenewalTimeout time.Duration `yaml:"renewal_timeout" toml:"renewal_timeout"`
+		} `yaml:"renewal" toml:"renewal"`
+	} `yaml:"tls" toml:"tls"`
 
 	// Queue configuration
 	QueueDir string `yaml:"queue_dir" toml:"queue_dir"`

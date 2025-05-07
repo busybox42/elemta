@@ -8,7 +8,14 @@ linux-package-builder/build_tmp/
 
 # Temporary files
 config/examples/elemta-fixed.conf
+# AI-related files
 .cursor/
+.cursor/rules/
+.cursor/rules/*.mdc
+.cursor/prompts/
+.cursor/sessions/
+scripts/update_roadmap*.sh
+scripts/*_ai_*.sh
 *.txt
 latest_email.txt
 test-message*.txt

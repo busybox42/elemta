@@ -37,38 +37,48 @@ type Config struct {
 }
 
 // Init initializes the plugin
-func (p *RspamdPlugin) Init(cfg interface{}) error {
+func (p *RspamdPlugin) Init(cfg map[string]interface{}) error {
 	// Parse configuration
-	if cfg != nil {
-		if c, ok := cfg.(*Config); ok {
-			p.config = c
-		} else {
-			log.Printf("Warning: Invalid configuration type for Rspamd plugin")
-			p.config = &Config{
-				Enabled:   true,
-				Host:      "elemta-rspamd",
-				Port:      11334,
-				Timeout:   30,
-				Threshold: 6.0,
-			}
-		}
-	} else {
-		// Default configuration
-		p.config = &Config{
-			Enabled:   true,
-			Host:      "elemta-rspamd",
-			Port:      11334,
-			Timeout:   30,
-			Threshold: 6.0,
-		}
+	config := &Config{
+		Enabled:   true,
+		Host:      "elemta-rspamd",
+		Port:      11334,
+		Timeout:   30,
+		Threshold: 5.0,
 	}
+
+	// Apply config settings if available
+	if v, ok := cfg["enabled"].(bool); ok {
+		config.Enabled = v
+	}
+	if v, ok := cfg["host"].(string); ok {
+		config.Host = v
+	}
+	if v, ok := cfg["port"].(int); ok {
+		config.Port = v
+	}
+	if v, ok := cfg["timeout"].(int); ok {
+		config.Timeout = v
+	}
+	if v, ok := cfg["reject_on_failure"].(bool); ok {
+		config.RejectOnFailure = v
+	}
+	if v, ok := cfg["threshold"].(float64); ok {
+		config.Threshold = v
+	}
+	if v, ok := cfg["api_key"].(string); ok {
+		config.APIKey = v
+	}
+
+	p.config = config
 
 	log.Printf("Initializing Rspamd plugin with host %s:%d", p.config.Host, p.config.Port)
 
 	// Create scanner
-	address := fmt.Sprintf("http://%s:%d", p.config.Host, p.config.Port)
+	address := fmt.Sprintf("%s:%d", p.config.Host, p.config.Port)
 
 	scannerConfig := antispam.Config{
+		Type:      "rspamd",
 		Address:   address,
 		Threshold: p.config.Threshold,
 		Options: map[string]interface{}{
@@ -79,19 +89,13 @@ func (p *RspamdPlugin) Init(cfg interface{}) error {
 
 	p.scanner = antispam.NewRspamd(scannerConfig)
 
-	// Connect to Rspamd
-	if err := p.scanner.Connect(); err != nil {
-		log.Printf("Warning: Failed to connect to Rspamd: %v", err)
-		return nil // Don't fail initialization if Rspamd is not available
-	}
-
 	log.Printf("Rspamd plugin initialized successfully")
 	return nil
 }
 
 // ScanMessage scans a message for spam
 func (p *RspamdPlugin) ScanMessage(msg *message.Message) (*plugin.Result, error) {
-	if !p.config.Enabled || p.scanner == nil || !p.scanner.IsConnected() {
+	if !p.config.Enabled || p.scanner == nil {
 		// Plugin is disabled or scanner is not available
 		return plugin.NewResult(plugin.ResultPass, "Spam scanning not available", nil), nil
 	}
@@ -117,15 +121,15 @@ func (p *RspamdPlugin) ScanMessage(msg *message.Message) (*plugin.Result, error)
 	}
 
 	// Add headers to the message
-	msg.AddHeader("X-Spam-Scanned", "Yes")
-
-	status := "No"
+	scoreStr := fmt.Sprintf("%.2f/%.2f", result.Score, result.Threshold)
+	isSpam := "No"
 	if !result.Clean {
-		status = "Yes"
+		isSpam = "Yes"
 	}
 
-	scoreStr := fmt.Sprintf("%.1f/%.1f", result.Score, result.Threshold)
-	msg.AddHeader("X-Spam-Status", fmt.Sprintf("%s, score=%s", status, scoreStr))
+	msg.AddHeader("X-Spam-Scanned", "Yes")
+	msg.AddHeader("X-Spam-Score", scoreStr)
+	msg.AddHeader("X-Spam-Status", isSpam)
 
 	// If rules were triggered, add them to the header
 	if len(result.Rules) > 0 {
@@ -142,10 +146,27 @@ func (p *RspamdPlugin) ScanMessage(msg *message.Message) (*plugin.Result, error)
 	// Check if the message is spam
 	if !result.Clean {
 		log.Printf("Spam detected, score: %.2f (threshold: %.2f)", result.Score, result.Threshold)
-		return plugin.NewResult(plugin.ResultReject, "Spam detected", result), nil
+		return plugin.NewResult(plugin.ResultReject, "Spam detected", nil), nil
 	}
 
-	return plugin.NewResult(plugin.ResultPass, "Message is not spam", result), nil
+	return plugin.NewResult(plugin.ResultPass, "Message is not spam", nil), nil
+}
+
+// Close closes the plugin and releases any resources
+func (p *RspamdPlugin) Close() error {
+	// No need to close anything for now
+	return nil
+}
+
+// GetInfo returns the plugin information
+func (p *RspamdPlugin) GetInfo() plugin.PluginInfo {
+	return plugin.PluginInfo{
+		Name:        PluginName,
+		Description: PluginDescription,
+		Version:     PluginVersion,
+		Type:        plugin.PluginTypeAntispam,
+		Author:      PluginAuthor,
+	}
 }
 
 // Hooks returns the hooks that the plugin wants to register

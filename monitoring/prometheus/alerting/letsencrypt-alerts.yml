@@ -1,0 +1,62 @@
+groups:
+- name: elemta_certificate_alerts
+  rules:
+  - alert: CertificateExpiringSoon
+    expr: min(elemta_tls_certificate_expiry_seconds) / 86400 < 14
+    for: 1h
+    labels:
+      severity: warning
+      category: certificates
+    annotations:
+      summary: "Certificate expiring soon"
+      description: "TLS certificate for Elemta will expire in {{ $value | printf \"%.1f\" }} days"
+
+  - alert: CertificateExpired
+    expr: min(elemta_tls_certificate_expiry_seconds) <= 0
+    for: 5m
+    labels:
+      severity: critical
+      category: certificates
+    annotations:
+      summary: "Certificate expired"
+      description: "TLS certificate for Elemta has expired"
+
+  - alert: CertificateInvalid
+    expr: min(elemta_tls_certificate_valid) == 0
+    for: 5m
+    labels:
+      severity: critical
+      category: certificates
+    annotations:
+      summary: "Certificate invalid"
+      description: "TLS certificate for Elemta is invalid"
+
+  - alert: RenewalFailure
+    expr: min(elemta_letsencrypt_renewal_status) == 0
+    for: 1h
+    labels:
+      severity: critical
+      category: certificates
+    annotations:
+      summary: "Certificate renewal failed"
+      description: "Let's Encrypt certificate renewal for Elemta has failed"
+
+  - alert: MultipleCertificateWarnings
+    expr: count(ALERTS{alertname=~"Certificate.*", alertstate="firing"}) > 1
+    for: 5m
+    labels:
+      severity: critical
+      category: certificates
+    annotations:
+      summary: "Multiple certificate issues detected"
+      description: "There are {{ $value }} active certificate alerts"
+
+  - alert: CertificateMonitoringDown
+    expr: absent(elemta_certificate_monitor_info) == 1
+    for: 15m
+    labels:
+      severity: warning
+      category: monitoring
+    annotations:
+      summary: "Certificate monitoring is down"
+      description: "The certificate monitoring service is not reporting metrics" 

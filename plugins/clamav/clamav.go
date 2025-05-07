@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -35,39 +36,47 @@ type Config struct {
 }
 
 // Init initializes the plugin
-func (p *ClamAVPlugin) Init(cfg interface{}) error {
+func (p *ClamAVPlugin) Init(cfg map[string]interface{}) error {
 	// Parse configuration
-	if cfg != nil {
-		if c, ok := cfg.(*Config); ok {
-			p.config = c
-		} else {
-			log.Printf("Warning: Invalid configuration type for ClamAV plugin")
-			p.config = &Config{
-				Enabled: true,
-				Host:    "elemta-clamav",
-				Port:    3310,
-				Timeout: 30,
-			}
-		}
-	} else {
-		// Default configuration
-		p.config = &Config{
-			Enabled: true,
-			Host:    "elemta-clamav",
-			Port:    3310,
-			Timeout: 30,
-		}
+	config := &Config{
+		Enabled: true,
+		Host:    "elemta-clamav",
+		Port:    3310,
+		Timeout: 30,
 	}
+
+	// Apply config settings if available
+	if v, ok := cfg["enabled"].(bool); ok {
+		config.Enabled = v
+	}
+	if v, ok := cfg["host"].(string); ok {
+		config.Host = v
+	}
+	if v, ok := cfg["port"].(int); ok {
+		config.Port = v
+	}
+	if v, ok := cfg["timeout"].(int); ok {
+		config.Timeout = v
+	}
+	if v, ok := cfg["reject_on_failure"].(bool); ok {
+		config.RejectOnFailure = v
+	}
+	if v, ok := cfg["max_size"].(int64); ok {
+		config.MaxSize = v
+	}
+
+	p.config = config
 
 	log.Printf("Initializing ClamAV plugin with host %s:%d", p.config.Host, p.config.Port)
 
 	// Create scanner
 	address := p.config.Host
 	if p.config.Port > 0 {
-		address = address + ":" + string(p.config.Port)
+		address = address + ":" + fmt.Sprintf("%d", p.config.Port)
 	}
 
 	scannerConfig := antivirus.Config{
+		Type:    "clamav",
 		Address: address,
 		Options: map[string]interface{}{
 			"timeout":     p.config.Timeout,
@@ -122,10 +131,18 @@ func (p *ClamAVPlugin) ScanMessage(msg *message.Message) (*plugin.Result, error)
 	if !result.Clean {
 		log.Printf("Virus detected: %v", result.Infections)
 		msg.AddHeader("X-Virus-Status", "Infected")
-		return plugin.NewResult(plugin.ResultReject, "Virus detected", result), nil
+		return plugin.NewResult(plugin.ResultReject, "Virus detected", nil), nil
 	}
 
-	return plugin.NewResult(plugin.ResultPass, "Message is clean", result), nil
+	return plugin.NewResult(plugin.ResultPass, "Message is clean", nil), nil
+}
+
+// Close closes the plugin and releases any resources
+func (p *ClamAVPlugin) Close() error {
+	if p.scanner != nil && p.scanner.IsConnected() {
+		return p.scanner.Close()
+	}
+	return nil
 }
 
 // Hooks returns the hooks that the plugin wants to register
@@ -153,6 +170,17 @@ func (p *ClamAVPlugin) Version() string {
 // Description returns the description of the plugin
 func (p *ClamAVPlugin) Description() string {
 	return PluginDescription
+}
+
+// GetInfo returns the plugin information
+func (p *ClamAVPlugin) GetInfo() plugin.PluginInfo {
+	return plugin.PluginInfo{
+		Name:        PluginName,
+		Description: PluginDescription,
+		Version:     PluginVersion,
+		Type:        plugin.PluginTypeAntivirus,
+		Author:      PluginAuthor,
+	}
 }
 
 // New creates a new instance of the plugin

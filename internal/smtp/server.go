@@ -25,6 +25,7 @@ type Server struct {
 	metricsServer *http.Server
 	apiServer     *api.Server
 	queueManager  *QueueManager
+	tlsManager    TLSHandler
 }
 
 // NewServer creates a new SMTP server
@@ -78,6 +79,17 @@ func NewServer(config *Config) (*Server, error) {
 		authenticator: authenticator,
 		metrics:       metrics,
 		queueManager:  queueManager,
+	}
+
+	// Initialize TLS manager if TLS is enabled
+	if config.TLS != nil && config.TLS.Enabled {
+		tlsManager, err := NewTLSManager(config)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize TLS manager: %v", err)
+		} else {
+			server.tlsManager = tlsManager
+			log.Printf("TLS manager initialized successfully")
+		}
 	}
 
 	// Initialize scanner manager
@@ -193,6 +205,11 @@ func (s *Server) handleConnection(conn net.Conn) {
 	// Pass the queue manager to the session
 	session.queueManager = s.queueManager
 
+	// Pass the TLS manager to the session if available
+	if s.tlsManager != nil {
+		session.tlsManager = s.tlsManager
+	}
+
 	// Track connection metrics
 	s.metrics.TrackConnectionDuration(func() error {
 		err := session.Handle()
@@ -235,6 +252,13 @@ func (s *Server) Close() error {
 			if err := auth.Close(); err != nil {
 				log.Printf("Error closing authenticator: %v", err)
 			}
+		}
+	}
+
+	// Stop TLS manager if it was initialized
+	if s.tlsManager != nil {
+		if err := s.tlsManager.Stop(); err != nil {
+			log.Printf("Error stopping TLS manager: %v", err)
 		}
 	}
 

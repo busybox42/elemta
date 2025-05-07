@@ -3,11 +3,14 @@ package smtp
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/acme"
@@ -16,15 +19,35 @@ import (
 
 // TLSManager handles TLS certificates and connections
 type TLSManager struct {
-	config      *Config
-	tlsConfig   *tls.Config
-	certManager *autocert.Manager
+	config            *Config
+	tlsConfig         *tls.Config
+	certManager       *autocert.Manager
+	certInfo          *CertificateInfo
+	renewTimer        *time.Timer
+	renewMutex        sync.Mutex
+	stopChan          chan struct{}
+	logger            *log.Logger
+	httpServer        *http.Server
+	notificationsSent map[string]time.Time // Track when notifications were last sent
+}
+
+// CertificateInfo holds information about the current certificate
+type CertificateInfo struct {
+	Domain    string    `json:"domain"`
+	NotBefore time.Time `json:"not_before"`
+	NotAfter  time.Time `json:"not_after"`
+	Issuer    string    `json:"issuer"`
+	Source    string    `json:"source"` // "manual" or "letsencrypt"
+	Renewed   time.Time `json:"last_renewed,omitempty"`
 }
 
 // NewTLSManager creates a new TLS manager
 func NewTLSManager(config *Config) (*TLSManager, error) {
 	manager := &TLSManager{
-		config: config,
+		config:            config,
+		stopChan:          make(chan struct{}),
+		logger:            log.New(os.Stdout, "[TLS] ", log.LstdFlags),
+		notificationsSent: make(map[string]time.Time),
 	}
 
 	// If TLS is not enabled, return early
@@ -39,24 +62,90 @@ func NewTLSManager(config *Config) (*TLSManager, error) {
 		return nil, fmt.Errorf("failed to set up TLS config: %w", err)
 	}
 
+	// Start certificate monitoring and renewal service if Let's Encrypt is enabled
+	if config.TLS.LetsEncrypt != nil && config.TLS.LetsEncrypt.Enabled {
+		go manager.startCertificateRenewalService()
+	}
+
 	return manager, nil
 }
 
 // setupTLSConfig sets up the TLS configuration
 func (m *TLSManager) setupTLSConfig() (*tls.Config, error) {
+	// Start with default secure settings
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		ClientAuth: tls.NoClientCert,
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+		},
+		PreferServerCipherSuites: true,
+	}
+
+	// Apply custom TLS version if specified
+	if m.config.TLS.MinVersion != "" {
+		minVersion, err := parseTLSVersion(m.config.TLS.MinVersion)
+		if err != nil {
+			m.logger.Printf("Warning: Invalid TLS min version '%s', using default: %v",
+				m.config.TLS.MinVersion, err)
+		} else {
+			tlsConfig.MinVersion = minVersion
+		}
+	}
+
+	// Apply custom TLS maximum version if specified
+	if m.config.TLS.MaxVersion != "" {
+		maxVersion, err := parseTLSVersion(m.config.TLS.MaxVersion)
+		if err != nil {
+			m.logger.Printf("Warning: Invalid TLS max version '%s', using default: %v",
+				m.config.TLS.MaxVersion, err)
+		} else {
+			tlsConfig.MaxVersion = maxVersion
+		}
+	}
+
+	// Apply custom cipher suites if specified
+	if len(m.config.TLS.Ciphers) > 0 {
+		cipherSuites, err := parseCipherSuites(m.config.TLS.Ciphers)
+		if err != nil {
+			m.logger.Printf("Warning: Some cipher suites are invalid, using default: %v", err)
+		} else if len(cipherSuites) > 0 {
+			tlsConfig.CipherSuites = cipherSuites
+		}
+	}
+
+	// Apply custom client auth if specified
+	if m.config.TLS.ClientAuth != "" {
+		clientAuth, err := parseClientAuth(m.config.TLS.ClientAuth)
+		if err != nil {
+			m.logger.Printf("Warning: Invalid client auth '%s', using default: %v",
+				m.config.TLS.ClientAuth, err)
+		} else {
+			tlsConfig.ClientAuth = clientAuth
+		}
 	}
 
 	// Check if Let's Encrypt is enabled
 	if m.config.TLS.LetsEncrypt != nil && m.config.TLS.LetsEncrypt.Enabled {
 		var err error
-		tlsConfig, err = m.setupLetsEncrypt()
+		leTLSConfig, err := m.setupLetsEncrypt()
 		if err != nil {
 			return nil, err
 		}
-		return tlsConfig, nil
+
+		// Merge Let's Encrypt config with our customized config
+		leTLSConfig.MinVersion = tlsConfig.MinVersion
+		leTLSConfig.MaxVersion = tlsConfig.MaxVersion
+		leTLSConfig.CipherSuites = tlsConfig.CipherSuites
+		leTLSConfig.PreferServerCipherSuites = tlsConfig.PreferServerCipherSuites
+		leTLSConfig.ClientAuth = tlsConfig.ClientAuth
+
+		return leTLSConfig, nil
 	}
 
 	// Use provided certificate files
@@ -66,11 +155,97 @@ func (m *TLSManager) setupTLSConfig() (*tls.Config, error) {
 			return nil, fmt.Errorf("failed to load TLS certificate: %w", err)
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
+
+		// Update certificate info
+		if err := m.updateCertificateInfo(cert); err != nil {
+			m.logger.Printf("Warning: Failed to update certificate info: %v", err)
+		}
 	} else {
 		return nil, fmt.Errorf("TLS enabled but no certificate files provided")
 	}
 
 	return tlsConfig, nil
+}
+
+// parseTLSVersion parses a TLS version string into a uint16 value
+func parseTLSVersion(version string) (uint16, error) {
+	switch version {
+	case "1.0", "tls1.0":
+		return tls.VersionTLS10, nil
+	case "1.1", "tls1.1":
+		return tls.VersionTLS11, nil
+	case "1.2", "tls1.2":
+		return tls.VersionTLS12, nil
+	case "1.3", "tls1.3":
+		return tls.VersionTLS13, nil
+	default:
+		return 0, fmt.Errorf("unsupported TLS version: %s", version)
+	}
+}
+
+// parseCipherSuites parses a list of cipher suite strings into uint16 values
+func parseCipherSuites(ciphers []string) ([]uint16, error) {
+	// Map of cipher suite names to values
+	cipherMap := map[string]uint16{
+		"TLS_RSA_WITH_RC4_128_SHA":                      tls.TLS_RSA_WITH_RC4_128_SHA,
+		"TLS_RSA_WITH_3DES_EDE_CBC_SHA":                 tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+		"TLS_RSA_WITH_AES_128_CBC_SHA":                  tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+		"TLS_RSA_WITH_AES_256_CBC_SHA":                  tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+		"TLS_RSA_WITH_AES_128_CBC_SHA256":               tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
+		"TLS_RSA_WITH_AES_128_GCM_SHA256":               tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+		"TLS_RSA_WITH_AES_256_GCM_SHA384":               tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+		"TLS_ECDHE_ECDSA_WITH_RC4_128_SHA":              tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA,
+		"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA":          tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+		"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA":          tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+		"TLS_ECDHE_RSA_WITH_RC4_128_SHA":                tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA,
+		"TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA":           tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
+		"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA":            tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+		"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA":            tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+		"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256":       tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
+		"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256":         tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
+		"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256":         tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256":       tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+		"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384":         tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+		"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384":       tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+		"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256":   tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+		"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256": tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+	}
+
+	var cipherSuites []uint16
+	var invalidCiphers []string
+
+	for _, cipher := range ciphers {
+		if val, ok := cipherMap[cipher]; ok {
+			cipherSuites = append(cipherSuites, val)
+		} else {
+			invalidCiphers = append(invalidCiphers, cipher)
+		}
+	}
+
+	var err error
+	if len(invalidCiphers) > 0 {
+		err = fmt.Errorf("invalid cipher suites: %v", invalidCiphers)
+	}
+
+	return cipherSuites, err
+}
+
+// parseClientAuth parses a client auth string into a tls.ClientAuthType
+func parseClientAuth(authType string) (tls.ClientAuthType, error) {
+	switch authType {
+	case "no_auth", "none":
+		return tls.NoClientCert, nil
+	case "request":
+		return tls.RequestClientCert, nil
+	case "require":
+		return tls.RequireAnyClientCert, nil
+	case "verify":
+		return tls.VerifyClientCertIfGiven, nil
+	case "require_verify":
+		return tls.RequireAndVerifyClientCert, nil
+	default:
+		return tls.NoClientCert, fmt.Errorf("unsupported client auth type: %s", authType)
+	}
 }
 
 // setupLetsEncrypt sets up Let's Encrypt certificate manager
@@ -104,9 +279,280 @@ func (m *TLSManager) setupLetsEncrypt() (*tls.Config, error) {
 		m.certManager.Client = &acme.Client{
 			DirectoryURL: "https://acme-staging-v02.api.letsencrypt.org/directory",
 		}
+		m.logger.Printf("Using Let's Encrypt staging environment for domain: %s", leConfig.Domain)
+	} else {
+		m.logger.Printf("Using Let's Encrypt production environment for domain: %s", leConfig.Domain)
+	}
+
+	// Start HTTP server for ACME HTTP-01 challenge
+	// This is needed for domain ownership validation
+	httpServer := &http.Server{
+		Addr:    ":http",
+		Handler: m.certManager.HTTPHandler(nil),
+	}
+
+	go func() {
+		m.logger.Printf("Starting HTTP server for ACME challenges on port 80")
+		if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
+			m.logger.Printf("HTTP server for ACME challenges error: %v", err)
+		}
+	}()
+
+	// Store the HTTP server so we can shut it down later
+	m.httpServer = httpServer
+
+	// Provide more detailed information about ACME challenges
+	m.logger.Printf("Let's Encrypt will attempt to validate domain ownership using HTTP-01 challenge")
+	m.logger.Printf("Ensure port 80 is open and accessible from the internet for domain: %s", leConfig.Domain)
+	m.logger.Printf("Let's Encrypt may also attempt TLS-ALPN-01 challenge if port 443 is accessible")
+
+	// Get initial certificate to check if it works
+	m.logger.Printf("Obtaining initial Let's Encrypt certificate for %s", leConfig.Domain)
+	hello := &tls.ClientHelloInfo{
+		ServerName: leConfig.Domain,
+	}
+
+	// Attempt to get the certificate but don't fail if it doesn't work yet
+	cert, err := m.certManager.GetCertificate(hello)
+	if err != nil {
+		m.logger.Printf("Warning: Failed to obtain initial Let's Encrypt certificate: %v", err)
+		m.logger.Printf("This is not fatal - certificate will be obtained when first needed")
+		// Don't fail here, Let's Encrypt will attempt to get the cert when needed
+	} else {
+		m.logger.Printf("Successfully obtained initial Let's Encrypt certificate for %s", leConfig.Domain)
+
+		// Create a tls.Certificate for updating info
+		if len(cert.Certificate) > 0 {
+			tlsCert := tls.Certificate{
+				Certificate: cert.Certificate,
+				PrivateKey:  cert.PrivateKey,
+				Leaf:        cert.Leaf,
+			}
+
+			if err := m.updateCertificateInfo(tlsCert); err != nil {
+				m.logger.Printf("Warning: Failed to update certificate info: %v", err)
+			} else {
+				m.logger.Printf("Certificate valid from %s to %s",
+					m.certInfo.NotBefore.Format(time.RFC3339),
+					m.certInfo.NotAfter.Format(time.RFC3339))
+			}
+		}
+	}
+
+	// Update certificate info even if we failed, it will be updated on successful renewal
+	if m.certInfo == nil {
+		m.certInfo = &CertificateInfo{
+			Domain: leConfig.Domain,
+			Source: "letsencrypt",
+		}
 	}
 
 	return m.certManager.TLSConfig(), nil
+}
+
+// startCertificateRenewalService starts a service to monitor and renew certificates
+func (m *TLSManager) startCertificateRenewalService() {
+	m.logger.Printf("Starting certificate renewal service")
+
+	// Check renewal settings
+	renewalConfig := m.config.TLS.RenewalConfig
+	if renewalConfig == nil || !renewalConfig.AutoRenew {
+		m.logger.Printf("Certificate auto-renewal is disabled, skipping renewal service")
+		return
+	}
+
+	// Use configured check interval or default to 24 hours
+	checkInterval := renewalConfig.CheckInterval
+	if checkInterval <= 0 {
+		checkInterval = 24 * time.Hour
+	}
+
+	// Check certificate every configured interval
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+
+	// Do an initial check
+	m.checkAndRenewCertificate()
+
+	for {
+		select {
+		case <-ticker.C:
+			m.checkAndRenewCertificate()
+		case <-m.stopChan:
+			m.logger.Printf("Certificate renewal service stopped")
+			return
+		}
+	}
+}
+
+// checkAndRenewCertificate checks if the certificate needs renewal and renews it if necessary
+func (m *TLSManager) checkAndRenewCertificate() {
+	m.renewMutex.Lock()
+	defer m.renewMutex.Unlock()
+
+	if m.config.TLS == nil || !m.config.TLS.Enabled {
+		return
+	}
+
+	// Check if using Let's Encrypt
+	if m.config.TLS.LetsEncrypt == nil || !m.config.TLS.LetsEncrypt.Enabled || m.certManager == nil {
+		return
+	}
+
+	domain := m.config.TLS.LetsEncrypt.Domain
+	if domain == "" {
+		m.logger.Printf("Error: No domain specified for certificate renewal")
+		return
+	}
+
+	// Check if we need to renew
+	needsRenewal := false
+
+	// Get renewal settings
+	renewalDays := 30 // Default to 30 days
+	if m.config.TLS.RenewalConfig != nil && m.config.TLS.RenewalConfig.RenewalDays > 0 {
+		renewalDays = m.config.TLS.RenewalConfig.RenewalDays
+	}
+
+	// Define notification thresholds (days before expiration)
+	notificationThresholds := []int{30, 14, 7, 3, 1}
+
+	if m.certInfo != nil && !m.certInfo.NotAfter.IsZero() {
+		daysUntilExpiration := int(time.Until(m.certInfo.NotAfter).Hours() / 24)
+
+		// If certificate is close to expiration, trigger renewal
+		if daysUntilExpiration <= renewalDays {
+			needsRenewal = true
+			m.logger.Printf("Certificate for %s expires in %d days, renewal needed", domain, daysUntilExpiration)
+		}
+
+		// Send notifications at specified thresholds
+		for _, threshold := range notificationThresholds {
+			if daysUntilExpiration <= threshold {
+				notificationKey := fmt.Sprintf("expiration-%d", threshold)
+
+				// Check if we've already sent this notification recently
+				lastSent, exists := m.notificationsSent[notificationKey]
+				if !exists || time.Since(lastSent) > 24*time.Hour {
+					m.sendExpirationNotification(domain, daysUntilExpiration, threshold)
+					m.notificationsSent[notificationKey] = time.Now()
+				}
+			}
+		}
+	} else {
+		// If we don't have certificate info, force renewal
+		needsRenewal = true
+		m.logger.Printf("No valid certificate info for %s, renewal needed", domain)
+	}
+
+	// Force renewal if configured
+	if m.config.TLS.RenewalConfig != nil && m.config.TLS.RenewalConfig.ForceRenewal {
+		needsRenewal = true
+		m.logger.Printf("Forced renewal configured for %s", domain)
+
+		// Reset the force renewal flag to avoid continuous renewals
+		m.config.TLS.RenewalConfig.ForceRenewal = false
+	}
+
+	if !needsRenewal {
+		m.logger.Printf("Certificate for %s is still valid, no renewal needed", domain)
+		return
+	}
+
+	// Force certificate renewal
+	m.logger.Printf("Renewing certificate for %s", domain)
+	hello := &tls.ClientHelloInfo{
+		ServerName: domain,
+	}
+
+	// Get the certificate
+	cert, err := m.certManager.GetCertificate(hello)
+	if err != nil {
+		m.logger.Printf("Error renewing certificate: %v", err)
+
+		// Send renewal failure notification
+		m.sendRenewalFailureNotification(domain, err)
+		return
+	}
+
+	// Update certificate info - need to convert to tls.Certificate
+	if len(cert.Certificate) > 0 {
+		// Create a new tls.Certificate for updating info
+		tlsCert := tls.Certificate{
+			Certificate: cert.Certificate,
+			PrivateKey:  cert.PrivateKey,
+			Leaf:        cert.Leaf,
+		}
+
+		if err := m.updateCertificateInfo(tlsCert); err != nil {
+			m.logger.Printf("Warning: Failed to update certificate info after renewal: %v", err)
+		} else {
+			m.certInfo.Renewed = time.Now()
+			m.logger.Printf("Certificate successfully renewed, valid until %s", m.certInfo.NotAfter.Format(time.RFC3339))
+
+			// Send renewal success notification
+			daysUntilExpiration := int(time.Until(m.certInfo.NotAfter).Hours() / 24)
+			m.sendRenewalSuccessNotification(domain, daysUntilExpiration)
+		}
+	}
+}
+
+// sendExpirationNotification sends a notification that a certificate is about to expire
+func (m *TLSManager) sendExpirationNotification(domain string, daysLeft, threshold int) {
+	m.logger.Printf("NOTIFICATION: Certificate for %s will expire in %d days (threshold: %d days)",
+		domain, daysLeft, threshold)
+
+	// In a production system, this would send an email, Slack notification, etc.
+	// For now, we just log it with a distinctive prefix
+}
+
+// sendRenewalSuccessNotification sends a notification that a certificate was successfully renewed
+func (m *TLSManager) sendRenewalSuccessNotification(domain string, validDays int) {
+	m.logger.Printf("NOTIFICATION: Certificate for %s was successfully renewed. Valid for %d days",
+		domain, validDays)
+
+	// In a production system, this would send an email, Slack notification, etc.
+}
+
+// sendRenewalFailureNotification sends a notification that a certificate renewal failed
+func (m *TLSManager) sendRenewalFailureNotification(domain string, err error) {
+	m.logger.Printf("NOTIFICATION: Certificate renewal for %s FAILED: %v", domain, err)
+
+	// In a production system, this would send an email, Slack notification, etc.
+}
+
+// updateCertificateInfo extracts and stores information about the certificate
+func (m *TLSManager) updateCertificateInfo(cert tls.Certificate) error {
+	if len(cert.Certificate) == 0 {
+		return fmt.Errorf("empty certificate chain")
+	}
+
+	x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return fmt.Errorf("failed to parse certificate: %w", err)
+	}
+
+	if m.certInfo == nil {
+		m.certInfo = &CertificateInfo{}
+	}
+
+	m.certInfo.NotBefore = x509Cert.NotBefore
+	m.certInfo.NotAfter = x509Cert.NotAfter
+	m.certInfo.Domain = x509Cert.Subject.CommonName
+
+	if len(x509Cert.Issuer.Organization) > 0 {
+		m.certInfo.Issuer = x509Cert.Issuer.Organization[0]
+	} else {
+		m.certInfo.Issuer = x509Cert.Issuer.CommonName
+	}
+
+	if m.config.TLS.LetsEncrypt != nil && m.config.TLS.LetsEncrypt.Enabled {
+		m.certInfo.Source = "letsencrypt"
+	} else {
+		m.certInfo.Source = "manual"
+	}
+
+	return nil
 }
 
 // GetTLSConfig returns the TLS configuration
@@ -135,7 +581,7 @@ func (m *TLSManager) StartTLSListener(ctx context.Context) (net.Listener, error)
 		return nil, fmt.Errorf("failed to create TLS listener: %w", err)
 	}
 
-	log.Printf("Started TLS listener on %s", listenAddr)
+	m.logger.Printf("Started TLS listener on %s", listenAddr)
 	return listener, nil
 }
 
@@ -173,6 +619,9 @@ func (m *TLSManager) WrapConnection(conn net.Conn) (net.Conn, error) {
 
 // RenewCertificates forces certificate renewal
 func (m *TLSManager) RenewCertificates(ctx context.Context) error {
+	m.renewMutex.Lock()
+	defer m.renewMutex.Unlock()
+
 	if m.config.TLS == nil || !m.config.TLS.Enabled {
 		return fmt.Errorf("TLS not enabled")
 	}
@@ -191,14 +640,35 @@ func (m *TLSManager) RenewCertificates(ctx context.Context) error {
 	}
 
 	// Force certificate renewal
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
-
-	log.Printf("Forcing renewal of certificate for %s", domain)
-	_, err := m.certManager.GetCertificate(&tls.ClientHelloInfo{
+	m.logger.Printf("Forcing renewal of certificate for %s", domain)
+	hello := &tls.ClientHelloInfo{
 		ServerName: domain,
-	})
-	return err
+	}
+
+	// Get the certificate
+	cert, err := m.certManager.GetCertificate(hello)
+	if err != nil {
+		return fmt.Errorf("failed to renew certificate: %w", err)
+	}
+
+	// Update certificate info - need to convert to tls.Certificate
+	if len(cert.Certificate) > 0 {
+		// Create a new tls.Certificate for updating info
+		tlsCert := tls.Certificate{
+			Certificate: cert.Certificate,
+			PrivateKey:  cert.PrivateKey,
+			Leaf:        cert.Leaf,
+		}
+
+		if err := m.updateCertificateInfo(tlsCert); err != nil {
+			m.logger.Printf("Warning: Failed to update certificate info after forced renewal: %v", err)
+		} else {
+			m.certInfo.Renewed = time.Now()
+			m.logger.Printf("Certificate successfully renewed, valid until %s", m.certInfo.NotAfter.Format(time.RFC3339))
+		}
+	}
+
+	return nil
 }
 
 // GetCertificateInfo returns information about the current certificate
@@ -209,6 +679,25 @@ func (m *TLSManager) GetCertificateInfo() (map[string]interface{}, error) {
 
 	info := make(map[string]interface{})
 	info["enabled"] = true
+
+	// Add certificate info if available
+	if m.certInfo != nil {
+		info["domain"] = m.certInfo.Domain
+		info["not_before"] = m.certInfo.NotBefore
+		info["not_after"] = m.certInfo.NotAfter
+		info["issuer"] = m.certInfo.Issuer
+		info["source"] = m.certInfo.Source
+
+		if !m.certInfo.Renewed.IsZero() {
+			info["last_renewed"] = m.certInfo.Renewed
+		}
+
+		// Calculate days until expiration
+		if !m.certInfo.NotAfter.IsZero() {
+			daysUntilExpiration := int(time.Until(m.certInfo.NotAfter).Hours() / 24)
+			info["days_until_expiration"] = daysUntilExpiration
+		}
+	}
 
 	// Check if using Let's Encrypt
 	if m.config.TLS.LetsEncrypt != nil && m.config.TLS.LetsEncrypt.Enabled {
@@ -235,4 +724,26 @@ func (m *TLSManager) GetCertificateInfo() (map[string]interface{}, error) {
 	}
 
 	return info, nil
+}
+
+// Stop stops the TLS manager and any running services
+func (m *TLSManager) Stop() error {
+	m.logger.Printf("Stopping TLS manager")
+
+	// Stop certificate renewal service
+	if m.stopChan != nil {
+		close(m.stopChan)
+	}
+
+	// Stop HTTP server for ACME challenges
+	if m.httpServer != nil {
+		m.logger.Printf("Stopping HTTP server for ACME challenges")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := m.httpServer.Shutdown(ctx); err != nil {
+			m.logger.Printf("Error shutting down HTTP server for ACME challenges: %v", err)
+		}
+	}
+
+	return nil
 }

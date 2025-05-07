@@ -14,6 +14,7 @@ Elemta is a high-performance, carrier-grade Mail Transfer Agent (MTA) written in
 - **API-Driven**: RESTful API for management and monitoring
 - **Native Packages**: Support for RHEL/CentOS 8/9, Debian 11, and Ubuntu 22.04
 - **Flexible Configuration**: Support for both YAML and TOML configuration formats
+- **TLS Encryption**: Built-in support for Let's Encrypt integration
 
 ## Architecture
 
@@ -258,6 +259,28 @@ docker-compose -f docker-compose-monitoring.yml up -d
 ./scripts/generate-test-load.sh
 ```
 
+#### TLS and Let's Encrypt Monitoring
+
+Elemta provides specialized monitoring for TLS certificates, with a focus on Let's Encrypt certificate management. This includes:
+
+- Certificate expiration monitoring
+- Automatic renewal tracking
+- Certificate validity checks
+- Grafana dashboards for certificate visibility
+- Prometheus alerts for certificate issues
+
+To set up Let's Encrypt certificate monitoring:
+
+```bash
+# Start the certificate monitoring service
+sudo ./scripts/letsencrypt-monitor.sh
+
+# Access the certificate dashboard
+# Open http://localhost:9090/ in your browser
+```
+
+For more details, see [Let's Encrypt Monitoring Documentation](docs/letsencrypt-monitoring.md).
+
 #### Monitoring Stack
 
 Elemta's monitoring stack includes:
@@ -440,6 +463,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+> **Note**: AI assistant configuration files (in the `.cursor/` directory) are intentionally excluded from version control. These files contain project guidance for AI coding assistants and are maintained separately.
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
@@ -463,3 +488,33 @@ make test-queue-only
 # Run in test mode
 ./scripts/test-mode.sh
 ```
+
+## Development Roadmap
+
+Elemta is currently in active development, focusing on Phase 1 (Core Infrastructure Stabilization). 
+
+Our development is guided by a detailed roadmap that outlines:
+- Current state assessment
+- Development phases and timelines
+- Key features for each phase
+- Immediate next steps
+
+For developers interested in contributing, please refer to the roadmap in `.cursor/rules/elemta_roadmap.mdc` 
+for a comprehensive view of our development plan.
+
+## Let's Encrypt Integration
+
+Elemta includes built-in support for automatic TLS certificate provisioning via Let's Encrypt:
+
+- **Quick Setup**: Use our setup script: `tools/letsencrypt-setup.sh`
+- **Troubleshooting**: Use our troubleshooter: `tools/letsencrypt-troubleshooter.sh`
+- **Monitoring**: Ongoing certificate monitoring: `tools/letsencrypt-monitor.sh`
+
+See `docs/letsencrypt-guide.md` for complete documentation.
+
+## Documentation
+
+- [Installation Guide](docs/installation.md)
+- [Configuration Reference](docs/configuration.md)
+- [Plugin Development](docs/plugins.md)
+- [Let's Encrypt Guide](docs/letsencrypt-guide.md)

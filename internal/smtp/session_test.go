@@ -3,6 +3,7 @@ package smtp
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"io/ioutil"
 	"net"
@@ -77,6 +78,48 @@ func (a *mockAuthenticator) GetSupportedMethods() []AuthMethod {
 }
 
 func (a *mockAuthenticator) Close() error {
+	return nil
+}
+
+// mockTLSManager implements a mock version of the TLS manager for testing
+type mockTLSManager struct {
+	enabled   bool
+	wrapError error
+}
+
+func newMockTLSManager(enabled bool) *mockTLSManager {
+	return &mockTLSManager{
+		enabled: enabled,
+	}
+}
+
+func (m *mockTLSManager) WrapConnection(conn net.Conn) (net.Conn, error) {
+	if m.wrapError != nil {
+		return nil, m.wrapError
+	}
+
+	// For testing, we'll just use a new mock conn and not try to cast it to a tls.Conn
+	return newMockConn(), nil
+}
+
+// Implement other required methods to satisfy the interface
+func (m *mockTLSManager) GetTLSConfig() *tls.Config {
+	return &tls.Config{}
+}
+
+func (m *mockTLSManager) StartTLSListener(ctx context.Context) (net.Listener, error) {
+	return nil, nil
+}
+
+func (m *mockTLSManager) RenewCertificates(ctx context.Context) error {
+	return nil
+}
+
+func (m *mockTLSManager) GetCertificateInfo() (map[string]interface{}, error) {
+	return nil, nil
+}
+
+func (m *mockTLSManager) Stop() error {
 	return nil
 }
 
@@ -329,6 +372,239 @@ func TestSessionAuthentication(t *testing.T) {
 			for _, expected := range tc.expectedOutput {
 				if !strings.Contains(response, expected) {
 					t.Errorf("Expected response to contain %q, but it didn't. Response: %s", expected, response)
+				}
+			}
+		})
+	}
+}
+
+// TestSessionSTARTTLS tests the STARTTLS functionality
+func TestSessionSTARTTLS(t *testing.T) {
+	// Set up a mock handleSTARTTLS function for testing
+	originalHandler := mockHandleSTARTTLS
+	defer func() {
+		mockHandleSTARTTLS = originalHandler
+	}()
+
+	mockHandleSTARTTLS = func(s *Session) error {
+		s.logger.Info("Mock STARTTLS handler called")
+		// Just update the tls flag for testing
+		s.tls = true
+		return nil
+	}
+
+	// Create temporary directory for test
+	tempDir, err := ioutil.TempDir("", "elemta-starttls-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Test cases
+	tests := []struct {
+		name            string
+		tlsEnabled      bool
+		startTLSEnabled bool
+		alreadyTLS      bool
+		wrapError       error
+		commands        []string
+		expectedOutput  []string
+	}{
+		{
+			name:            "STARTTLS capability advertised",
+			tlsEnabled:      true,
+			startTLSEnabled: true,
+			alreadyTLS:      false,
+			commands: []string{
+				"EHLO client.example.com\r\n",
+				"QUIT\r\n",
+			},
+			expectedOutput: []string{
+				"250-STARTTLS",
+				"221 Bye",
+			},
+		},
+		{
+			name:            "STARTTLS capability not advertised when TLS disabled",
+			tlsEnabled:      false,
+			startTLSEnabled: true,
+			alreadyTLS:      false,
+			commands: []string{
+				"EHLO client.example.com\r\n",
+				"QUIT\r\n",
+			},
+			expectedOutput: []string{
+				"250-ENHANCEDSTATUSCODES",
+				"250 HELP",
+				"221 Bye",
+			},
+		},
+		{
+			name:            "STARTTLS capability not advertised when StartTLS disabled",
+			tlsEnabled:      true,
+			startTLSEnabled: false,
+			alreadyTLS:      false,
+			commands: []string{
+				"EHLO client.example.com\r\n",
+				"QUIT\r\n",
+			},
+			expectedOutput: []string{
+				"250-ENHANCEDSTATUSCODES",
+				"250 HELP",
+				"221 Bye",
+			},
+		},
+		{
+			name:            "STARTTLS capability not advertised when already using TLS",
+			tlsEnabled:      true,
+			startTLSEnabled: true,
+			alreadyTLS:      true,
+			commands: []string{
+				"EHLO client.example.com\r\n",
+				"QUIT\r\n",
+			},
+			expectedOutput: []string{
+				"250-ENHANCEDSTATUSCODES",
+				"250 HELP",
+				"221 Bye",
+			},
+		},
+		{
+			name:            "STARTTLS command successful",
+			tlsEnabled:      true,
+			startTLSEnabled: true,
+			alreadyTLS:      false,
+			commands: []string{
+				"EHLO client.example.com\r\n",
+				"STARTTLS\r\n",
+				"EHLO client.example.com\r\n", // New EHLO after STARTTLS
+				"QUIT\r\n",
+			},
+			expectedOutput: []string{
+				"250-STARTTLS",
+				"220 2.0.0 Ready to start TLS",
+				"250-ENHANCEDSTATUSCODES", // No STARTTLS in second EHLO
+				"221 Bye",
+			},
+		},
+		{
+			name:            "STARTTLS command fails when TLS disabled",
+			tlsEnabled:      false,
+			startTLSEnabled: true,
+			alreadyTLS:      false,
+			commands: []string{
+				"EHLO client.example.com\r\n",
+				"STARTTLS\r\n",
+				"QUIT\r\n",
+			},
+			expectedOutput: []string{
+				"454 4.7.0 TLS not available",
+				"221 Bye",
+			},
+		},
+		{
+			name:            "STARTTLS command fails when already using TLS",
+			tlsEnabled:      true,
+			startTLSEnabled: true,
+			alreadyTLS:      true,
+			commands: []string{
+				"EHLO client.example.com\r\n",
+				"STARTTLS\r\n",
+				"QUIT\r\n",
+			},
+			expectedOutput: []string{
+				"503 5.5.1 TLS already active",
+				"221 Bye",
+			},
+		},
+		{
+			name:            "STARTTLS command followed by complete transaction",
+			tlsEnabled:      true,
+			startTLSEnabled: true,
+			alreadyTLS:      false,
+			commands: []string{
+				"EHLO client.example.com\r\n",
+				"STARTTLS\r\n",
+				"EHLO client.example.com\r\n", // New EHLO after STARTTLS
+				"MAIL FROM:<sender@example.com>\r\n",
+				"RCPT TO:<recipient@example.com>\r\n",
+				"DATA\r\n",
+				"Subject: Test Email\r\n",
+				"\r\n",
+				"This is a test email.\r\n",
+				".\r\n",
+				"QUIT\r\n",
+			},
+			expectedOutput: []string{
+				"250-STARTTLS",
+				"220 2.0.0 Ready to start TLS",
+				"250-ENHANCEDSTATUSCODES", // Second EHLO
+				"250 Ok",                  // MAIL FROM
+				"250 Ok",                  // RCPT TO
+				"354 Start mail input",    // DATA
+				"250 Ok: message queued",  // End of DATA
+				"221 Bye",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create mock connection
+			conn := newMockConn()
+
+			// Create config
+			config := &Config{
+				ListenAddr: "127.0.0.1:0",
+				QueueDir:   tempDir,
+				Hostname:   "test.example.com",
+				DevMode:    true,
+				MaxSize:    1024,
+				TLS: &TLSConfig{
+					Enabled:        tc.tlsEnabled,
+					EnableStartTLS: tc.startTLSEnabled,
+				},
+			}
+
+			// Create authenticator
+			authenticator := newMockAuthenticator(false, false)
+
+			// Create session
+			session := NewSession(conn, config, authenticator)
+
+			// Set up TLS manager
+			mockTlsManager := newMockTLSManager(tc.tlsEnabled)
+			mockTlsManager.wrapError = tc.wrapError
+			session.tlsManager = mockTlsManager
+
+			// Set TLS flag if already using TLS
+			session.tls = tc.alreadyTLS
+
+			// Write commands to the mock connection
+			for _, cmd := range tc.commands {
+				conn.reader.WriteString(cmd)
+			}
+
+			// Handle the session
+			err := session.Handle()
+			if err != nil && err.Error() != "EOF" {
+				t.Fatalf("Session handling failed: %v", err)
+			}
+
+			// Check the responses
+			response := conn.writer.String()
+
+			for _, expected := range tc.expectedOutput {
+				if !strings.Contains(response, expected) {
+					t.Errorf("Expected response to contain %q, but it didn't. Response: %s", expected, response)
+				}
+			}
+
+			// Verify specific cases
+			if tc.name == "STARTTLS command successful" || tc.name == "STARTTLS command followed by complete transaction" {
+				// After STARTTLS, the session should be in TLS mode
+				if !session.tls {
+					t.Errorf("Session should be in TLS mode after STARTTLS, but it isn't")
 				}
 			}
 		})
