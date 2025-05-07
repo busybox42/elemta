@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -67,6 +68,8 @@ type Config struct {
 
 	// Delivery configuration
 	Delivery *DeliveryConfig `toml:"delivery" json:"delivery"`
+
+	SessionTimeout time.Duration `yaml:"session_timeout" toml:"session_timeout"`
 }
 
 // DeliveryConfig represents configuration for message delivery
@@ -102,24 +105,38 @@ type AuthConfig struct {
 	DataSourceDB   string `json:"datasource_db"`
 }
 
-// TLSConfig represents TLS/SSL configuration
+// TLSConfig represents TLS configuration
 type TLSConfig struct {
-	Enabled    bool   `json:"enabled"`
-	ListenAddr string `json:"listen_addr"`
-	CertFile   string `json:"cert_file"`
-	KeyFile    string `json:"key_file"`
-
-	// Let's Encrypt configuration
-	LetsEncrypt *LetsEncryptConfig `json:"lets_encrypt"`
+	Enabled        bool               `yaml:"enabled" toml:"enabled"`
+	ListenAddr     string             `yaml:"listen_addr" toml:"listen_addr"`
+	CertFile       string             `yaml:"cert_file" toml:"cert_file"`
+	KeyFile        string             `yaml:"key_file" toml:"key_file"`
+	LetsEncrypt    *LetsEncryptConfig `yaml:"letsencrypt" toml:"letsencrypt"`
+	MinVersion     string             `yaml:"min_version" toml:"min_version"`
+	MaxVersion     string             `yaml:"max_version" toml:"max_version"`
+	Ciphers        []string           `yaml:"ciphers" toml:"ciphers"`
+	Curves         []string           `yaml:"curves" toml:"curves"`
+	ClientAuth     string             `yaml:"client_auth" toml:"client_auth"`
+	RenewalConfig  *CertRenewalConfig `yaml:"renewal" toml:"renewal"`
+	EnableStartTLS bool               `yaml:"enable_starttls" toml:"enable_starttls"` // Enable STARTTLS on standard ports
 }
 
 // LetsEncryptConfig represents Let's Encrypt configuration
 type LetsEncryptConfig struct {
-	Enabled  bool   `json:"enabled"`
-	Domain   string `json:"domain"`
-	Email    string `json:"email"`
-	CacheDir string `json:"cache_dir"`
-	Staging  bool   `json:"staging"`
+	Enabled  bool   `yaml:"enabled" toml:"enabled"`
+	Domain   string `yaml:"domain" toml:"domain"`
+	Email    string `yaml:"email" toml:"email"`
+	CacheDir string `yaml:"cache_dir" toml:"cache_dir"`
+	Staging  bool   `yaml:"staging" toml:"staging"`
+}
+
+// CertRenewalConfig represents certificate renewal configuration
+type CertRenewalConfig struct {
+	AutoRenew      bool          `yaml:"auto_renew" toml:"auto_renew"`
+	RenewalDays    int           `yaml:"renewal_days" toml:"renewal_days"`       // Renew this many days before expiration
+	CheckInterval  time.Duration `yaml:"check_interval" toml:"check_interval"`   // How often to check certificate status
+	ForceRenewal   bool          `yaml:"force_renewal" toml:"force_renewal"`     // Force renewal on startup
+	RenewalTimeout time.Duration `yaml:"renewal_timeout" toml:"renewal_timeout"` // Timeout for renewal operations
 }
 
 // ResourceConfig represents resource limits
@@ -295,6 +312,14 @@ func LoadConfig(configPath string) (*Config, error) {
 		config.TLS = &TLSConfig{
 			Enabled:    false,
 			ListenAddr: ":465",
+			MinVersion: "tls1.2",
+			RenewalConfig: &CertRenewalConfig{
+				AutoRenew:      true,
+				RenewalDays:    30,
+				CheckInterval:  24 * time.Hour,
+				ForceRenewal:   false,
+				RenewalTimeout: 5 * time.Minute,
+			},
 		}
 	}
 
@@ -387,111 +412,77 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, err
 	}
 
+	if config.SessionTimeout == 0 {
+		config.SessionTimeout = 5 * time.Minute
+	}
+
 	return &config, nil
 }
 
+// DefaultConfig returns a default configuration with sane defaults
 func DefaultConfig() *Config {
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = "localhost.localdomain"
-	}
-
 	return &Config{
-		ListenAddr:    ":25",
-		QueueDir:      "./queue",
-		MaxSize:       25 * 1024 * 1024,
-		DevMode:       false,
-		AllowedRelays: []string{},
-		Hostname:      hostname,
-		MaxWorkers:    10,
-		MaxRetries:    10,
-		MaxQueueTime:  172800,
-		RetrySchedule: []int{60, 300, 900, 3600, 10800, 21600, 43200},
+		ListenAddr:            ":25",
+		Hostname:              "localhost",
+		MaxSize:               10 * 1024 * 1024, // 10MB
+		QueueDir:              "./queue",
+		QueueProcessorEnabled: true,
+		QueueProcessInterval:  30, // 30 seconds
+		MaxRetries:            10,
+		MaxQueueTime:          86400,                             // 24 hours
+		RetrySchedule:         []int{300, 600, 1200, 1800, 3600}, // 5m, 10m, 20m, 30m, 1h
+		MaxWorkers:            5,
 
-		// Queue processor settings
-		QueueProcessorEnabled: true, // Enable queue processing by default
-		QueueProcessInterval:  10,   // Process queue every 10 seconds by default
-		QueueWorkers:          5,    // Default to 5 queue worker goroutines
+		// TLS configuration with enhanced certificate management
+		TLS: &TLSConfig{
+			Enabled:        false,
+			ListenAddr:     ":465",
+			MinVersion:     "tls1.2",
+			EnableStartTLS: true, // Enable STARTTLS by default when TLS is enabled
+			RenewalConfig: &CertRenewalConfig{
+				AutoRenew:      true,
+				RenewalDays:    30,
+				CheckInterval:  24 * time.Hour,
+				ForceRenewal:   false,
+				RenewalTimeout: 5 * time.Minute,
+			},
+		},
 
 		Auth: &AuthConfig{
-			Enabled:        false,
-			Required:       false,
-			DataSourceType: "sqlite",
-			DataSourcePath: "./elemta.db",
-		},
-		TLS: &TLSConfig{
-			Enabled:    false,
-			ListenAddr: ":465",
-		},
-		Resources: &ResourceConfig{
-			MaxCPU:            0, // Use all available CPUs
-			MaxMemory:         0, // No memory limit
-			MaxConnections:    1000,
-			MaxConcurrent:     100,
-			ConnectionTimeout: 60,
-			ReadTimeout:       60,
-			WriteTimeout:      60,
-		},
-		Cache: &CacheConfig{
 			Enabled:  false,
-			Type:     "memory",
-			MaxItems: 10000,
-			MaxSize:  100 * 1024 * 1024, // 100 MB
-			TTL:      3600,              // 1 hour
+			Required: false,
 		},
-		Antivirus: &AntivirusConfig{
-			ClamAV: &ClamAVConfig{
-				Enabled:   true, // Enable virus scanning
-				Address:   "localhost:3310",
-				Timeout:   30,
-				ScanLimit: 25 * 1024 * 1024, // 25 MB
-			},
+
+		Delivery: &DeliveryConfig{
+			Mode:       "smtp",
+			Timeout:    30,
+			MaxRetries: 5,
+			RetryDelay: 300, // 5 minutes
 		},
-		Antispam: &AntispamConfig{
-			SpamAssassin: &SpamAssassinConfig{
-				Enabled:   false,
-				Address:   "localhost:783",
-				Timeout:   30,
-				ScanLimit: 25 * 1024 * 1024, // 25 MB
-				Threshold: 5.0,
-			},
-			Rspamd: &RspamdConfig{
-				Enabled:   true, // Enable spam scanning
-				Address:   "http://localhost:11333",
-				Timeout:   30,
-				ScanLimit: 25 * 1024 * 1024, // 25 MB
-				Threshold: 6.0,
-				APIKey:    "",
-			},
-		},
-		Rules: &RulesConfig{
-			Enabled:       false,
-			Path:          "./rules",
-			DefaultAction: "accept",
-		},
+
 		Plugins: &PluginConfig{
 			Enabled:    false,
 			PluginPath: "./plugins",
-			Plugins:    []string{},
 		},
+
 		Metrics: &MetricsConfig{
-			Enabled:    false,
+			Enabled:    true,
 			ListenAddr: ":8080",
 		},
+
 		API: &APIConfig{
 			Enabled:    false,
 			ListenAddr: ":8081",
 		},
-		Delivery: &DeliveryConfig{
-			Mode:          "smtp",
-			Host:          "localhost",
-			Port:          25,
-			Timeout:       60,
-			MaxRetries:    3,
-			RetryDelay:    10,
-			TestMode:      false,
-			DefaultDomain: "localdomain",
-			Debug:         false,
+
+		Resources: &ResourceConfig{
+			MaxConnections:    100,
+			MaxConcurrent:     20,
+			ConnectionTimeout: 60,
+			ReadTimeout:       30,
+			WriteTimeout:      30,
 		},
+
+		SessionTimeout: 5 * time.Minute,
 	}
 }

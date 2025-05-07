@@ -12,8 +12,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"encoding/base64"
+
+	"crypto/tls"
 
 	"github.com/google/uuid"
 )
@@ -26,6 +29,16 @@ const (
 	RCPT
 	DATA
 )
+
+// TLSHandler interface defines methods for handling TLS connections
+type TLSHandler interface {
+	WrapConnection(conn net.Conn) (net.Conn, error)
+	GetTLSConfig() *tls.Config
+	StartTLSListener(ctx context.Context) (net.Listener, error)
+	RenewCertificates(ctx context.Context) error
+	GetCertificateInfo() (map[string]interface{}, error)
+	Stop() error
+}
 
 type Session struct {
 	conn          net.Conn
@@ -40,7 +53,12 @@ type Session struct {
 	username      string
 	authenticator Authenticator
 	queueManager  *QueueManager
+	tlsManager    TLSHandler
+	tls           bool // Flag to indicate if this session is using TLS
 }
+
+// For testing purposes only
+var mockHandleSTARTTLS func(s *Session) error
 
 func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Session {
 	remoteAddr := conn.RemoteAddr().String()
@@ -63,6 +81,7 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Ses
 		authenticated: false,
 		username:      "",
 		authenticator: authenticator,
+		tls:           false, // Start without TLS
 	}
 }
 
@@ -78,9 +97,20 @@ func (s *Session) Handle() error {
 	s.logger.Info("starting new session")
 	s.write("220 elemta ESMTP ready\r\n")
 
+	timeout := s.config.SessionTimeout
+	if timeout == 0 {
+		timeout = 5 * time.Minute
+	}
+
 	for {
+		s.conn.SetReadDeadline(time.Now().Add(timeout))
 		line, err := s.reader.ReadString('\n')
 		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				s.logger.Warn("session timeout, closing connection")
+				s.write("421 4.4.2 Connection timed out\r\n")
+				return err
+			}
 			s.logger.Error("read error", "error", err)
 			return err
 		}
@@ -102,6 +132,11 @@ func (s *Session) Handle() error {
 			s.write("250-PIPELINING\r\n")
 			s.write("250-ENHANCEDSTATUSCODES\r\n")
 
+			// Advertise STARTTLS if TLS is enabled, STARTTLS is enabled, and this connection isn't already using TLS
+			if s.config.TLS != nil && s.config.TLS.Enabled && s.config.TLS.EnableStartTLS && !s.tls {
+				s.write("250-STARTTLS\r\n")
+			}
+
 			// Advertise AUTH if authentication is enabled
 			if s.authenticator != nil && s.authenticator.IsEnabled() {
 				methods := s.authenticator.GetSupportedMethods()
@@ -115,6 +150,34 @@ func (s *Session) Handle() error {
 			}
 
 			s.write("250 HELP\r\n")
+
+		case strings.HasPrefix(cmd, "STARTTLS"):
+			if s.tls {
+				s.write("503 5.5.1 TLS already active\r\n")
+				continue
+			}
+
+			if s.config.TLS == nil || !s.config.TLS.Enabled {
+				s.write("454 4.7.0 TLS not available\r\n")
+				continue
+			}
+
+			if s.tlsManager == nil {
+				s.write("454 4.7.0 TLS manager not available\r\n")
+				continue
+			}
+
+			s.write("220 2.0.0 Ready to start TLS\r\n")
+
+			// Wrap the connection with TLS
+			if err := s.handleSTARTTLS(); err != nil {
+				s.logger.Error("STARTTLS failed", "error", err)
+				return err
+			}
+
+			// Reset state after TLS upgrade
+			s.state = INIT
+			s.tls = true
 
 		case strings.HasPrefix(cmd, "AUTH "):
 			if err := s.handleAuth(cmd); err != nil {
@@ -199,6 +262,41 @@ func (s *Session) Handle() error {
 			s.write("500 Unknown command\r\n")
 		}
 	}
+}
+
+// handleSTARTTLS upgrades the connection to TLS
+func (s *Session) handleSTARTTLS() error {
+	// For testing, use mock if provided
+	if mockHandleSTARTTLS != nil {
+		return mockHandleSTARTTLS(s)
+	}
+
+	// Make sure we flush any pending writes before upgrading
+	if err := s.writer.Flush(); err != nil {
+		return fmt.Errorf("failed to flush writer before TLS upgrade: %w", err)
+	}
+
+	// Get the TLS manager from the server
+	if s.tlsManager == nil {
+		return fmt.Errorf("TLS manager not available")
+	}
+
+	// Wrap the connection with TLS
+	tlsConn, err := s.tlsManager.WrapConnection(s.conn)
+	if err != nil {
+		return fmt.Errorf("failed to upgrade connection to TLS: %w", err)
+	}
+
+	// Replace the connection and create new reader/writer
+	s.conn = tlsConn
+	s.reader = bufio.NewReader(tlsConn)
+	s.writer = bufio.NewWriter(tlsConn)
+
+	s.logger.Info("connection upgraded to TLS",
+		"cipher", tlsConn.(*tls.Conn).ConnectionState().CipherSuite,
+		"protocol", tlsConn.(*tls.Conn).ConnectionState().Version)
+
+	return nil
 }
 
 func (s *Session) handleXDEBUG(cmd string) {

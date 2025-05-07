@@ -6,7 +6,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/busybox42/elemta/internal/server"
 	"github.com/busybox42/elemta/internal/smtp"
 	"github.com/spf13/cobra"
 )
@@ -42,11 +44,20 @@ func startServer() {
 	}
 
 	// Configure TLS if enabled
+	certDir := "/var/elemta/certs" // Default certificate directory
 	if cfg.Server.TLS {
 		smtpConfig.TLS = &smtp.TLSConfig{
 			Enabled:  true,
 			CertFile: cfg.Server.CertFile,
 			KeyFile:  cfg.Server.KeyFile,
+		}
+
+		// Get certificate directory from configuration if available
+		if cfg.TLS.LetsEncrypt.Enabled && cfg.TLS.LetsEncrypt.CacheDir != "" {
+			certDir = cfg.TLS.LetsEncrypt.CacheDir
+		} else if cfg.Server.CertFile != "" {
+			// Extract directory from cert file path
+			certDir = getDirectoryFromPath(cfg.Server.CertFile)
 		}
 	}
 
@@ -74,6 +85,12 @@ func startServer() {
 		os.Exit(1)
 	}
 
+	// Initialize certificate monitoring if TLS is enabled
+	if cfg.Server.TLS {
+		// Start certificate metrics monitoring in a goroutine
+		go initializeCertificateMonitoring(certDir)
+	}
+
 	// Log server configuration details
 	fmt.Printf("Server configuration details:\n")
 	fmt.Printf("  Server hostname: %s\n", cfg.Server.Hostname)
@@ -81,6 +98,10 @@ func startServer() {
 	fmt.Printf("  Queue directory: %s\n", cfg.QueueDir)
 	fmt.Printf("  Max message size: %d bytes\n", smtpConfig.MaxSize)
 	fmt.Printf("  Queue processor: %v\n", smtpConfig.QueueProcessorEnabled)
+	if cfg.Server.TLS {
+		fmt.Printf("  TLS enabled: Yes\n")
+		fmt.Printf("  Certificate directory: %s\n", certDir)
+	}
 
 	log.Printf("Elemta MTA starting on %s", cfg.Server.Listen)
 	fmt.Println("SMTP server started successfully!")
@@ -98,4 +119,40 @@ func startServer() {
 	// Perform graceful shutdown
 	fmt.Println("Shutting down server...")
 	server.Close()
+}
+
+// initializeCertificateMonitoring starts monitoring TLS certificates
+func initializeCertificateMonitoring(certDir string) {
+	logger := log.New(os.Stdout, "[CertMonitor] ", log.LstdFlags)
+	logger.Printf("Starting TLS certificate monitoring for directory: %s", certDir)
+
+	// Initial scan of certificates
+	if err := server.GetCertificateMetrics(certDir+"/fullchain.pem", ""); err != nil {
+		logger.Printf("Initial certificate metrics collection failed: %v", err)
+	}
+
+	// Start periodic monitoring
+	server.MonitorCertificates(certDir, 12*time.Hour)
+}
+
+// getDirectoryFromPath extracts the directory part from a file path
+func getDirectoryFromPath(path string) string {
+	if path == "" {
+		return "/var/elemta/certs"
+	}
+
+	// Find the last separator
+	lastSep := -1
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '/' || path[i] == '\\' {
+			lastSep = i
+			break
+		}
+	}
+
+	if lastSep == -1 {
+		return "."
+	}
+
+	return path[:lastSep]
 }
