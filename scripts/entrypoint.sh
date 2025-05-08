@@ -1,8 +1,13 @@
-#!/bin/bash
+#!/bin/sh
 
 # Entrypoint script for Elemta
 
 echo "Starting Elemta SMTP server..."
+
+# Workaround: copy TOML config to .conf if present
+if [ -f /app/config/elemta.toml ]; then
+    cp /app/config/elemta.toml /app/config/elemta.conf
+fi
 
 # Create test messages in the queue if TEST_MODE is enabled
 if [ "$TEST_MODE" = "true" ]; then

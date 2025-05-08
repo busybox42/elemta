@@ -13,15 +13,16 @@ services:
     volumes:
       - elemta_queue:/app/queue
       - elemta_logs:/app/logs
-      - ./plugins:/app/plugins
-      - ./config/elemta.toml:/app/config/elemta.conf
+      - ./plugins:/app/plugins:ro
+      - ./config/elemta.toml:/app/config/elemta.toml:ro
+      - ./config/elemta.db:/app/config/elemta.db:rw
       - ./scripts/api_server.py:/app/api_server.py
     environment:
       - TZ=UTC
       - DEBUG=true
       - NODE_ID=0
       - TEST_MODE=true
-      - ELEMTA_CONFIG_PATH=/app/config/elemta.conf
+      - ELEMTA_CONFIG_PATH=/app/config/elemta.toml
       - API_PORT=8081
       - DELIVERY_HOST=elemta-dovecot
       - DELIVERY_PORT=2424

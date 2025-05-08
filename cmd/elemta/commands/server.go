@@ -41,24 +41,30 @@ func startServer() {
 		ListenAddr: cfg.Server.Listen,
 		QueueDir:   cfg.QueueDir,
 		MaxSize:    10 * 1024 * 1024, // Use 10MB default if not specified
+		TLS:        cfg.TLS,
 	}
 
-	// Configure TLS if enabled
-	certDir := "/var/elemta/certs" // Default certificate directory
-	if cfg.Server.TLS {
-		smtpConfig.TLS = &smtp.TLSConfig{
-			Enabled:  true,
-			CertFile: cfg.Server.CertFile,
-			KeyFile:  cfg.Server.KeyFile,
-		}
+	// Map authentication config
+	smtpConfig.Auth = cfg.Auth
 
-		// Get certificate directory from configuration if available
-		if cfg.TLS.LetsEncrypt.Enabled && cfg.TLS.LetsEncrypt.CacheDir != "" {
-			certDir = cfg.TLS.LetsEncrypt.CacheDir
-		} else if cfg.Server.CertFile != "" {
-			// Extract directory from cert file path
-			certDir = getDirectoryFromPath(cfg.Server.CertFile)
+	fmt.Printf("[DEBUG] cfg.TLS: %+v\n", *cfg.TLS)
+	fmt.Printf("[DEBUG] smtpConfig.TLS: %+v\n", *smtpConfig.TLS)
+
+	// Map plugins config
+	if len(cfg.Plugins.Enabled) > 0 {
+		smtpConfig.Plugins = &smtp.PluginConfig{
+			Enabled:    true,
+			PluginPath: cfg.Plugins.Directory,
+			Plugins:    cfg.Plugins.Enabled,
 		}
+	}
+
+	// Restore certDir logic for certificate monitoring
+	certDir := "/var/elemta/certs" // Default certificate directory
+	if cfg.TLS.LetsEncrypt.Enabled && cfg.TLS.LetsEncrypt.CacheDir != "" {
+		certDir = cfg.TLS.LetsEncrypt.CacheDir
+	} else if cfg.TLS.CertFile != "" {
+		certDir = getDirectoryFromPath(cfg.TLS.CertFile)
 	}
 
 	// Configure Queue Processor from config

@@ -222,54 +222,9 @@ func loadConfig() (*smtp.Config, error) {
 			MaxSize:    10 * 1024 * 1024, // Use 10MB default if not specified
 		}
 
-		// Set up basic TLS configuration from Server section
-		if cfg.Server.TLS {
-			smtpConfig.TLS = &smtp.TLSConfig{
-				Enabled:  true,
-				CertFile: cfg.Server.CertFile,
-				KeyFile:  cfg.Server.KeyFile,
-			}
-		}
-
-		// If enhanced TLS configuration exists, use it instead
-		if cfg.TLS.Enabled {
-			// Create or update TLS config
-			if smtpConfig.TLS == nil {
-				smtpConfig.TLS = &smtp.TLSConfig{}
-			}
-
-			// Copy all enhanced TLS settings
-			smtpConfig.TLS.Enabled = cfg.TLS.Enabled
-			smtpConfig.TLS.ListenAddr = cfg.TLS.ListenAddr
-			smtpConfig.TLS.CertFile = cfg.TLS.CertFile
-			smtpConfig.TLS.KeyFile = cfg.TLS.KeyFile
-			smtpConfig.TLS.MinVersion = cfg.TLS.MinVersion
-			smtpConfig.TLS.MaxVersion = cfg.TLS.MaxVersion
-			smtpConfig.TLS.Ciphers = cfg.TLS.Ciphers
-			smtpConfig.TLS.Curves = cfg.TLS.Curves
-			smtpConfig.TLS.ClientAuth = cfg.TLS.ClientAuth
-			smtpConfig.TLS.EnableStartTLS = cfg.TLS.EnableStartTLS
-
-			// Let's Encrypt settings
-			if cfg.TLS.LetsEncrypt.Enabled {
-				smtpConfig.TLS.LetsEncrypt = &smtp.LetsEncryptConfig{
-					Enabled:  cfg.TLS.LetsEncrypt.Enabled,
-					Domain:   cfg.TLS.LetsEncrypt.Domain,
-					Email:    cfg.TLS.LetsEncrypt.Email,
-					CacheDir: cfg.TLS.LetsEncrypt.CacheDir,
-					Staging:  cfg.TLS.LetsEncrypt.Staging,
-				}
-			}
-
-			// Renewal settings
-			if cfg.TLS.Renewal.AutoRenew {
-				smtpConfig.TLS.RenewalConfig = &smtp.CertRenewalConfig{
-					AutoRenew:      cfg.TLS.Renewal.AutoRenew,
-					RenewalDays:    cfg.TLS.Renewal.RenewalDays,
-					CheckInterval:  cfg.TLS.Renewal.CheckInterval,
-					RenewalTimeout: cfg.TLS.Renewal.RenewalTimeout,
-				}
-			}
+		// Set up TLS configuration directly from cfg.TLS
+		if cfg.TLS != nil {
+			smtpConfig.TLS = cfg.TLS
 		}
 
 		return smtpConfig, nil

@@ -189,6 +189,8 @@ func Factory(config Config) (DataSource, error) {
 		return NewLDAP(config), nil
 	case "mock":
 		return NewMockDataSource(config.Name), nil
+	case "file":
+		return NewFile(config), nil
 	default:
 		return nil, fmt.Errorf("unsupported datasource type: %s", config.Type)
 	}
