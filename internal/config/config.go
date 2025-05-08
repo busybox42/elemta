@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
+
+	"github.com/busybox42/elemta/internal/smtp"
 
 	"github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
@@ -22,35 +23,7 @@ type Config struct {
 	} `yaml:"server" toml:"server"`
 
 	// Enhanced TLS configuration
-	TLS struct {
-		Enabled        bool     `yaml:"enabled" toml:"enabled"`
-		ListenAddr     string   `yaml:"listen_addr" toml:"listen_addr"`
-		CertFile       string   `yaml:"cert_file" toml:"cert_file"`
-		KeyFile        string   `yaml:"key_file" toml:"key_file"`
-		MinVersion     string   `yaml:"min_version" toml:"min_version"`
-		MaxVersion     string   `yaml:"max_version" toml:"max_version"`
-		Ciphers        []string `yaml:"ciphers" toml:"ciphers"`
-		Curves         []string `yaml:"curves" toml:"curves"`
-		ClientAuth     string   `yaml:"client_auth" toml:"client_auth"`
-		EnableStartTLS bool     `yaml:"enable_starttls" toml:"enable_starttls"`
-
-		// Let's Encrypt configuration
-		LetsEncrypt struct {
-			Enabled  bool   `yaml:"enabled" toml:"enabled"`
-			Domain   string `yaml:"domain" toml:"domain"`
-			Email    string `yaml:"email" toml:"email"`
-			CacheDir string `yaml:"cache_dir" toml:"cache_dir"`
-			Staging  bool   `yaml:"staging" toml:"staging"`
-		} `yaml:"letsencrypt" toml:"letsencrypt"`
-
-		// Certificate renewal configuration
-		Renewal struct {
-			AutoRenew      bool          `yaml:"auto_renew" toml:"auto_renew"`
-			RenewalDays    int           `yaml:"renewal_days" toml:"renewal_days"`
-			CheckInterval  time.Duration `yaml:"check_interval" toml:"check_interval"`
-			RenewalTimeout time.Duration `yaml:"renewal_timeout" toml:"renewal_timeout"`
-		} `yaml:"renewal" toml:"renewal"`
-	} `yaml:"tls" toml:"tls"`
+	TLS *smtp.TLSConfig `yaml:"tls" toml:"tls"`
 
 	// Queue configuration
 	QueueDir string `yaml:"queue_dir" toml:"queue_dir"`
@@ -68,11 +41,8 @@ type Config struct {
 		Enabled   []string `yaml:"enabled" toml:"enabled"`
 	} `yaml:"plugins" toml:"plugins"`
 
-	// SMTP authentication
-	Authentication struct {
-		Required bool   `yaml:"required" toml:"required"`
-		Type     string `yaml:"type" toml:"type"`
-	} `yaml:"authentication" toml:"authentication"`
+	// Modern SMTP authentication config for Go SMTP server
+	Auth *smtp.AuthConfig `yaml:"auth" toml:"auth"`
 
 	// Queue processor configuration
 	QueueProcessor struct {
@@ -101,10 +71,6 @@ func DefaultConfig() *Config {
 
 	// Set default plugins directory
 	cfg.Plugins.Directory = "/app/plugins"
-
-	// Set default authentication
-	cfg.Authentication.Required = false
-	cfg.Authentication.Type = "none"
 
 	// Set default queue processor configuration
 	cfg.QueueProcessor.Enabled = true
@@ -163,6 +129,10 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %v", err)
 	}
 
+	fmt.Printf("[DEBUG] Raw config file contents:\n%s\n", string(data))
+
+	// Pre-initialize TLS pointer for TOML mapping
+	cfg.TLS = &smtp.TLSConfig{}
 	// Try to parse the file as YAML first
 	yamlErr := yaml.Unmarshal(data, cfg)
 	if yamlErr == nil {
@@ -172,6 +142,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		tomlErr := toml.Unmarshal(data, cfg)
 		if tomlErr == nil {
 			fmt.Println("Configuration loaded successfully (TOML format)")
+			fmt.Printf("[DEBUG] Loaded cfg struct after TOML unmarshal: %+v\n", cfg)
 		} else {
 			// For better debugging, print the exact errors
 			fmt.Printf("YAML error: %v\n", yamlErr)
@@ -192,6 +163,17 @@ func LoadConfig(configPath string) (*Config, error) {
 		// If it's relative to the config file, make it absolute
 		configDir := filepath.Dir(configFile)
 		cfg.QueueDir = filepath.Join(configDir, cfg.QueueDir)
+	}
+
+	// After parsing config, ensure TLS config is non-nil
+	if cfg.TLS == nil {
+		cfg.TLS = &smtp.TLSConfig{}
+	}
+	if cfg.TLS.LetsEncrypt == nil {
+		cfg.TLS.LetsEncrypt = &smtp.LetsEncryptConfig{}
+	}
+	if cfg.TLS.RenewalConfig == nil {
+		cfg.TLS.RenewalConfig = &smtp.CertRenewalConfig{}
 	}
 
 	fmt.Printf("Configuration loaded successfully. Hostname: %s, Listen: %s\n",

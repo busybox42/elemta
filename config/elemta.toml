@@ -1,12 +1,15 @@
 [server]
 hostname = "mail.example.com"
 listen = ":2525"
-tls = false
-cert_file = "/etc/elemta/certs/example.com.crt"
-key_file = "/etc/elemta/certs/example.com.key"
 
 queue_dir = "/app/queue"
 max_size = 10485760  # 10MB message size limit
+
+[tls]
+enabled = true
+cert_file = "/app/certs/test.crt"
+key_file = "/app/certs/test.key"
+enable_starttls = true
 
 [logging]
 level = "debug"
@@ -17,9 +20,11 @@ file = "/app/logs/elemta.log"
 directory = "/app/plugins"
 enabled = ["greylisting", "spf", "dkim", "clamav", "rspamd"]
 
-[authentication]
-required = false
-type = "none"
+[auth]
+enabled = true
+required = true
+datasource_type = "file"
+datasource_path = "/app/config/users.txt"
 
 [api]
 enabled = true

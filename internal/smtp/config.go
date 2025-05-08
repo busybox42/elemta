@@ -93,16 +93,16 @@ type MetricsConfig struct {
 
 // AuthConfig represents authentication configuration
 type AuthConfig struct {
-	Enabled        bool   `json:"enabled"`
-	Required       bool   `json:"required"`
-	DataSourceType string `json:"datasource_type"`
-	DataSourceName string `json:"datasource_name"`
-	DataSourcePath string `json:"datasource_path"`
-	DataSourceHost string `json:"datasource_host"`
-	DataSourcePort int    `json:"datasource_port"`
-	DataSourceUser string `json:"datasource_user"`
-	DataSourcePass string `json:"datasource_pass"`
-	DataSourceDB   string `json:"datasource_db"`
+	Enabled        bool   `json:"enabled" toml:"enabled"`
+	Required       bool   `json:"required" toml:"required"`
+	DataSourceType string `json:"datasource_type" toml:"datasource_type"`
+	DataSourceName string `json:"datasource_name" toml:"datasource_name"`
+	DataSourcePath string `json:"datasource_path" toml:"datasource_path"`
+	DataSourceHost string `json:"datasource_host" toml:"datasource_host"`
+	DataSourcePort int    `json:"datasource_port" toml:"datasource_port"`
+	DataSourceUser string `json:"datasource_user" toml:"datasource_user"`
+	DataSourcePass string `json:"datasource_pass" toml:"datasource_pass"`
+	DataSourceDB   string `json:"datasource_db" toml:"datasource_db"`
 }
 
 // TLSConfig represents TLS configuration
@@ -164,7 +164,9 @@ type CacheConfig struct {
 
 // AntivirusConfig represents antivirus configuration
 type AntivirusConfig struct {
-	ClamAV *ClamAVConfig `json:"clamav"`
+	Enabled         bool          `toml:"enabled" json:"enabled"`
+	RejectOnFailure bool          `toml:"reject_on_failure" json:"reject_on_failure"`
+	ClamAV          *ClamAVConfig `toml:"clamav" json:"clamav"`
 }
 
 // ClamAVConfig represents ClamAV configuration
@@ -177,8 +179,10 @@ type ClamAVConfig struct {
 
 // AntispamConfig represents antispam configuration
 type AntispamConfig struct {
-	SpamAssassin *SpamAssassinConfig `json:"spamassassin"`
-	Rspamd       *RspamdConfig       `json:"rspamd"`
+	Enabled      bool                `toml:"enabled" json:"enabled"`
+	RejectOnSpam bool                `toml:"reject_on_spam" json:"reject_on_spam"`
+	SpamAssassin *SpamAssassinConfig `toml:"spamassassin" json:"spamassassin"`
+	Rspamd       *RspamdConfig       `toml:"rspamd" json:"rspamd"`
 }
 
 // SpamAssassinConfig represents SpamAssassin configuration
@@ -360,8 +364,10 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Set default antivirus configuration if not provided
 	if config.Antivirus == nil {
 		config.Antivirus = &AntivirusConfig{
+			Enabled:         true,
+			RejectOnFailure: false,
 			ClamAV: &ClamAVConfig{
-				Enabled:   true, // Enable virus scanning
+				Enabled:   true,
 				Address:   "localhost:3310",
 				Timeout:   30,
 				ScanLimit: 25 * 1024 * 1024, // 25 MB
@@ -372,6 +378,8 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Set default antispam configuration if not provided
 	if config.Antispam == nil {
 		config.Antispam = &AntispamConfig{
+			Enabled:      true,
+			RejectOnSpam: false,
 			SpamAssassin: &SpamAssassinConfig{
 				Enabled:   false,
 				Address:   "localhost:783",
@@ -380,7 +388,7 @@ func LoadConfig(configPath string) (*Config, error) {
 				Threshold: 5.0,
 			},
 			Rspamd: &RspamdConfig{
-				Enabled:   true, // Enable spam scanning
+				Enabled:   true,
 				Address:   "http://localhost:11333",
 				Timeout:   30,
 				ScanLimit: 25 * 1024 * 1024, // 25 MB
