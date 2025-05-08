@@ -3,6 +3,7 @@ package smtp
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -26,6 +27,7 @@ type Server struct {
 	apiServer     *api.Server
 	queueManager  *QueueManager
 	tlsManager    TLSHandler
+	logger        *log.Logger
 }
 
 // NewServer creates a new SMTP server
@@ -71,6 +73,18 @@ func NewServer(config *Config) (*Server, error) {
 
 	// Initialize queue manager
 	queueManager := NewQueueManager(config)
+
+	// Debug: print AuthConfig and TLSConfig
+	if config.Auth != nil {
+		fmt.Printf("[DEBUG] AuthConfig: %+v\n", *config.Auth)
+	} else {
+		fmt.Println("[DEBUG] AuthConfig: <nil>")
+	}
+	if config.TLS != nil {
+		fmt.Printf("[DEBUG] TLSConfig: %+v\n", *config.TLS)
+	} else {
+		fmt.Println("[DEBUG] TLSConfig: <nil>")
+	}
 
 	server := &Server{
 		config:        config,
@@ -193,31 +207,40 @@ func (s *Server) acceptConnections() {
 			}
 			continue
 		}
-		go s.handleConnection(conn)
+		go s.handleAndCloseSession(conn)
 	}
 }
 
-// handleConnection handles a single connection
-func (s *Server) handleConnection(conn net.Conn) {
-	defer conn.Close()
+// handleAndCloseSession processes a connection and ensures it's properly closed
+func (s *Server) handleAndCloseSession(conn net.Conn) {
+	clientIP := conn.RemoteAddr().String()
+	s.logger.Printf("new connection: %s", clientIP)
+
+	// Create a new session with the current configuration and authentication
 	session := NewSession(conn, s.config, s.authenticator)
-
-	// Pass the queue manager to the session
 	session.queueManager = s.queueManager
+	session.tlsManager = s.tlsManager
 
-	// Pass the TLS manager to the session if available
-	if s.tlsManager != nil {
-		session.tlsManager = s.tlsManager
+	// Add debug logging for plugins
+	if session.builtinPlugins != nil {
+		s.logger.Printf("Plugins configuration: antivirusEnabled=%v, antispamEnabled=%v, antivirusOpts=%v, antispamOpts=%v",
+			session.builtinPlugins.AntivirusEnabled, session.builtinPlugins.AntispamEnabled, session.builtinPlugins.AntivirusOpts, session.builtinPlugins.AntispamOpts)
+	} else {
+		s.logger.Println("Plugins not initialized")
 	}
 
-	// Track connection metrics
-	s.metrics.TrackConnectionDuration(func() error {
-		err := session.Handle()
-		if err != nil {
-			log.Printf("Session error: %v", err)
+	// Handle the SMTP session
+	err := session.Handle()
+	if err != nil {
+		if err != io.EOF {
+			s.logger.Printf("session error: %v, client: %s", err, clientIP)
 		}
-		return err
-	})
+	}
+
+	// Close the connection
+	if err := conn.Close(); err != nil {
+		s.logger.Printf("failed to close connection: %v, client: %s", err, clientIP)
+	}
 }
 
 // Close closes the server and all associated resources

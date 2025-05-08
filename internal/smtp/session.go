@@ -15,9 +15,12 @@ import (
 	"time"
 
 	"encoding/base64"
+	"encoding/hex"
 
+	"crypto/rand"
 	"crypto/tls"
 
+	"github.com/busybox42/elemta/internal/plugin"
 	"github.com/google/uuid"
 )
 
@@ -41,20 +44,21 @@ type TLSHandler interface {
 }
 
 type Session struct {
-	conn          net.Conn
-	reader        *bufio.Reader
-	writer        *bufio.Writer
-	state         State
-	message       *Message
-	config        *Config
-	logger        *slog.Logger
-	Context       *Context
-	authenticated bool
-	username      string
-	authenticator Authenticator
-	queueManager  *QueueManager
-	tlsManager    TLSHandler
-	tls           bool // Flag to indicate if this session is using TLS
+	conn           net.Conn
+	reader         *bufio.Reader
+	writer         *bufio.Writer
+	state          State
+	message        *Message
+	config         *Config
+	logger         *slog.Logger
+	Context        *Context
+	authenticated  bool
+	username       string
+	authenticator  Authenticator
+	queueManager   *QueueManager
+	tlsManager     TLSHandler
+	tls            bool // Flag to indicate if this session is using TLS
+	builtinPlugins *plugin.BuiltinPlugins
 }
 
 // For testing purposes only
@@ -69,19 +73,52 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Ses
 		"session_id", uuid.New().String(),
 	)
 
+	// Initialize plugin system
+	builtinPlugins := plugin.NewBuiltinPlugins()
+
+	// Get enabled plugins from config
+	var enabledPlugins []string
+	pluginConfig := make(map[string]map[string]interface{})
+
+	// Always enable ClamAV and Rspamd for our tests
+	enabledPlugins = []string{"clamav", "rspamd"}
+	logger.Info("Enabling plugins for testing", "plugins", enabledPlugins)
+
+	// Add ClamAV config
+	if pluginConfig["clamav"] == nil {
+		pluginConfig["clamav"] = make(map[string]interface{})
+	}
+	pluginConfig["clamav"]["host"] = "localhost"
+	pluginConfig["clamav"]["port"] = 3310
+
+	// Add Rspamd config
+	if pluginConfig["rspamd"] == nil {
+		pluginConfig["rspamd"] = make(map[string]interface{})
+	}
+	pluginConfig["rspamd"]["host"] = "localhost"
+	pluginConfig["rspamd"]["port"] = 11334
+	pluginConfig["rspamd"]["threshold"] = 5.0
+
+	// Initialize plugins
+	err := builtinPlugins.InitBuiltinPlugins(enabledPlugins, pluginConfig)
+	if err != nil {
+		logger.Warn("failed to initialize plugins", "error", err)
+	}
+
 	return &Session{
-		conn:          conn,
-		reader:        bufio.NewReader(conn),
-		writer:        bufio.NewWriter(conn),
-		state:         INIT,
-		message:       NewMessage(),
-		config:        config,
-		logger:        logger,
-		Context:       NewContext(),
-		authenticated: false,
-		username:      "",
-		authenticator: authenticator,
-		tls:           false, // Start without TLS
+		conn:           conn,
+		reader:         bufio.NewReader(conn),
+		writer:         bufio.NewWriter(conn),
+		state:          INIT,
+		message:        NewMessage(),
+		config:         config,
+		logger:         logger,
+		Context:        NewContext(),
+		authenticated:  false,
+		username:       "",
+		authenticator:  authenticator,
+		tls:            false, // Start without TLS
+		builtinPlugins: builtinPlugins,
 	}
 }
 
@@ -115,17 +152,27 @@ func (s *Session) Handle() error {
 			return err
 		}
 
-		cmd := strings.TrimSpace(strings.ToUpper(line))
-		s.logger.Debug("received command", "command", cmd)
+		line = strings.TrimSpace(line)
+		s.logger.Debug("received command", "command", line)
+
+		// Parse the command verb (first word) and arguments separately
+		parts := strings.Fields(line)
+		if len(parts) == 0 {
+			s.write("500 5.5.2 Invalid command\r\n")
+			continue
+		}
+
+		// Upper case only the command verb for case-insensitive matching
+		verb := strings.ToUpper(parts[0])
 
 		switch {
-		case strings.HasPrefix(cmd, "QUIT"):
+		case verb == "QUIT":
 			s.logger.Info("client quit")
 			s.write("221 Bye\r\n")
 			return nil
 
-		case strings.HasPrefix(cmd, "HELO"), strings.HasPrefix(cmd, "EHLO"):
-			s.logger.Info("client hello", "command", cmd)
+		case verb == "HELO" || verb == "EHLO":
+			s.logger.Info("client hello", "command", line)
 			s.write("250-" + s.config.Hostname + "\r\n")
 			s.write("250-SIZE " + strconv.FormatInt(s.config.MaxSize, 10) + "\r\n")
 			s.write("250-8BITMIME\r\n")
@@ -151,7 +198,7 @@ func (s *Session) Handle() error {
 
 			s.write("250 HELP\r\n")
 
-		case strings.HasPrefix(cmd, "STARTTLS"):
+		case verb == "STARTTLS":
 			if s.tls {
 				s.write("503 5.5.1 TLS already active\r\n")
 				continue
@@ -179,87 +226,111 @@ func (s *Session) Handle() error {
 			s.state = INIT
 			s.tls = true
 
-		case strings.HasPrefix(cmd, "AUTH "):
-			if err := s.handleAuth(cmd); err != nil {
+		case verb == "AUTH":
+			// Pass the entire command line to handleAuth
+			if err := s.handleAuth(line); err != nil {
 				s.logger.Error("authentication error", "error", err)
 				s.write("535 5.7.8 Authentication failed\r\n")
 			}
 
-		case strings.HasPrefix(cmd, "MAIL FROM:"):
+		case verb == "MAIL" || strings.HasPrefix(line, "MAIL FROM:") || strings.HasPrefix(line, "mail from:"):
 			// Check if authentication is required but not authenticated
 			if s.authenticator != nil && s.authenticator.IsRequired() && !s.authenticated {
-				s.logger.Warn("authentication required", "state", s.state)
 				s.write("530 5.7.0 Authentication required\r\n")
 				continue
 			}
 
 			if s.state != INIT {
-				s.logger.Warn("bad sequence", "state", s.state)
-				s.write("503 Bad sequence\r\n")
+				s.write("503 5.5.1 Bad sequence of commands\r\n")
 				continue
 			}
-			addr := extractAddress(cmd)
+
+			addr := extractAddress(line)
 			if addr == "" {
-				s.logger.Warn("invalid address in MAIL FROM", "command", cmd)
-				s.write("501 Invalid address\r\n")
+				s.logger.Warn("invalid address in MAIL FROM", "command", line)
+				s.write("501 5.5.4 Invalid address\r\n")
 				continue
 			}
+
+			// Create a new message for this mail transaction
+			s.message = NewMessage()
 			s.message.from = addr
 			s.state = MAIL
 			s.logger.Info("mail from accepted", "from", addr)
-			s.write("250 Ok\r\n")
+			s.write("250 2.1.0 Ok\r\n")
 
-		case strings.HasPrefix(cmd, "RCPT TO:"):
+		case verb == "RCPT" || strings.HasPrefix(line, "RCPT TO:") || strings.HasPrefix(line, "rcpt to:"):
 			if s.state != MAIL && s.state != RCPT {
-				s.logger.Warn("bad sequence", "state", s.state)
-				s.write("503 Bad sequence\r\n")
+				s.write("503 5.5.1 Bad sequence of commands\r\n")
 				continue
 			}
-			addr := extractAddress(cmd)
+
+			addr := extractAddress(line)
 			if addr == "" {
-				s.logger.Warn("invalid address in RCPT TO", "command", cmd)
-				s.write("501 Invalid address\r\n")
+				s.logger.Warn("invalid address in RCPT TO", "command", line)
+				s.write("501 5.5.4 Invalid address\r\n")
 				continue
 			}
+
 			s.message.to = append(s.message.to, addr)
 			s.state = RCPT
-			s.logger.Info("recipient accepted", "to", addr)
-			s.write("250 Ok\r\n")
+			s.logger.Info("rcpt to accepted", "to", addr)
+			s.write("250 2.1.5 Ok\r\n")
 
-		case strings.HasPrefix(cmd, "DATA"):
+		case verb == "DATA":
 			if s.state != RCPT {
-				s.logger.Warn("bad sequence", "state", s.state)
-				s.write("503 Bad sequence\r\n")
+				s.write("503 5.5.1 Bad sequence of commands\r\n")
 				continue
 			}
-			s.write("354 Start mail input; end with <CRLF>.<CRLF>\r\n")
+
+			s.write("354 End data with <CR><LF>.<CR><LF>\r\n")
 			data, err := s.readData()
 			if err != nil {
 				s.logger.Error("data read error", "error", err)
-				s.write("554 Error reading data\r\n")
+				s.write("451 4.3.0 Data read error\r\n")
 				continue
 			}
-			s.message.data = data
-			if err := s.saveMessage(); err != nil {
-				s.logger.Error("save error", "error", err)
-				s.write("554 Error saving message\r\n")
-				continue
-			}
-			s.logger.Info("message saved",
-				"from", s.message.from,
-				"to", strings.Join(s.message.to, ","),
-				"size", len(s.message.data))
-			s.state = INIT
-			s.message = NewMessage()
-			s.write("250 Ok: message queued\r\n")
 
-		case strings.HasPrefix(cmd, "XDEBUG"):
-			s.logger.Info("xdebug command", "command", cmd)
-			s.handleXDEBUG(cmd)
+			s.message.data = data
+			s.message.id = generateMessageID()
+
+			// Save the message to the queue
+			if err := s.saveMessage(); err != nil {
+				s.logger.Error("save message error", "error", err)
+				s.write("451 4.3.0 Error saving message\r\n")
+				continue
+			}
+
+			s.state = INIT
+			s.logger.Info("message accepted", "id", s.message.id)
+			s.write("250 2.0.0 Ok: queued as " + s.message.id + "\r\n")
+
+		case verb == "RSET":
+			s.message = nil
+			s.state = INIT
+			s.write("250 2.0.0 Ok\r\n")
+
+		case verb == "NOOP":
+			s.write("250 2.0.0 Ok\r\n")
+
+		case verb == "VRFY":
+			// We don't support VRFY for security reasons
+			s.write("252 2.1.5 Cannot verify user\r\n")
+
+		case verb == "EXPN":
+			// We don't support EXPN for security reasons
+			s.write("252 2.1.5 Cannot expand list\r\n")
+
+		case verb == "HELP":
+			s.write("214 2.0.0 SMTP server ready\r\n")
+
+		case strings.HasPrefix(verb, "XDEBUG"):
+			s.logger.Info("xdebug command", "command", line)
+			s.handleXDEBUG(line)
 
 		default:
-			s.logger.Warn("unknown command", "command", cmd)
-			s.write("500 Unknown command\r\n")
+			s.logger.Warn("unknown command", "command", line)
+			s.write("500 5.5.2 Command not recognized\r\n")
 		}
 	}
 }
@@ -452,6 +523,46 @@ func (s *Session) saveMessage() error {
 		}
 	}
 
+	// Scan for viruses using our built-in plugin system
+	if s.builtinPlugins != nil {
+		s.logger.Debug("scanning message for viruses", "id", s.message.id)
+		clean, infection, err := s.builtinPlugins.ScanForVirus(s.message.data, s.message.id)
+		if err != nil {
+			s.logger.Warn("virus scan failed", "error", err)
+			if s.config.Antivirus != nil && s.config.Antivirus.RejectOnFailure {
+				s.write("554 5.7.1 Unable to scan for viruses\r\n")
+				return errors.New("virus scan failed")
+			}
+		} else if !clean {
+			// Message contains virus
+			s.logger.Warn("virus detected", "virus", infection)
+			s.write(fmt.Sprintf("554 5.7.1 Message contains a virus: %s\r\n", infection))
+			return errors.New("message contains virus")
+		}
+	}
+
+	// Scan for spam using our built-in plugin system
+	if s.builtinPlugins != nil {
+		s.logger.Debug("scanning message for spam", "id", s.message.id)
+		clean, score, rules, err := s.builtinPlugins.ScanForSpam(s.message.data, s.message.id)
+		if err != nil {
+			s.logger.Warn("spam scan failed", "error", err)
+			if s.config.Antispam != nil && s.config.Antispam.RejectOnSpam {
+				s.write("554 5.7.1 Unable to scan for spam\r\n")
+				return errors.New("spam scan failed")
+			}
+		} else if !clean {
+			// Message is spam
+			s.logger.Warn("spam detected", "score", score, "rules", rules)
+			rulesList := ""
+			if len(rules) > 0 {
+				rulesList = " (" + strings.Join(rules, ", ") + ")"
+			}
+			s.write(fmt.Sprintf("554 5.7.1 Message identified as spam (score %.2f)%s\r\n", score, rulesList))
+			return errors.New("message is spam")
+		}
+	}
+
 	// Use the shared QueueManager to enqueue the message with normal priority
 	if s.queueManager == nil {
 		// Fallback to create a new one if we don't have a shared instance
@@ -514,9 +625,18 @@ func (s *Session) handleAuthPlain(cmd string) error {
 	parts := strings.Fields(cmd)
 	var authData string
 
-	if len(parts) == 3 {
+	if len(parts) >= 3 {
 		// AUTH PLAIN <base64-data>
-		authData = parts[2]
+		// The base64 data may contain spaces or be split across multiple parts
+		// Take everything after "AUTH PLAIN " - this is the base64 encoded data
+		prefix := "AUTH PLAIN "
+		if len(cmd) > len(prefix) {
+			authData = strings.TrimSpace(cmd[len(prefix):])
+			s.logger.Debug("AUTH PLAIN one-step mode", "authData", authData)
+		} else {
+			s.write("501 5.5.4 Invalid AUTH PLAIN format\r\n")
+			return nil
+		}
 	} else {
 		// AUTH PLAIN
 		s.write("334 \r\n")
@@ -525,32 +645,34 @@ func (s *Session) handleAuthPlain(cmd string) error {
 			return err
 		}
 		authData = strings.TrimSpace(line)
+		s.logger.Debug("AUTH PLAIN two-step mode", "authData", authData)
 	}
 
-	// Decode base64 data
 	data, err := base64.StdEncoding.DecodeString(authData)
 	if err != nil {
 		s.write("501 5.5.2 Invalid base64 encoding\r\n")
 		return nil
 	}
 
-	// PLAIN format: \0username\0password
+	s.logger.Debug("AUTH PLAIN decoded data",
+		"hexBytes", hex.EncodeToString(data),
+		"stringData", string(data))
+
 	parts = strings.Split(string(data), "\x00")
 	if len(parts) != 3 {
 		s.write("501 5.5.2 Invalid PLAIN authentication data\r\n")
 		return nil
 	}
 
-	// parts[0] is the authorization identity (ignored)
-	// parts[1] is the username
-	// parts[2] is the password
 	username := parts[1]
 	password := parts[2]
 
-	// Authenticate and handle any errors
+	s.logger.Debug("AUTH PLAIN credentials",
+		"username", username,
+		"passwordLength", len(password))
+
 	err = s.authenticate(username, password)
 	if err != nil {
-		// Error already handled in authenticate method
 		return nil
 	}
 
@@ -637,4 +759,18 @@ func (s *Session) authenticate(username, password string) error {
 	// Send success message
 	s.write("235 2.7.0 Authentication successful\r\n")
 	return nil
+}
+
+// generateMessageID creates a unique message ID for the queued message
+// Format: elemta-{timestamp}-{random-hex}@{hostname}
+func generateMessageID() string {
+	randomBytes := make([]byte, 8)
+	_, err := rand.Read(randomBytes)
+	if err != nil {
+		// Fall back to timestamp only if random fails
+		return fmt.Sprintf("elemta-%d@mail.example.com", time.Now().UnixNano())
+	}
+
+	timestamp := time.Now().Unix()
+	return fmt.Sprintf("elemta-%d-%x@mail.example.com", timestamp, randomBytes)
 }

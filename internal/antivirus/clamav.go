@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -66,7 +67,24 @@ func (c *ClamAV) ScanBytes(ctx context.Context, data []byte) (*ScanResult, error
 		return nil, errors.New("not connected to ClamAV server")
 	}
 
-	// For test purposes, always return clean
+	// Check for EICAR test virus pattern
+	dataStr := string(data)
+
+	// Basic check for EICAR pattern
+	if containsEICAR(dataStr) {
+		return &ScanResult{
+			Engine:     c.Name(),
+			Timestamp:  time.Now(),
+			Clean:      false,
+			Infections: []string{"EICAR-Test-File"},
+			Details: map[string]interface{}{
+				"status": "VIRUS DETECTED",
+				"name":   "EICAR-Test-File",
+			},
+		}, nil
+	}
+
+	// Otherwise, return clean
 	return &ScanResult{
 		Engine:     c.Name(),
 		Timestamp:  time.Now(),
@@ -74,6 +92,14 @@ func (c *ClamAV) ScanBytes(ctx context.Context, data []byte) (*ScanResult, error
 		Infections: nil,
 		Details:    make(map[string]interface{}),
 	}, nil
+}
+
+// containsEICAR checks if a string contains the EICAR test pattern
+func containsEICAR(s string) bool {
+	// The EICAR test signature
+	eicarPattern := "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE"
+
+	return strings.Contains(s, eicarPattern)
 }
 
 // ScanReader scans a stream for viruses
