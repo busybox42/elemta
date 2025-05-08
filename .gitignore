@@ -6,7 +6,13 @@ linux-package-builder/build_tmp/
 *.rpm
 *.deb
 
+# Compiled binary
+elemta
+
 # Temporary files
+config/elemta.db
+config/test.crt
+config/test.key
 config/examples/elemta-fixed.conf
 # AI-related files
 .cursor/
@@ -36,12 +42,26 @@ queue/deferred/
 queue/failed/
 queue/hold/
 queue/data/
+certs/
 
 # Go build artifacts
 *.so
 *.dylib
 *.test
 *.out
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+env/
+venv/
+ENV/
+tests/python/e2e/__pycache__/
+tests/python/e2e/debug_auth.py
 
 # IDE and editor files
 .idea/
