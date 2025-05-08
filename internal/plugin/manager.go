@@ -348,44 +348,40 @@ func (m *Manager) registerStagePlugin(plugin StagePlugin) {
 
 // LoadPlugins loads all plugins from the plugin path
 func (m *Manager) LoadPlugins() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	// Check if plugin directory exists
 	if _, err := os.Stat(m.pluginPath); os.IsNotExist(err) {
 		return fmt.Errorf("plugin directory not found: %s", m.pluginPath)
 	}
 
-	// Walk plugin directory
+	// Collect plugin names to load
+	pluginNames := []string{}
 	err := filepath.WalkDir(m.pluginPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-
-		// Skip directories
 		if d.IsDir() {
 			return nil
 		}
-
-		// Skip non-plugin files
 		if filepath.Ext(path) != ".so" {
 			return nil
 		}
-
-		// Get plugin name
 		pluginName := filepath.Base(path)
 		pluginName = pluginName[:len(pluginName)-3] // Remove .so extension
-
-		// Load plugin
-		if err := m.LoadPlugin(pluginName); err != nil {
-			// Log error but continue loading other plugins
-			fmt.Printf("Failed to load plugin %s: %v\n", pluginName, err)
-		}
-
+		pluginNames = append(pluginNames, pluginName)
 		return nil
 	})
+	if err != nil {
+		return err
+	}
 
-	return err
+	// Now load each plugin (each call will take the lock as needed)
+	for _, pluginName := range pluginNames {
+		if err := m.LoadPlugin(pluginName); err != nil {
+			fmt.Printf("Failed to load plugin %s: %v\n", pluginName, err)
+		}
+	}
+
+	return nil
 }
 
 // GetAntivirusPlugin returns an antivirus plugin by name

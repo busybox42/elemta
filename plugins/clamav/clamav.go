@@ -11,15 +11,16 @@ import (
 	"github.com/busybox42/elemta/internal/plugin"
 )
 
-// Plugin information
-var (
-	PluginName        = "clamav"
-	PluginVersion     = "1.0.0"
-	PluginDescription = "ClamAV antivirus scanning plugin"
-	PluginAuthor      = "Elemta Team"
-)
+// PluginInfo provides information about this plugin
+var PluginInfo = plugin.PluginInfo{
+	Name:        "clamav",
+	Description: "ClamAV antivirus scanning plugin",
+	Version:     "1.0.0",
+	Type:        plugin.PluginTypeAntivirus,
+	Author:      "Elemta Team",
+}
 
-// ClamAVPlugin represents the ClamAV antivirus plugin
+// ClamAVPlugin implements the AntivirusPlugin interface
 type ClamAVPlugin struct {
 	scanner *antivirus.ClamAV
 	config  *Config
@@ -27,12 +28,12 @@ type ClamAVPlugin struct {
 
 // Config represents the plugin configuration
 type Config struct {
-	Enabled         bool   `toml:"enabled"`
-	Host            string `toml:"host"`
-	Port            int    `toml:"port"`
-	Timeout         int    `toml:"timeout"`
-	RejectOnFailure bool   `toml:"reject_on_failure"`
-	MaxSize         int64  `toml:"max_size"`
+	Enabled         bool   `toml:"enabled" json:"enabled"`
+	Host            string `toml:"host" json:"host"`
+	Port            int    `toml:"port" json:"port"`
+	Timeout         int    `toml:"timeout" json:"timeout"`
+	RejectOnFailure bool   `toml:"reject_on_failure" json:"reject_on_failure"`
+	MaxSize         int64  `toml:"max_size" json:"max_size"`
 }
 
 // Init initializes the plugin
@@ -112,6 +113,8 @@ func (p *ClamAVPlugin) ScanMessage(msg *message.Message) (*plugin.Result, error)
 		defer cancel()
 	}
 
+	log.Printf("Scanning message for viruses: %s", msg.ID)
+
 	// Scan message content
 	result, err := p.scanner.ScanBytes(ctx, msg.Data)
 	if err != nil {
@@ -131,9 +134,10 @@ func (p *ClamAVPlugin) ScanMessage(msg *message.Message) (*plugin.Result, error)
 	if !result.Clean {
 		log.Printf("Virus detected: %v", result.Infections)
 		msg.AddHeader("X-Virus-Status", "Infected")
-		return plugin.NewResult(plugin.ResultReject, "Virus detected", nil), nil
+		return plugin.NewResult(plugin.ResultReject, fmt.Sprintf("Virus detected: %s", result.Infections), nil), nil
 	}
 
+	log.Printf("Message is clean: %s", msg.ID)
 	return plugin.NewResult(plugin.ResultPass, "Message is clean", nil), nil
 }
 
@@ -145,48 +149,22 @@ func (p *ClamAVPlugin) Close() error {
 	return nil
 }
 
-// Hooks returns the hooks that the plugin wants to register
-func (p *ClamAVPlugin) Hooks() []plugin.HookRegistration {
-	return []plugin.HookRegistration{
-		{
-			Name:     "scan_message",
-			Stage:    plugin.StagePostQueue,
-			Priority: 20,
-			Func:     p.ScanMessage,
-		},
+// GetStages returns the stages that the plugin wants to process
+func (p *ClamAVPlugin) GetStages() []plugin.ProcessingStage {
+	return []plugin.ProcessingStage{
+		plugin.StageDataComplete,
 	}
 }
 
-// Name returns the name of the plugin
-func (p *ClamAVPlugin) Name() string {
-	return PluginName
+// GetPriority returns the plugin's priority
+func (p *ClamAVPlugin) GetPriority() plugin.PluginPriority {
+	return plugin.PriorityHigh
 }
 
-// Version returns the version of the plugin
-func (p *ClamAVPlugin) Version() string {
-	return PluginVersion
-}
-
-// Description returns the description of the plugin
-func (p *ClamAVPlugin) Description() string {
-	return PluginDescription
-}
-
-// GetInfo returns the plugin information
+// GetInfo returns information about the plugin
 func (p *ClamAVPlugin) GetInfo() plugin.PluginInfo {
-	return plugin.PluginInfo{
-		Name:        PluginName,
-		Description: PluginDescription,
-		Version:     PluginVersion,
-		Type:        plugin.PluginTypeAntivirus,
-		Author:      PluginAuthor,
-	}
+	return PluginInfo
 }
 
-// New creates a new instance of the plugin
-func New() plugin.Plugin {
-	return &ClamAVPlugin{}
-}
-
-// This is required for Go plugins
+// Plugin is the exported plugin instance
 var Plugin ClamAVPlugin

@@ -11,15 +11,16 @@ import (
 	"github.com/busybox42/elemta/internal/plugin"
 )
 
-// Plugin information
-var (
-	PluginName        = "rspamd"
-	PluginVersion     = "1.0.0"
-	PluginDescription = "Rspamd antispam scanning plugin"
-	PluginAuthor      = "Elemta Team"
-)
+// PluginInfo provides information about this plugin
+var PluginInfo = plugin.PluginInfo{
+	Name:        "rspamd",
+	Description: "Rspamd antispam scanning plugin",
+	Version:     "1.0.0",
+	Type:        plugin.PluginTypeAntispam,
+	Author:      "Elemta Team",
+}
 
-// RspamdPlugin represents the Rspamd antispam plugin
+// RspamdPlugin implements the AntispamPlugin interface
 type RspamdPlugin struct {
 	scanner *antispam.Rspamd
 	config  *Config
@@ -27,13 +28,13 @@ type RspamdPlugin struct {
 
 // Config represents the plugin configuration
 type Config struct {
-	Enabled         bool    `toml:"enabled"`
-	Host            string  `toml:"host"`
-	Port            int     `toml:"port"`
-	Timeout         int     `toml:"timeout"`
-	RejectOnFailure bool    `toml:"reject_on_failure"`
-	Threshold       float64 `toml:"threshold"`
-	APIKey          string  `toml:"api_key"`
+	Enabled         bool    `toml:"enabled" json:"enabled"`
+	Host            string  `toml:"host" json:"host"`
+	Port            int     `toml:"port" json:"port"`
+	Timeout         int     `toml:"timeout" json:"timeout"`
+	RejectOnFailure bool    `toml:"reject_on_failure" json:"reject_on_failure"`
+	Threshold       float64 `toml:"threshold" json:"threshold"`
+	APIKey          string  `toml:"api_key" json:"api_key"`
 }
 
 // Init initializes the plugin
@@ -75,7 +76,7 @@ func (p *RspamdPlugin) Init(cfg map[string]interface{}) error {
 	log.Printf("Initializing Rspamd plugin with host %s:%d", p.config.Host, p.config.Port)
 
 	// Create scanner
-	address := fmt.Sprintf("%s:%d", p.config.Host, p.config.Port)
+	address := fmt.Sprintf("http://%s:%d", p.config.Host, p.config.Port)
 
 	scannerConfig := antispam.Config{
 		Type:      "rspamd",
@@ -88,6 +89,12 @@ func (p *RspamdPlugin) Init(cfg map[string]interface{}) error {
 	}
 
 	p.scanner = antispam.NewRspamd(scannerConfig)
+
+	// Connect to Rspamd
+	if err := p.scanner.Connect(); err != nil {
+		log.Printf("Warning: Failed to connect to Rspamd: %v", err)
+		return nil // Don't fail initialization if Rspamd is not available
+	}
 
 	log.Printf("Rspamd plugin initialized successfully")
 	return nil
@@ -108,13 +115,15 @@ func (p *RspamdPlugin) ScanMessage(msg *message.Message) (*plugin.Result, error)
 		defer cancel()
 	}
 
+	log.Printf("Scanning message for spam: %s", msg.ID)
+
 	// Scan message content
 	result, err := p.scanner.ScanBytes(ctx, msg.Data)
 	if err != nil {
 		log.Printf("Error scanning message: %v", err)
 
 		if p.config.RejectOnFailure {
-			return plugin.NewResult(plugin.ResultReject, "Failed to scan message", err), nil
+			return plugin.NewResult(plugin.ResultReject, "Failed to scan message for spam", err), nil
 		}
 
 		return plugin.NewResult(plugin.ResultPass, "Spam scan failed, accepting anyway", err), nil
@@ -146,9 +155,10 @@ func (p *RspamdPlugin) ScanMessage(msg *message.Message) (*plugin.Result, error)
 	// Check if the message is spam
 	if !result.Clean {
 		log.Printf("Spam detected, score: %.2f (threshold: %.2f)", result.Score, result.Threshold)
-		return plugin.NewResult(plugin.ResultReject, "Spam detected", nil), nil
+		return plugin.NewResult(plugin.ResultReject, fmt.Sprintf("Spam detected (score: %.2f/%.2f)", result.Score, result.Threshold), nil), nil
 	}
 
+	log.Printf("Message is not spam: %s (score: %.2f/%.2f)", msg.ID, result.Score, result.Threshold)
 	return plugin.NewResult(plugin.ResultPass, "Message is not spam", nil), nil
 }
 
@@ -158,48 +168,22 @@ func (p *RspamdPlugin) Close() error {
 	return nil
 }
 
-// GetInfo returns the plugin information
+// GetInfo returns information about the plugin
 func (p *RspamdPlugin) GetInfo() plugin.PluginInfo {
-	return plugin.PluginInfo{
-		Name:        PluginName,
-		Description: PluginDescription,
-		Version:     PluginVersion,
-		Type:        plugin.PluginTypeAntispam,
-		Author:      PluginAuthor,
+	return PluginInfo
+}
+
+// GetStages returns the stages that the plugin wants to process
+func (p *RspamdPlugin) GetStages() []plugin.ProcessingStage {
+	return []plugin.ProcessingStage{
+		plugin.StageDataComplete,
 	}
 }
 
-// Hooks returns the hooks that the plugin wants to register
-func (p *RspamdPlugin) Hooks() []plugin.HookRegistration {
-	return []plugin.HookRegistration{
-		{
-			Name:     "scan_message",
-			Stage:    plugin.StagePostQueue,
-			Priority: 30,
-			Func:     p.ScanMessage,
-		},
-	}
+// GetPriority returns the plugin's priority
+func (p *RspamdPlugin) GetPriority() plugin.PluginPriority {
+	return plugin.PriorityNormal
 }
 
-// Name returns the name of the plugin
-func (p *RspamdPlugin) Name() string {
-	return PluginName
-}
-
-// Version returns the version of the plugin
-func (p *RspamdPlugin) Version() string {
-	return PluginVersion
-}
-
-// Description returns the description of the plugin
-func (p *RspamdPlugin) Description() string {
-	return PluginDescription
-}
-
-// New creates a new instance of the plugin
-func New() plugin.Plugin {
-	return &RspamdPlugin{}
-}
-
-// This is required for Go plugins
+// Plugin is the exported plugin instance
 var Plugin RspamdPlugin
