@@ -8,6 +8,12 @@ import (
 	"strconv"
 	"time"
 
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
+	"strings"
+
 	"github.com/busybox42/elemta/internal/datasource"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -150,9 +156,31 @@ func NewFromEnv() (*Auth, error) {
 		options := make(map[string]interface{})
 		return NewWithLDAP(host, port, bindDN, bindPassword, userDN, groupDN, options)
 
+	case "file":
+		filePath := os.Getenv("AUTH_FILE_PATH")
+		if filePath == "" {
+			filePath = "/app/config/users.txt"
+		}
+		return NewWithFile(filePath)
+
 	default:
 		return nil, fmt.Errorf("unsupported datasource type: %s", dsType)
 	}
+}
+
+// NewWithFile creates a new Auth instance with a flat file datasource
+func NewWithFile(filePath string) (*Auth, error) {
+	config := datasource.Config{
+		Type:    "file",
+		Name:    "auth-file",
+		Options: map[string]interface{}{"file": filePath},
+	}
+
+	ds := datasource.NewFile(config)
+	if err := ds.Connect(); err != nil {
+		return nil, fmt.Errorf("failed to connect to file datasource: %w", err)
+	}
+	return &Auth{ds: ds}, nil
 }
 
 // Close closes the underlying datasource connection
@@ -180,7 +208,58 @@ func HashPassword(password string) (string, error) {
 
 // ComparePasswords compares a hashed password with a plain-text password
 func ComparePasswords(hashedPassword, plainPassword string) error {
-	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
+	if strings.HasPrefix(hashedPassword, "$2") {
+		// bcrypt
+		return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
+	}
+	if strings.HasPrefix(hashedPassword, "{SHA}") {
+		// OpenLDAP SHA-1
+		hash := sha1.Sum([]byte(plainPassword))
+		b64 := base64.StdEncoding.EncodeToString(hash[:])
+		if hashedPassword == "{SHA}"+b64 {
+			return nil
+		}
+		return ErrInvalidCredentials
+	}
+	if strings.HasPrefix(hashedPassword, "{SHA256}") {
+		// OpenLDAP SHA-256
+		hash := sha256.Sum256([]byte(plainPassword))
+		b64 := base64.StdEncoding.EncodeToString(hash[:])
+		if hashedPassword == "{SHA256}"+b64 {
+			return nil
+		}
+		return ErrInvalidCredentials
+	}
+	if strings.HasPrefix(hashedPassword, "{SHA512}") {
+		// OpenLDAP SHA-512
+		hash := sha512.Sum512([]byte(plainPassword))
+		b64 := base64.StdEncoding.EncodeToString(hash[:])
+		if hashedPassword == "{SHA512}"+b64 {
+			return nil
+		}
+		return ErrInvalidCredentials
+	}
+	if strings.HasPrefix(hashedPassword, "{SSHA}") {
+		// OpenLDAP SSHA (SHA-1 + salt)
+		b, err := base64.StdEncoding.DecodeString(hashedPassword[6:])
+		if err != nil || len(b) < 20 {
+			return ErrInvalidCredentials
+		}
+		hash := b[:20]
+		salt := b[20:]
+		h := sha1.New()
+		h.Write([]byte(plainPassword))
+		h.Write(salt)
+		if string(h.Sum(nil)) == string(hash) {
+			return nil
+		}
+		return ErrInvalidCredentials
+	}
+	// fallback: plain text
+	if hashedPassword == plainPassword {
+		return nil
+	}
+	return ErrInvalidCredentials
 }
 
 // Authenticate verifies a username and password

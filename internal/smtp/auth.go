@@ -68,6 +68,7 @@ func NewAuthenticator(config *AuthConfig) (*SMTPAuthenticator, error) {
 		Username: config.DataSourceUser,
 		Password: config.DataSourcePass,
 		Options: map[string]interface{}{
+			"file":    config.DataSourcePath,
 			"db_path": config.DataSourcePath,
 		},
 	}
