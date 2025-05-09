@@ -32,20 +32,48 @@ type Server struct {
 
 // NewServer creates a new SMTP server
 func NewServer(config *Config) (*Server, error) {
+	// Validate configuration
+	if config == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
+
+	if config.Hostname == "" {
+		// Try to get hostname from OS
+		hostname, err := os.Hostname()
+		if err != nil {
+			return nil, fmt.Errorf("hostname not provided in config and could not be determined: %w", err)
+		}
+		config.Hostname = hostname
+	}
+
+	if config.ListenAddr == "" {
+		config.ListenAddr = ":25" // Default SMTP port
+	}
+
+	// Set up logger
+	logger := log.New(os.Stdout, "SMTP: ", log.LstdFlags)
+	logger.Printf("Initializing SMTP server with hostname: %s", config.Hostname)
+
 	// Initialize plugin manager if enabled
 	var pluginManager *plugin.Manager
 	if config.Plugins != nil && config.Plugins.Enabled {
 		pluginManager = plugin.NewManager(config.Plugins.PluginPath)
+		logger.Printf("Plugin system enabled, using path: %s", config.Plugins.PluginPath)
 
 		// Load plugins
 		if err := pluginManager.LoadPlugins(); err != nil {
-			log.Printf("Warning: failed to load plugins: %v", err)
+			logger.Printf("Warning: failed to load plugins: %v", err)
 		}
 
 		// Load specific plugins if specified
-		for _, pluginName := range config.Plugins.Plugins {
-			if err := pluginManager.LoadPlugin(pluginName); err != nil {
-				log.Printf("Warning: failed to load plugin %s: %v", pluginName, err)
+		if len(config.Plugins.Plugins) > 0 {
+			logger.Printf("Attempting to load %d specified plugins", len(config.Plugins.Plugins))
+			for _, pluginName := range config.Plugins.Plugins {
+				if err := pluginManager.LoadPlugin(pluginName); err != nil {
+					logger.Printf("Warning: failed to load plugin %s: %v", pluginName, err)
+				} else {
+					logger.Printf("Successfully loaded plugin: %s", pluginName)
+				}
 			}
 		}
 	}
@@ -54,12 +82,20 @@ func NewServer(config *Config) (*Server, error) {
 	var authenticator Authenticator
 	var err error
 	if config.Auth != nil && config.Auth.Enabled {
+		logger.Printf("Authentication enabled, initializing authenticator")
 		authenticator, err = NewAuthenticator(config.Auth)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize authenticator: %w", err)
 		}
+
+		if config.Auth.Required {
+			logger.Printf("Authentication will be required for all mail transactions")
+		} else {
+			logger.Printf("Authentication available but not required")
+		}
 	} else {
 		// Create a dummy authenticator that always returns true
+		logger.Printf("Authentication disabled, using dummy authenticator")
 		authenticator = &SMTPAuthenticator{
 			config: &AuthConfig{
 				Enabled:  false,
@@ -70,20 +106,24 @@ func NewServer(config *Config) (*Server, error) {
 
 	// Initialize metrics
 	metrics := GetMetrics()
+	logger.Printf("Metrics system initialized")
 
 	// Initialize queue manager
+	logger.Printf("Initializing queue manager with directory: %s", config.QueueDir)
 	queueManager := NewQueueManager(config)
 
 	// Debug: print AuthConfig and TLSConfig
 	if config.Auth != nil {
-		fmt.Printf("[DEBUG] AuthConfig: %+v\n", *config.Auth)
-	} else {
-		fmt.Println("[DEBUG] AuthConfig: <nil>")
+		logger.Printf("Auth config loaded: enabled=%v, required=%v, datasource=%s",
+			config.Auth.Enabled,
+			config.Auth.Required,
+			config.Auth.DataSourceType)
 	}
+
 	if config.TLS != nil {
-		fmt.Printf("[DEBUG] TLSConfig: %+v\n", *config.TLS)
-	} else {
-		fmt.Println("[DEBUG] TLSConfig: <nil>")
+		logger.Printf("TLS config loaded: enabled=%v, starttls=%v",
+			config.TLS.Enabled,
+			config.TLS.EnableStartTLS)
 	}
 
 	server := &Server{
@@ -93,18 +133,29 @@ func NewServer(config *Config) (*Server, error) {
 		authenticator: authenticator,
 		metrics:       metrics,
 		queueManager:  queueManager,
-		logger:        log.New(os.Stdout, "SMTP: ", log.LstdFlags),
+		logger:        logger,
 	}
 
 	// Initialize TLS manager if TLS is enabled
 	if config.TLS != nil && config.TLS.Enabled {
+		logger.Printf("TLS enabled, initializing TLS manager")
 		tlsManager, err := NewTLSManager(config)
 		if err != nil {
-			log.Printf("Warning: Failed to initialize TLS manager: %v", err)
+			logger.Printf("Warning: Failed to initialize TLS manager: %v", err)
 		} else {
 			server.tlsManager = tlsManager
-			log.Printf("TLS manager initialized successfully")
+			logger.Printf("TLS manager initialized successfully")
+
+			// Log certificate information
+			if config.TLS.CertFile != "" {
+				logger.Printf("Using TLS certificate: %s", config.TLS.CertFile)
+			}
+			if config.TLS.LetsEncrypt != nil && config.TLS.LetsEncrypt.Enabled {
+				logger.Printf("Let's Encrypt enabled for domain: %s", config.TLS.LetsEncrypt.Domain)
+			}
 		}
+	} else {
+		logger.Printf("TLS disabled")
 	}
 
 	// Initialize scanner manager
@@ -124,21 +175,15 @@ func (s *Server) Start() error {
 		return fmt.Errorf("server already running")
 	}
 
-	// Ensure queue directory exists
-	if s.config.QueueDir != "" {
-		if err := os.MkdirAll(s.config.QueueDir, 0755); err != nil {
-			return fmt.Errorf("failed to create queue directory: %w", err)
-		}
+	s.logger.Printf("Starting SMTP server on %s", s.config.ListenAddr)
 
-		// Create subdirectories for different queue types
-		for _, dir := range []string{"active", "deferred", "held", "failed", "data"} {
-			queueSubDir := filepath.Join(s.config.QueueDir, dir)
-			if err := os.MkdirAll(queueSubDir, 0755); err != nil {
-				return fmt.Errorf("failed to create queue subdirectory %s: %w", dir, err)
-			}
-		}
+	// Create all required queue directories
+	if err := s.setupQueueDirectories(); err != nil {
+		return fmt.Errorf("queue directory setup failed: %w", err)
 	}
 
+	// Create listener
+	s.logger.Printf("Creating TCP listener on %s", s.config.ListenAddr)
 	var err error
 	s.listener, err = net.Listen("tcp", s.config.ListenAddr)
 	if err != nil {
@@ -146,37 +191,42 @@ func (s *Server) Start() error {
 	}
 
 	s.running = true
-	log.Printf("Elemta MTA starting on %s", s.config.ListenAddr)
+	s.logger.Printf("SMTP server running on %s", s.config.ListenAddr)
 
 	// Start the queue manager if queue processor is enabled
-	if s.queueManager != nil {
-		log.Printf("Initializing queue manager, config says enabled: %v, interval: %d seconds",
-			s.config.QueueProcessorEnabled, s.config.QueueProcessInterval)
+	if s.config.QueueProcessorEnabled {
+		s.logger.Printf("Starting queue processor with interval %d seconds and %d workers",
+			s.config.QueueProcessInterval, s.config.QueueWorkers)
 		s.StartQueueProcessor()
+	} else {
+		s.logger.Printf("Queue processor disabled")
 	}
 
 	// Start metrics server if enabled
 	if s.config.Metrics != nil && s.config.Metrics.Enabled {
+		s.logger.Printf("Starting metrics server on %s", s.config.Metrics.ListenAddr)
 		s.metricsServer = StartMetricsServer(s.config.Metrics.ListenAddr)
-		log.Printf("Metrics server started on %s", s.config.Metrics.ListenAddr)
 
 		// Start periodic queue size updates
-		go s.updateQueueMetrics()
+		go s.updateQueueMetricsWithRetry()
 	}
 
 	// Start API server if enabled
 	if s.config.API != nil && s.config.API.Enabled {
+		s.logger.Printf("Starting API server on %s", s.config.API.ListenAddr)
 		apiServer, err := api.NewServer(&api.Config{
 			Enabled:    s.config.API.Enabled,
 			ListenAddr: s.config.API.ListenAddr,
 		}, s.config.QueueDir)
 
 		if err != nil {
-			log.Printf("Warning: failed to create API server: %v", err)
+			s.logger.Printf("Warning: failed to create API server: %v", err)
 		} else {
 			s.apiServer = apiServer
 			if err := s.apiServer.Start(); err != nil {
-				log.Printf("Warning: failed to start API server: %v", err)
+				s.logger.Printf("Warning: failed to start API server: %v", err)
+			} else {
+				s.logger.Printf("API server started successfully")
 			}
 		}
 	}
@@ -187,13 +237,50 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// updateQueueMetrics periodically updates queue size metrics
-func (s *Server) updateQueueMetrics() {
+// setupQueueDirectories ensures all needed queue directories exist
+func (s *Server) setupQueueDirectories() error {
+	if s.config.QueueDir == "" {
+		return fmt.Errorf("queue directory not configured")
+	}
+
+	// Ensure main queue directory exists
+	if err := os.MkdirAll(s.config.QueueDir, 0755); err != nil {
+		return fmt.Errorf("failed to create queue directory: %w", err)
+	}
+
+	// Create subdirectories for different queue types
+	queueTypes := []string{"active", "deferred", "held", "failed", "data", "tmp", "quarantine"}
+
+	for _, qType := range queueTypes {
+		qDir := filepath.Join(s.config.QueueDir, qType)
+		if err := os.MkdirAll(qDir, 0755); err != nil {
+			return fmt.Errorf("failed to create %s queue directory: %w", qType, err)
+		}
+		s.logger.Printf("Created queue directory: %s", qDir)
+	}
+
+	return nil
+}
+
+// updateQueueMetricsWithRetry periodically updates queue size metrics with retry on failure
+func (s *Server) updateQueueMetricsWithRetry() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for s.running {
-		s.metrics.UpdateQueueSizes(s.config)
+		// Update metrics and log any errors we encounter
+		func() {
+			// Use defer to catch any panics that might occur
+			defer func() {
+				if r := recover(); r != nil {
+					s.logger.Printf("Panic in queue metrics update: %v", r)
+				}
+			}()
+
+			s.metrics.UpdateQueueSizes(s.config)
+			s.logger.Printf("Queue metrics updated successfully")
+		}()
+
 		<-ticker.C
 	}
 }

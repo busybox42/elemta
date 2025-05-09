@@ -131,21 +131,52 @@ func (s *Session) write(msg string) error {
 
 func (s *Session) Handle() error {
 	s.logger.Info("starting new session")
-	s.write("220 elemta ESMTP ready\r\n")
 
+	// 220 <domain> <greeting> <ESMTP> <server-info>
+	s.write(fmt.Sprintf("220 %s ESMTP Elemta MTA ready\r\n", s.config.Hostname))
+
+	// Set reasonable session timeout default if not configured
 	timeout := s.config.SessionTimeout
 	if timeout == 0 {
 		timeout = 5 * time.Minute
 	}
 
+	// Keep track of command count to detect flooding
+	commandCount := 0
+	commandTimer := time.Now()
+	maxCommands := 100 // Max commands within the flood period
+	floodPeriod := 60 * time.Second
+
+	// Set a session overall timeout to prevent hung connections
+	overallDeadline := time.Now().Add(30 * time.Minute)
+	s.conn.SetDeadline(overallDeadline)
+
 	for {
+		// Check for command flooding
+		commandCount++
+		if commandCount > maxCommands {
+			elapsed := time.Since(commandTimer)
+			if elapsed < floodPeriod {
+				s.logger.Warn("command flooding detected",
+					"commands", commandCount,
+					"period_seconds", elapsed.Seconds())
+				s.write("421 4.7.0 Too many commands, slow down\r\n")
+				return errors.New("command flooding detected")
+			}
+			// Reset counter if we're outside the flood period
+			commandCount = 0
+			commandTimer = time.Now()
+		}
+
+		// Set read deadline for this command
 		s.conn.SetReadDeadline(time.Now().Add(timeout))
 		line, err := s.reader.ReadString('\n')
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				s.logger.Warn("session timeout, closing connection")
+				s.logger.Warn("session timeout, closing connection",
+					"timeout_seconds", timeout.Seconds())
 				s.write("421 4.4.2 Connection timed out\r\n")
-				return err
+				return fmt.Errorf("session timeout after %v", timeout)
 			}
 			s.logger.Error("read error", "error", err)
 			return err
@@ -167,35 +198,73 @@ func (s *Session) Handle() error {
 		switch {
 		case verb == "QUIT":
 			s.logger.Info("client quit")
-			s.write("221 Bye\r\n")
+			s.write("221 2.0.0 Goodbye\r\n")
 			return nil
 
 		case verb == "HELO" || verb == "EHLO":
 			s.logger.Info("client hello", "command", line)
-			s.write("250-" + s.config.Hostname + "\r\n")
-			s.write("250-SIZE " + strconv.FormatInt(s.config.MaxSize, 10) + "\r\n")
-			s.write("250-8BITMIME\r\n")
-			s.write("250-PIPELINING\r\n")
-			s.write("250-ENHANCEDSTATUSCODES\r\n")
 
-			// Advertise STARTTLS if TLS is enabled, STARTTLS is enabled, and this connection isn't already using TLS
-			if s.config.TLS != nil && s.config.TLS.Enabled && s.config.TLS.EnableStartTLS && !s.tls {
-				s.write("250-STARTTLS\r\n")
+			// Extract the client identity
+			clientIdentity := ""
+			if len(parts) > 1 {
+				clientIdentity = parts[1]
+				// Store client identity in context for logging
+				s.Context.Set("client_identity", clientIdentity)
 			}
 
-			// Advertise AUTH if authentication is enabled
-			if s.authenticator != nil && s.authenticator.IsEnabled() {
-				methods := s.authenticator.GetSupportedMethods()
-				if len(methods) > 0 {
-					authMethods := make([]string, len(methods))
-					for i, method := range methods {
-						authMethods[i] = string(method)
-					}
-					s.write("250-AUTH " + strings.Join(authMethods, " ") + "\r\n")
+			// Respond with different formats for HELO vs EHLO (per RFC)
+			if verb == "HELO" {
+				// Simple response for HELO as per RFC 5321
+				s.write("250 " + s.config.Hostname + "\r\n")
+			} else {
+				// Multi-line response for EHLO as per RFC 5321
+				s.write("250-" + s.config.Hostname + " greets " + clientIdentity + "\r\n")
+
+				// RFC 1870 SIZE extension
+				s.write("250-SIZE " + strconv.FormatInt(s.config.MaxSize, 10) + "\r\n")
+
+				// RFC 6152 8BITMIME extension
+				s.write("250-8BITMIME\r\n")
+
+				// RFC 2920 PIPELINING extension
+				s.write("250-PIPELINING\r\n")
+
+				// RFC 3463 Enhanced status codes
+				s.write("250-ENHANCEDSTATUSCODES\r\n")
+
+				// RFC 2034 HELP
+				s.write("250-HELP\r\n")
+
+				// RFC 4954 CHUNKING (if enabled)
+				if s.config.DevMode {
+					s.write("250-CHUNKING\r\n")
 				}
-			}
 
-			s.write("250 HELP\r\n")
+				// RFC 2821 STARTTLS (if enabled)
+				if s.config.TLS != nil && s.config.TLS.Enabled && s.config.TLS.EnableStartTLS && !s.tls {
+					s.write("250-STARTTLS\r\n")
+				}
+
+				// RFC 4954 AUTH (if enabled)
+				if s.authenticator != nil && s.authenticator.IsEnabled() {
+					methods := s.authenticator.GetSupportedMethods()
+					if len(methods) > 0 {
+						authMethods := make([]string, len(methods))
+						for i, method := range methods {
+							authMethods[i] = string(method)
+						}
+						s.write("250-AUTH " + strings.Join(authMethods, " ") + "\r\n")
+					}
+				}
+
+				// RFC 3030 BINARYMIME (if CHUNKING is supported)
+				if s.config.DevMode {
+					s.write("250-BINARYMIME\r\n")
+				}
+
+				// The last line must have a space instead of a dash after the code
+				s.write("250 SMTPUTF8\r\n")
+			}
 
 		case verb == "STARTTLS":
 			if s.tls {
@@ -244,19 +313,7 @@ func (s *Session) Handle() error {
 				continue
 			}
 
-			addr := extractAddress(line)
-			if addr == "" {
-				s.logger.Warn("invalid address in MAIL FROM", "command", line)
-				s.write("501 5.5.4 Invalid address\r\n")
-				continue
-			}
-
-			// Create a new message for this mail transaction
-			s.message = NewMessage()
-			s.message.from = addr
-			s.state = MAIL
-			s.logger.Info("mail from accepted", "from", addr)
-			s.write("250 Ok\r\n")
+			s.handleMailFrom(line)
 
 		case verb == "RCPT" || strings.HasPrefix(line, "RCPT TO:") || strings.HasPrefix(line, "rcpt to:"):
 			if s.state != MAIL && s.state != RCPT {
@@ -264,17 +321,7 @@ func (s *Session) Handle() error {
 				continue
 			}
 
-			addr := extractAddress(line)
-			if addr == "" {
-				s.logger.Warn("invalid address in RCPT TO", "command", line)
-				s.write("501 5.5.4 Invalid address\r\n")
-				continue
-			}
-
-			s.message.to = append(s.message.to, addr)
-			s.state = RCPT
-			s.logger.Info("rcpt to accepted", "to", addr)
-			s.write("250 Ok\r\n")
+			s.handleRcptTo(line)
 
 		case verb == "DATA":
 			if s.state != RCPT {
@@ -282,34 +329,60 @@ func (s *Session) Handle() error {
 				continue
 			}
 
-			s.write("354 Start mail input\r\n")
+			// Inform client to start sending data
+			s.write("354 Start mail input; end with <CRLF>.<CRLF>\r\n")
+
+			// Read the message data
 			data, err := s.readData()
 			if err != nil {
-				s.logger.Error("data read error", "error", err)
-				s.write("451 4.3.0 Data read error\r\n")
+				// Handle different error types with appropriate responses
+				if strings.Contains(err.Error(), "message too large") {
+					s.logger.Error("message size exceeded", "error", err)
+					s.write("552 5.3.4 Message size exceeds fixed maximum message size\r\n")
+				} else {
+					s.logger.Error("data read error", "error", err)
+					s.write("451 4.3.0 Error processing message data\r\n")
+				}
 				continue
 			}
 
+			// Generate a unique message ID and set data
 			s.message.data = data
 			s.message.id = generateMessageID()
+			s.message.receivedTime = time.Now()
 
-			// Save the message to the queue
-			if err := s.saveMessage(); err != nil {
-				s.logger.Error("save message error", "error", err)
-				s.write("451 4.3.0 Error saving message\r\n")
+			// Before saving, validate message has required headers
+			if !s.validateMessageHeaders() {
+				s.write("554 5.6.0 Message has invalid headers\r\n")
 				continue
 			}
 
-			// Set state to INIT but keep message data for XDEBUG
+			// Attempt to save the message to the queue
+			if err := s.saveMessage(); err != nil {
+				// Check for specific errors and return appropriate status codes
+				if strings.Contains(err.Error(), "virus") {
+					// Error already sent by saveMessage()
+				} else if strings.Contains(err.Error(), "spam") {
+					// Error already sent by saveMessage()
+				} else if strings.Contains(err.Error(), "relay not allowed") {
+					s.write("550 5.7.1 Relaying denied\r\n")
+				} else {
+					s.logger.Error("save message error", "error", err)
+					s.write("451 4.3.0 Error saving message\r\n")
+				}
+				continue
+			}
+
+			// Set state back to INIT and report success with message ID
 			s.state = INIT
 			s.logger.Info("message accepted", "id", s.message.id)
-			s.write("250 Ok: message queued\r\n")
+			s.write(fmt.Sprintf("250 2.0.0 Ok: message %s queued\r\n", s.message.id))
 
 		case verb == "RSET":
 			// Reset message and state
-			s.message = nil
+			s.message = NewMessage()
 			s.state = INIT
-			s.write("250 2.0.0 Ok\r\n")
+			s.write("250 2.0.0 Ok: reset state\r\n")
 
 		case verb == "NOOP":
 			s.write("250 2.0.0 Ok\r\n")
@@ -532,19 +605,66 @@ func stateToString(state State) string {
 
 func (s *Session) readData() ([]byte, error) {
 	var buffer bytes.Buffer
+	// Calculate size limit with a 10% margin to allow for headers
+	maxSize := int(float64(s.config.MaxSize) * 1.1)
+	totalBytes := 0
+	isFirstLine := true
+
+	s.logger.Debug("reading message data")
+
+	// Set a longer timeout for data reading
+	dataTimeout := 5 * time.Minute
+	s.conn.SetReadDeadline(time.Now().Add(dataTimeout))
+
 	for {
 		line, err := s.reader.ReadString('\n')
 		if err != nil {
-			return nil, err
+			s.logger.Error("error reading data", "error", err)
+			return nil, fmt.Errorf("error reading message data: %w", err)
 		}
+
+		// Check for end of data marker (CRLF.CRLF)
 		if line == ".\r\n" {
+			s.logger.Debug("end of data marker found")
 			break
 		}
-		if len(buffer.Bytes()) > int(s.config.MaxSize) {
-			return nil, errors.New("message too large")
+
+		// Per RFC 5321, lines starting with a period have it duplicated in the data stream
+		// We need to remove this extra period when processing
+		if len(line) > 0 && line[0] == '.' && len(line) > 1 {
+			line = line[1:]
 		}
+
+		// Add this line's length to our running total
+		lineLength := len(line)
+		totalBytes += lineLength
+
+		// Check if we'd exceed the message size limit
+		if totalBytes > maxSize {
+			s.logger.Warn("message size exceeded",
+				"size", totalBytes,
+				"limit", s.config.MaxSize)
+			return nil, fmt.Errorf("message too large: %d > %d", totalBytes, s.config.MaxSize)
+		}
+
+		// Handle headers to detect common issues
+		if isFirstLine {
+			isFirstLine = false
+			// RFC 5322 recommends Date and From headers be present
+			// We could check for these, but we won't reject if missing
+		}
+
 		buffer.WriteString(line)
 	}
+
+	// Reset the connection timeout to normal
+	s.conn.SetReadDeadline(time.Now().Add(s.config.SessionTimeout))
+
+	// Log the message size
+	s.logger.Info("message data read complete",
+		"size_bytes", buffer.Len(),
+		"line_count", strings.Count(buffer.String(), "\n"))
+
 	return buffer.Bytes(), nil
 }
 
@@ -641,6 +761,116 @@ func extractAddress(cmd string) string {
 		return ""
 	}
 	return cmd[start+1 : end]
+}
+
+// validateEmailAddress performs basic RFC 5322 email validation
+func validateEmailAddress(email string) bool {
+	// Basic format check
+	if email == "" {
+		return false
+	}
+
+	// Special case: RFC 5321 allows "<>" for null sender (bounce messages)
+	if email == "" {
+		return true
+	}
+
+	// Simple email format validation
+	atIndex := strings.Index(email, "@")
+	if atIndex <= 0 || atIndex == len(email)-1 {
+		return false
+	}
+
+	// Check for illegal characters
+	illegalChars := []string{" ", ",", ";", "(", ")", "[", "]", "\\", "\"", "'"}
+	for _, char := range illegalChars {
+		if strings.Contains(email, char) {
+			return false
+		}
+	}
+
+	// Validate domain has at least one dot
+	domain := email[atIndex+1:]
+	if !strings.Contains(domain, ".") {
+		return false
+	}
+
+	// More sophisticated validation could be added here
+
+	return true
+}
+
+// handleMailFrom handles the MAIL FROM command with proper parsing
+func (s *Session) handleMailFrom(line string) {
+	// Extract the address
+	addr := extractAddress(line)
+
+	// Validate the email address
+	if addr == "" || !validateEmailAddress(addr) {
+		s.logger.Warn("invalid address in MAIL FROM", "command", line)
+		s.write("501 5.1.7 Invalid address format\r\n")
+		return
+	}
+
+	// Check for SIZE parameter
+	sizeParam := ""
+	sizeIndex := strings.Index(strings.ToUpper(line), "SIZE=")
+	if sizeIndex > 0 {
+		sizeParam = line[sizeIndex+5:]
+		spaceIndex := strings.Index(sizeParam, " ")
+		if spaceIndex > 0 {
+			sizeParam = sizeParam[:spaceIndex]
+		}
+
+		// Check the size parameter
+		if sizeParam != "" {
+			size, err := strconv.ParseInt(sizeParam, 10, 64)
+			if err != nil {
+				s.logger.Warn("invalid size parameter", "size", sizeParam)
+				s.write("501 5.5.4 Invalid SIZE parameter\r\n")
+				return
+			}
+
+			if size > s.config.MaxSize {
+				s.logger.Warn("message too large", "size", size, "max", s.config.MaxSize)
+				s.write(fmt.Sprintf("552 5.3.4 Message size exceeds limit of %d bytes\r\n", s.config.MaxSize))
+				return
+			}
+		}
+	}
+
+	// Create a new message for this mail transaction
+	s.message = NewMessage()
+	s.message.from = addr
+	s.state = MAIL
+	s.logger.Info("mail from accepted", "from", addr, "size_param", sizeParam)
+	s.write("250 2.1.0 Sender ok\r\n")
+}
+
+// handleRcptTo handles the RCPT TO command with proper parsing
+func (s *Session) handleRcptTo(line string) {
+	// Extract the address
+	addr := extractAddress(line)
+
+	// Validate the email address
+	if addr == "" || !validateEmailAddress(addr) {
+		s.logger.Warn("invalid address in RCPT TO", "command", line)
+		s.write("501 5.1.3 Invalid address format\r\n")
+		return
+	}
+
+	// Check recipient limit
+	if len(s.message.to) >= 100 {
+		s.logger.Warn("too many recipients", "count", len(s.message.to))
+		s.write("452 4.5.3 Too many recipients\r\n")
+		return
+	}
+
+	// Add the recipient to the message
+	s.message.to = append(s.message.to, addr)
+	s.state = RCPT
+	s.logger.Info("rcpt to accepted", "to", addr, "count", len(s.message.to))
+	s.write("250 2.1.5 Recipient ok\r\n")
 }
 
 // handleAuth handles the AUTH command
@@ -838,4 +1068,76 @@ func generateMessageID() string {
 
 	// Format: elemta-{node-id}-{timestamp}-{uuid-segment}@{hostname}
 	return fmt.Sprintf("elemta-%s-%d-%s@%s", nodeID, timestamp, uuidSegment, hostname)
+}
+
+func (s *Session) validateMessageHeaders() bool {
+	// Skip validation in dev mode
+	if s.config.DevMode {
+		return true
+	}
+
+	// Convert message data to string for header analysis
+	messageStr := string(s.message.data)
+
+	// Find the end of headers (blank line)
+	headerEndIndex := strings.Index(messageStr, "\r\n\r\n")
+	if headerEndIndex == -1 {
+		// Try again with just LF
+		headerEndIndex = strings.Index(messageStr, "\n\n")
+	}
+
+	if headerEndIndex == -1 {
+		s.logger.Warn("no header/body separator found in message")
+		return false
+	}
+
+	// Extract just the headers section
+	headersSection := messageStr[:headerEndIndex]
+
+	// Split headers into lines
+	headerLines := strings.Split(headersSection, "\n")
+
+	// Check for minimal required headers according to RFC 5322
+	hasFrom := false
+	hasDate := false
+	hasMessageID := false
+
+	for _, line := range headerLines {
+		line = strings.TrimSpace(line)
+
+		// Skip continuation lines
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			continue
+		}
+
+		lowerLine := strings.ToLower(line)
+		if strings.HasPrefix(lowerLine, "from:") {
+			hasFrom = true
+		} else if strings.HasPrefix(lowerLine, "date:") {
+			hasDate = true
+		} else if strings.HasPrefix(lowerLine, "message-id:") {
+			hasMessageID = true
+		}
+	}
+
+	// Log missing headers but don't reject the message
+	// This is lenient behavior - many clients depend on the MTA to add these headers
+	if !hasFrom {
+		s.logger.Warn("message missing From header")
+		// We won't add it, but we should notify the admin
+	}
+
+	if !hasDate {
+		s.logger.Warn("message missing Date header")
+		// We could add it here, but we're just validating
+	}
+
+	if !hasMessageID {
+		s.logger.Warn("message missing Message-ID header")
+		// We could add it here, but we're just validating
+	}
+
+	// For now, we'll accept messages even with missing headers
+	// A production system might be stricter or add the headers
+	return true
 }
