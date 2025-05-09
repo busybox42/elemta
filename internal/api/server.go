@@ -151,7 +151,7 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	content, err := s.queueMgr.ShowMessage(id)
+	content, err := s.queueMgr.GetMessageContent(id)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error: %v", err), http.StatusNotFound)
 		return
@@ -160,7 +160,7 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 	// If format=raw is specified, return raw message
 	if r.URL.Query().Get("format") == "raw" {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write([]byte(content))
+		w.Write(content)
 		return
 	}
 
@@ -178,7 +178,7 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 
 	msgWithContent := MessageWithContent{
 		Message: msg,
-		Content: content,
+		Content: string(content),
 	}
 
 	writeJSON(w, msgWithContent)
@@ -199,12 +199,7 @@ func (s *Server) handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 
 // handleGetQueueStats returns queue statistics
 func (s *Server) handleGetQueueStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := s.queueMgr.GetQueueStats()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error: %v", err), http.StatusInternalServerError)
-		return
-	}
-
+	stats := s.queueMgr.GetStats()
 	writeJSON(w, stats)
 }
 

@@ -185,7 +185,7 @@ func TestSessionBasic(t *testing.T) {
 	response := conn.writer.String()
 
 	// Verify greeting
-	if !strings.Contains(response, "220 elemta ESMTP ready") {
+	if !strings.Contains(response, "220 test.example.com ESMTP Elemta MTA ready") {
 		t.Errorf("Missing greeting in response")
 	}
 
@@ -195,7 +195,7 @@ func TestSessionBasic(t *testing.T) {
 	}
 
 	// Verify MAIL FROM response
-	if !strings.Contains(response, "250 Ok") {
+	if !strings.Contains(response, "250 2.1.0 Sender ok") {
 		t.Errorf("Missing OK response to MAIL FROM")
 	}
 
@@ -205,12 +205,12 @@ func TestSessionBasic(t *testing.T) {
 	}
 
 	// Verify message accepted
-	if !strings.Contains(response, "250 Ok: message queued") {
+	if !strings.Contains(response, "250 2.0.0 Ok: message") {
 		t.Errorf("Missing message queued confirmation")
 	}
 
 	// Verify QUIT response
-	if !strings.Contains(response, "221 Bye") {
+	if !strings.Contains(response, "221 2.0.0 Goodbye") {
 		t.Errorf("Missing quit response")
 	}
 }
@@ -262,10 +262,10 @@ func TestSessionAuthentication(t *testing.T) {
 				"QUIT\r\n",
 			},
 			expectedOutput: []string{
-				"220 elemta ESMTP ready",
+				"220 test.example.com ESMTP Elemta MTA ready",
 				"250-test.example.com",
-				"250 Ok",
-				"221 Bye",
+				"250 2.1.0 Sender ok",
+				"221 2.0.0 Goodbye",
 			},
 		},
 		{
@@ -278,11 +278,11 @@ func TestSessionAuthentication(t *testing.T) {
 				"QUIT\r\n",
 			},
 			expectedOutput: []string{
-				"220 elemta ESMTP ready",
+				"220 test.example.com ESMTP Elemta MTA ready",
 				"250-test.example.com",
 				"250-AUTH PLAIN LOGIN",
-				"250 Ok",
-				"221 Bye",
+				"250 2.1.0 Sender ok",
+				"221 2.0.0 Goodbye",
 			},
 		},
 		{
@@ -295,11 +295,11 @@ func TestSessionAuthentication(t *testing.T) {
 				"QUIT\r\n",
 			},
 			expectedOutput: []string{
-				"220 elemta ESMTP ready",
+				"220 test.example.com ESMTP Elemta MTA ready",
 				"250-test.example.com",
 				"250-AUTH PLAIN LOGIN",
 				"530 5.7.0 Authentication required",
-				"221 Bye",
+				"221 2.0.0 Goodbye",
 			},
 		},
 		{
@@ -315,14 +315,14 @@ func TestSessionAuthentication(t *testing.T) {
 				"QUIT\r\n",
 			},
 			expectedOutput: []string{
-				"220 elemta ESMTP ready",
+				"220 test.example.com ESMTP Elemta MTA ready",
 				"250-test.example.com",
 				"250-AUTH PLAIN LOGIN",
 				"334", // Username challenge
 				"334", // Password challenge
 				"235 2.7.0 Authentication successful",
-				"250 Ok",
-				"221 Bye",
+				"250 2.1.0 Sender ok",
+				"221 2.0.0 Goodbye",
 			},
 		},
 		{
@@ -337,13 +337,13 @@ func TestSessionAuthentication(t *testing.T) {
 				"QUIT\r\n",
 			},
 			expectedOutput: []string{
-				"220 elemta ESMTP ready",
+				"220 test.example.com ESMTP Elemta MTA ready",
 				"250-test.example.com",
 				"250-AUTH PLAIN LOGIN",
 				"334", // Username challenge
 				"334", // Password challenge
 				"535 5.7.8 Authentication credentials invalid",
-				"221 Bye",
+				"221 2.0.0 Goodbye",
 			},
 		},
 	}
@@ -437,7 +437,7 @@ func TestSessionSTARTTLS(t *testing.T) {
 			},
 			expectedOutput: []string{
 				"250-STARTTLS",
-				"221 Bye",
+				"221 2.0.0 Goodbye",
 			},
 		},
 		{
@@ -451,8 +451,9 @@ func TestSessionSTARTTLS(t *testing.T) {
 			},
 			expectedOutput: []string{
 				"250-ENHANCEDSTATUSCODES",
-				"250 HELP",
-				"221 Bye",
+				"250-HELP",
+				"250 SMTPUTF8",
+				"221 2.0.0 Goodbye",
 			},
 		},
 		{
@@ -466,8 +467,9 @@ func TestSessionSTARTTLS(t *testing.T) {
 			},
 			expectedOutput: []string{
 				"250-ENHANCEDSTATUSCODES",
-				"250 HELP",
-				"221 Bye",
+				"250-HELP",
+				"250 SMTPUTF8",
+				"221 2.0.0 Goodbye",
 			},
 		},
 		{
@@ -481,8 +483,9 @@ func TestSessionSTARTTLS(t *testing.T) {
 			},
 			expectedOutput: []string{
 				"250-ENHANCEDSTATUSCODES",
-				"250 HELP",
-				"221 Bye",
+				"250-HELP",
+				"250 SMTPUTF8",
+				"221 2.0.0 Goodbye",
 			},
 		},
 		{
@@ -504,7 +507,7 @@ func TestSessionSTARTTLS(t *testing.T) {
 			},
 			afterTLSExpectedOutput: []string{
 				"250-ENHANCEDSTATUSCODES", // No STARTTLS in second EHLO
-				"221 Bye",
+				"221 2.0.0 Goodbye",
 			},
 		},
 		{
@@ -533,11 +536,11 @@ func TestSessionSTARTTLS(t *testing.T) {
 			},
 			afterTLSExpectedOutput: []string{
 				"250-ENHANCEDSTATUSCODES", // Second EHLO
-				"250 Ok",                  // MAIL FROM
-				"250 Ok",                  // RCPT TO
+				"250 2.1.0 Sender ok",     // MAIL FROM
+				"250 2.1.5 Recipient ok",  // RCPT TO
 				"354 Start mail input",    // DATA
-				"250 Ok: message queued",  // End of DATA
-				"221 Bye",
+				"250 2.0.0 Ok: message",   // End of DATA
+				"221 2.0.0 Goodbye",
 			},
 		},
 		{
@@ -552,7 +555,7 @@ func TestSessionSTARTTLS(t *testing.T) {
 			},
 			expectedOutput: []string{
 				"454 4.7.0 TLS not available",
-				"221 Bye",
+				"221 2.0.0 Goodbye",
 			},
 		},
 		{
@@ -567,7 +570,7 @@ func TestSessionSTARTTLS(t *testing.T) {
 			},
 			expectedOutput: []string{
 				"503 5.5.1 TLS already active",
-				"221 Bye",
+				"221 2.0.0 Goodbye",
 			},
 		},
 	}

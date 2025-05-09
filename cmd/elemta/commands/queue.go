@@ -25,6 +25,7 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			queueDir := getQueueDir()
 			manager := queue.NewManager(queueDir)
+			defer manager.Stop()
 
 			// Get messages from all queues
 			messages, err := manager.GetAllMessages()
@@ -68,15 +69,16 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			queueDir := getQueueDir()
 			manager := queue.NewManager(queueDir)
+			defer manager.Stop()
 
 			id := args[0]
-			content, err := manager.ShowMessage(id)
+			content, err := manager.GetMessageContent(id)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
 
-			fmt.Println(content)
+			fmt.Println(string(content))
 		},
 	}
 
@@ -88,6 +90,7 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			queueDir := getQueueDir()
 			manager := queue.NewManager(queueDir)
+			defer manager.Stop()
 
 			id := args[0]
 			if err := manager.DeleteMessage(id); err != nil {
@@ -106,6 +109,7 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			queueDir := getQueueDir()
 			manager := queue.NewManager(queueDir)
+			defer manager.Stop()
 
 			if err := manager.FlushAllQueues(); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -123,26 +127,24 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			queueDir := getQueueDir()
 			manager := queue.NewManager(queueDir)
+			defer manager.Stop()
 
-			stats, err := manager.GetQueueStats()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
+			stats := manager.GetStats()
 
 			// Print stats in a nice table
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "Queue\tCount")
 			fmt.Fprintln(w, "------\t------")
 
-			total := 0
-			for queue, count := range stats {
-				fmt.Fprintf(w, "%s\t%d\n", queue, count)
-				total += count
-			}
+			fmt.Fprintf(w, "Active\t%d\n", stats.ActiveCount)
+			fmt.Fprintf(w, "Deferred\t%d\n", stats.DeferredCount)
+			fmt.Fprintf(w, "Hold\t%d\n", stats.HoldCount)
+			fmt.Fprintf(w, "Failed\t%d\n", stats.FailedCount)
 
 			fmt.Fprintf(w, "------\t------\n")
+			total := stats.ActiveCount + stats.DeferredCount + stats.HoldCount + stats.FailedCount
 			fmt.Fprintf(w, "Total\t%d\n", total)
+			fmt.Fprintf(w, "Total Size\t%d bytes\n", stats.TotalSize)
 			w.Flush()
 		},
 	}
