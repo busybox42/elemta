@@ -3,14 +3,23 @@ package commands
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/busybox42/elemta/internal/server"
 	"github.com/busybox42/elemta/internal/smtp"
 	"github.com/spf13/cobra"
+)
+
+// Define flags for server command
+var (
+	devMode        bool
+	noAuthRequired bool
+	portFlag       int
 )
 
 var serverCmd = &cobra.Command{
@@ -24,6 +33,11 @@ var serverCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(serverCmd)
+
+	// Add flags to the server command
+	serverCmd.Flags().BoolVar(&devMode, "dev", false, "Run server in development mode with simplified settings")
+	serverCmd.Flags().BoolVar(&noAuthRequired, "no-auth-required", false, "Disable authentication requirement for server")
+	serverCmd.Flags().IntVar(&portFlag, "port", 0, "Override the port to listen on (e.g. --port 2525)")
 }
 
 func startServer() {
@@ -35,6 +49,59 @@ func startServer() {
 		os.Exit(1)
 	}
 
+	// Apply flag overrides
+	if devMode {
+		fmt.Println("Running in DEVELOPMENT mode - using simplified settings")
+		cfg.Server.TLS = false // Disable TLS in dev mode
+
+		// Set other dev mode settings here if needed
+		if cfg.QueueDir == "" {
+			cfg.QueueDir = "./queue" // Use local queue directory in dev mode
+		}
+
+		// Change to non-privileged port in dev mode if using default port 25
+		if cfg.Server.Listen == ":25" {
+			// Try various development ports (2525-2528) to find one that works
+			devPorts := []string{":2525", ":2526", ":2527", ":2528"}
+			originalPort := cfg.Server.Listen
+
+			for _, port := range devPorts {
+				// Try to listen on the port to see if it's available
+				listener, err := net.Listen("tcp", port)
+				if err == nil {
+					// Close the listener, we'll reopen it in the server
+					listener.Close()
+					cfg.Server.Listen = port
+					fmt.Printf("DEV MODE: Changed listen port from %s to %s (non-privileged)\n", originalPort, port)
+					break
+				}
+			}
+
+			if cfg.Server.Listen == ":25" {
+				fmt.Println("WARNING: Could not find an available development port. Will try to use port 25, but this may fail without privileges.")
+			}
+		}
+	}
+
+	// Override port if specified via command line
+	if portFlag > 0 {
+		// Extract host part from current listen address
+		host := ""
+		parts := strings.Split(cfg.Server.Listen, ":")
+		if len(parts) > 1 && parts[0] != "" {
+			host = parts[0]
+		}
+
+		// Create new listen address with specified port
+		cfg.Server.Listen = fmt.Sprintf("%s:%d", host, portFlag)
+		fmt.Printf("Overriding listen port to: %s\n", cfg.Server.Listen)
+	}
+
+	if noAuthRequired && cfg.Auth != nil {
+		fmt.Println("Authentication requirement disabled via command line flag")
+		cfg.Auth.Required = false
+	}
+
 	// Create SMTP server configuration
 	smtpConfig := &smtp.Config{
 		Hostname:   cfg.Server.Hostname,
@@ -42,6 +109,7 @@ func startServer() {
 		QueueDir:   cfg.QueueDir,
 		MaxSize:    10 * 1024 * 1024, // Use 10MB default if not specified
 		TLS:        cfg.TLS,
+		DevMode:    devMode, // Pass dev mode flag to SMTP server
 	}
 
 	// Map authentication config
@@ -107,6 +175,10 @@ func startServer() {
 	if cfg.Server.TLS {
 		fmt.Printf("  TLS enabled: Yes\n")
 		fmt.Printf("  Certificate directory: %s\n", certDir)
+	}
+	fmt.Printf("  Development mode: %v\n", devMode)
+	if cfg.Auth != nil {
+		fmt.Printf("  Authentication required: %v\n", cfg.Auth.Required)
 	}
 
 	log.Printf("Elemta MTA starting on %s", cfg.Server.Listen)

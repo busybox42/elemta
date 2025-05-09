@@ -518,3 +518,36 @@ See `docs/letsencrypt-guide.md` for complete documentation.
 - [Configuration Reference](docs/configuration.md)
 - [Plugin Development](docs/plugins.md)
 - [Let's Encrypt Guide](docs/letsencrypt-guide.md)
+
+### Development Mode
+
+Elemta includes special flags for development:
+
+```bash
+# Run in development mode (uses higher port number, disables TLS)
+./elemta server --dev
+
+# Disable authentication requirement
+./elemta server --no-auth-required
+
+# Specify a custom port
+./elemta server --port 2525
+
+# Combine flags for development setup
+./elemta server --dev --no-auth-required --port 2530
+```
+
+For convenience, a development script is provided:
+```bash
+# Run with default settings (port 2530)
+./run-dev.sh
+
+# Run with custom port
+./run-dev.sh --port 3000
+```
+
+Development mode automatically:
+- Uses a non-privileged port (attempting 2525-2528 sequentially)
+- Disables TLS to simplify setup
+- Uses local directories for queue and other resources
+- Provides more verbose logging
