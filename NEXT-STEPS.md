@@ -9,14 +9,19 @@
    - Added automatic port selection for development mode (tries 2525-2528)
    - Documented new flags in README.md
 
-## Next Steps (In Priority Order)
+2. ✅ Finished SMTP Core Implementation
+   - Enhanced EHLO response with proper RFC 5321 compliance
+   - Improved session timeout handling and added flood protection
+   - Implemented robust message data handling per RFC 5322
+   - Added comprehensive email address validation
+   - Enhanced error handling with proper status codes
+   - Improved server initialization with better validation
+   - Added proper handling of message size limits
+   - Implemented message header validation
+   - Improved logging throughout the codebase
+   - Added receivedTime tracking to messages
 
-2. Finish SMTP Core Implementation
-   - Ensure RFC compliance for all SMTP commands
-   - Add comprehensive error handling
-   - Complete session handling with appropriate timeouts
-   - Implement proper EHLO response with capabilities
-   - Finish logging for all SMTP events
+## Next Steps (In Priority Order)
 
 3. Implement Queue Manager
    - Add reliable persistence for queue items
