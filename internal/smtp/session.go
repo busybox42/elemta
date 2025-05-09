@@ -17,7 +17,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 
-	"crypto/rand"
 	"crypto/tls"
 
 	"github.com/busybox42/elemta/internal/plugin"
@@ -764,15 +763,27 @@ func (s *Session) authenticate(username, password string) error {
 }
 
 // generateMessageID creates a unique message ID for the queued message
-// Format: elemta-{timestamp}-{random-hex}@{hostname}
+// Format: elemta-{node-id}-{queue-type}-{timestamp}-{uuid-segment}@{hostname}
 func generateMessageID() string {
-	randomBytes := make([]byte, 8)
-	_, err := rand.Read(randomBytes)
+	// Get hostname for the domain part
+	hostname, err := os.Hostname()
 	if err != nil {
-		// Fall back to timestamp only if random fails
-		return fmt.Sprintf("elemta-%d@mail.example.com", time.Now().UnixNano())
+		hostname = "mail.example.com"
 	}
 
-	timestamp := time.Now().Unix()
-	return fmt.Sprintf("elemta-%d-%x@mail.example.com", timestamp, randomBytes)
+	// Get node ID from environment or default to 0
+	nodeID := os.Getenv("NODE_ID")
+	if nodeID == "" {
+		nodeID = "0"
+	}
+
+	// Generate UUID for uniqueness
+	uuidStr := uuid.New().String()
+	uuidSegment := strings.Replace(uuidStr[0:13], "-", "", -1)
+
+	// Use nanosecond precision timestamp for additional uniqueness
+	timestamp := time.Now().UnixNano()
+
+	// Format: elemta-{node-id}-{timestamp}-{uuid-segment}@{hostname}
+	return fmt.Sprintf("elemta-%s-%d-%s@%s", nodeID, timestamp, uuidSegment, hostname)
 }
