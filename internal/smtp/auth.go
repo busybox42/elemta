@@ -67,10 +67,13 @@ func NewAuthenticator(config *AuthConfig) (*SMTPAuthenticator, error) {
 		Database: config.DataSourceDB,
 		Username: config.DataSourceUser,
 		Password: config.DataSourcePass,
-		Options: map[string]interface{}{
-			"file":    config.DataSourcePath,
-			"db_path": config.DataSourcePath,
-		},
+		Options:  make(map[string]interface{}),
+	}
+
+	// Set both file and db_path options to ensure backward compatibility
+	if config.DataSourcePath != "" {
+		dsConfig.Options["file"] = config.DataSourcePath
+		dsConfig.Options["db_path"] = config.DataSourcePath
 	}
 
 	ds, err := datasource.Factory(dsConfig)

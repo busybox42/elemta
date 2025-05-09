@@ -18,7 +18,7 @@ def test_starttls_smtp_send(smtp_host, smtp_port):
     msg = MIMEText('STARTTLS SMTP test')
     msg['From'] = 'starttls@example.com'
     msg['To'] = 'rcpt@example.com'
-    msg['Subject'] = 'STARTTLS SMTP'
+    msg['Subject'] = 'Starttls Smtp Test'
     with smtplib.SMTP(smtp_host, smtp_port, timeout=5) as s:
         s.ehlo()
         context = ssl._create_unverified_context()

@@ -277,8 +277,8 @@ func (a *Auth) Authenticate(ctx context.Context, username, password string) (boo
 		return false, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// For LDAP, we'll use the datasource's Authenticate method directly
-	if a.ds.Type() == "ldap" {
+	// For LDAP or file, we'll use the datasource's Authenticate method directly
+	if a.ds.Type() == "ldap" || a.ds.Type() == "file" {
 		return a.ds.Authenticate(ctx, username, password)
 	}
 

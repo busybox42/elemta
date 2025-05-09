@@ -93,6 +93,7 @@ func NewServer(config *Config) (*Server, error) {
 		authenticator: authenticator,
 		metrics:       metrics,
 		queueManager:  queueManager,
+		logger:        log.New(os.Stdout, "SMTP: ", log.LstdFlags),
 	}
 
 	// Initialize TLS manager if TLS is enabled
@@ -214,20 +215,20 @@ func (s *Server) acceptConnections() {
 // handleAndCloseSession processes a connection and ensures it's properly closed
 func (s *Server) handleAndCloseSession(conn net.Conn) {
 	clientIP := conn.RemoteAddr().String()
+
+	// Initialize logger if it's nil
+	if s.logger == nil {
+		s.logger = log.New(os.Stdout, "SMTP: ", log.LstdFlags)
+	}
+
 	s.logger.Printf("new connection: %s", clientIP)
 
 	// Create a new session with the current configuration and authentication
 	session := NewSession(conn, s.config, s.authenticator)
+
+	// Set the queue manager and TLS manager from the server
 	session.queueManager = s.queueManager
 	session.tlsManager = s.tlsManager
-
-	// Add debug logging for plugins
-	if session.builtinPlugins != nil {
-		s.logger.Printf("Plugins configuration: antivirusEnabled=%v, antispamEnabled=%v, antivirusOpts=%v, antispamOpts=%v",
-			session.builtinPlugins.AntivirusEnabled, session.builtinPlugins.AntispamEnabled, session.builtinPlugins.AntivirusOpts, session.builtinPlugins.AntispamOpts)
-	} else {
-		s.logger.Println("Plugins not initialized")
-	}
 
 	// Handle the SMTP session
 	err := session.Handle()

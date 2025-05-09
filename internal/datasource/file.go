@@ -75,7 +75,7 @@ func (f *FileDataSource) Authenticate(ctx context.Context, username, password st
 		return false, ErrNotFound
 	}
 
-	// Simple plaintext comparison
+	// Simple plaintext comparison first
 	if pw == password {
 		return true, nil
 	}
@@ -87,6 +87,8 @@ func (f *FileDataSource) Authenticate(ctx context.Context, username, password st
 	}
 
 	// Try OpenLDAP-style password hashes
+	// Since we're not implementing all hash types here,
+	// this is mostly a placeholder for future expansion
 	if strings.HasPrefix(pw, "{SHA}") ||
 		strings.HasPrefix(pw, "{SHA256}") ||
 		strings.HasPrefix(pw, "{SHA512}") ||
@@ -96,7 +98,13 @@ func (f *FileDataSource) Authenticate(ctx context.Context, username, password st
 		return false, nil
 	}
 
-	return false, ErrInvalidInput
+	// Additional fallback: check if the stored password is the plaintext
+	// Compare directly with the provided password
+	if pw == password {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 func (f *FileDataSource) GetUser(ctx context.Context, username string) (User, error) {

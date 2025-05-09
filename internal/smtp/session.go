@@ -257,7 +257,7 @@ func (s *Session) Handle() error {
 			s.message.from = addr
 			s.state = MAIL
 			s.logger.Info("mail from accepted", "from", addr)
-			s.write("250 2.1.0 Ok\r\n")
+			s.write("250 Ok\r\n")
 
 		case verb == "RCPT" || strings.HasPrefix(line, "RCPT TO:") || strings.HasPrefix(line, "rcpt to:"):
 			if s.state != MAIL && s.state != RCPT {
@@ -275,7 +275,7 @@ func (s *Session) Handle() error {
 			s.message.to = append(s.message.to, addr)
 			s.state = RCPT
 			s.logger.Info("rcpt to accepted", "to", addr)
-			s.write("250 2.1.5 Ok\r\n")
+			s.write("250 Ok\r\n")
 
 		case verb == "DATA":
 			if s.state != RCPT {
@@ -283,7 +283,7 @@ func (s *Session) Handle() error {
 				continue
 			}
 
-			s.write("354 End data with <CR><LF>.<CR><LF>\r\n")
+			s.write("354 Start mail input\r\n")
 			data, err := s.readData()
 			if err != nil {
 				s.logger.Error("data read error", "error", err)
@@ -303,7 +303,7 @@ func (s *Session) Handle() error {
 
 			s.state = INIT
 			s.logger.Info("message accepted", "id", s.message.id)
-			s.write("250 2.0.0 Ok: queued as " + s.message.id + "\r\n")
+			s.write("250 Ok: message queued\r\n")
 
 		case verb == "RSET":
 			s.message = nil
@@ -560,6 +560,8 @@ func (s *Session) saveMessage() error {
 			}
 			s.write(fmt.Sprintf("554 5.7.1 Message identified as spam (score %.2f)%s\r\n", score, rulesList))
 			return errors.New("message is spam")
+		} else {
+			s.logger.Info("message is not spam", "score", score, "rules", rules)
 		}
 	}
 
