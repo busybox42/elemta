@@ -87,14 +87,14 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Ses
 	if pluginConfig["clamav"] == nil {
 		pluginConfig["clamav"] = make(map[string]interface{})
 	}
-	pluginConfig["clamav"]["host"] = "localhost"
+	pluginConfig["clamav"]["host"] = "elemta-clamav"
 	pluginConfig["clamav"]["port"] = 3310
 
 	// Add Rspamd config
 	if pluginConfig["rspamd"] == nil {
 		pluginConfig["rspamd"] = make(map[string]interface{})
 	}
-	pluginConfig["rspamd"]["host"] = "localhost"
+	pluginConfig["rspamd"]["host"] = "elemta-rspamd"
 	pluginConfig["rspamd"]["port"] = 11334
 	pluginConfig["rspamd"]["threshold"] = 5.0
 
@@ -300,11 +300,13 @@ func (s *Session) Handle() error {
 				continue
 			}
 
+			// Set state to INIT but keep message data for XDEBUG
 			s.state = INIT
 			s.logger.Info("message accepted", "id", s.message.id)
 			s.write("250 Ok: message queued\r\n")
 
 		case verb == "RSET":
+			// Reset message and state
 			s.message = nil
 			s.state = INIT
 			s.write("250 2.0.0 Ok\r\n")
@@ -378,12 +380,62 @@ func (s *Session) handleXDEBUG(cmd string) {
 
 	if args == "" {
 		s.write("250-Debug information:\r\n")
-		s.write("250-Session ID: " + uuid.New().String() + "\r\n")
+
+		// Generate a stable session ID for debugging
+		sessionID, ok := s.Context.Get("session_id")
+		if !ok || sessionID == nil {
+			// If we don't have a session ID in the context, generate one and store it
+			sessionID = uuid.New().String()
+			s.Context.Set("session_id", sessionID)
+		}
+
+		s.write("250-Session ID: " + sessionID.(string) + "\r\n")
 		s.write("250-Client IP: " + s.conn.RemoteAddr().String() + "\r\n")
 		s.write("250-Hostname: " + s.config.Hostname + "\r\n")
 		s.write("250-State: " + stateToString(s.state) + "\r\n")
-		s.write("250-Mail From: " + s.message.from + "\r\n")
-		s.write("250-Rcpt To: " + strings.Join(s.message.to, ", ") + "\r\n")
+
+		// Handle nil message case properly
+		if s.message != nil {
+			s.write("250-Mail From: " + s.message.from + "\r\n")
+			s.write("250-Rcpt To: " + strings.Join(s.message.to, ", ") + "\r\n")
+			s.write("250-Message ID: " + s.message.id + "\r\n")
+			s.write("250-Message Size: " + strconv.Itoa(len(s.message.data)) + " bytes\r\n")
+
+			// Add plugin scan information if available
+			if s.builtinPlugins != nil && s.message.data != nil && len(s.message.data) > 0 {
+				s.write("250-Plugin Scans:\r\n")
+
+				// ClamAV virus scan results
+				clean, infection, err := s.builtinPlugins.ScanForVirus(s.message.data, s.message.id)
+				if err != nil {
+					s.write("250-  ClamAV: Error - " + err.Error() + "\r\n")
+				} else if !clean {
+					s.write("250-  ClamAV: Virus detected - " + infection + "\r\n")
+				} else {
+					s.write("250-  ClamAV: Clean\r\n")
+				}
+
+				// Rspamd spam scan results
+				clean, score, rules, err := s.builtinPlugins.ScanForSpam(s.message.data, s.message.id)
+				if err != nil {
+					s.write("250-  Rspamd: Error - " + err.Error() + "\r\n")
+				} else if !clean {
+					rulesList := ""
+					if len(rules) > 0 {
+						rulesList = " (" + strings.Join(rules, ", ") + ")"
+					}
+					s.write(fmt.Sprintf("250-  Rspamd: Spam detected - Score: %.2f%s\r\n", score, rulesList))
+				} else {
+					s.write(fmt.Sprintf("250-  Rspamd: Clean - Score: %.2f\r\n", score))
+				}
+			}
+		} else {
+			s.write("250-Mail From: <none>\r\n")
+			s.write("250-Rcpt To: <none>\r\n")
+			s.write("250-Message ID: <none>\r\n")
+			s.write("250-Message Size: 0 bytes\r\n")
+		}
+
 		s.write("250 Context: " + s.Context.Dump() + "\r\n")
 		return
 	}

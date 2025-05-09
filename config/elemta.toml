@@ -22,7 +22,7 @@ enabled = ["greylisting", "spf", "dkim", "clamav", "rspamd"]
 
 [auth]
 enabled = true
-required = true
+required = false  # Changed from true to false to allow unauthenticated access
 datasource_type = "file"
 datasource_path = "/app/config/users.txt"
 
