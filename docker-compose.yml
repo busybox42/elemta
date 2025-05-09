@@ -10,6 +10,9 @@ services:
     restart: unless-stopped
     ports:
       - "2525:2525"
+      # Don't expose these ports to avoid conflicts
+      # - "8080:8080"
+      # - "8081:8081"
     volumes:
       - elemta_queue:/app/queue
       - elemta_logs:/app/logs
@@ -23,7 +26,7 @@ services:
       - NODE_ID=0
       - TEST_MODE=true
       - ELEMTA_CONFIG_PATH=/app/config/elemta.toml
-      - API_PORT=8081
+      - API_PORT=8081  # Used internally only
       - DELIVERY_HOST=elemta-dovecot
       - DELIVERY_PORT=2424
     tty: true
