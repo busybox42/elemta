@@ -106,3 +106,6 @@ test-rspamd.conf
 # Docker test files
 docker/dovecot/conf/passwd
 docker/rspamd/override.d/
+
+# Deploy directory
+.deploy/
