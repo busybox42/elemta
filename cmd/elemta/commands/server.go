@@ -20,6 +20,12 @@ var (
 	devMode        bool
 	noAuthRequired bool
 	portFlag       int
+
+	// ServerRunFunc allows mocking the server run function for testing
+	ServerRunFunc = func(cmd *cobra.Command, args []string) error {
+		startServer()
+		return nil
+	}
 )
 
 var serverCmd = &cobra.Command{
@@ -27,7 +33,7 @@ var serverCmd = &cobra.Command{
 	Short: "Start the Elemta MTA server",
 	Long:  `Start the Elemta Mail Transfer Agent server`,
 	Run: func(cmd *cobra.Command, args []string) {
-		startServer()
+		ServerRunFunc(cmd, args)
 	},
 }
 
