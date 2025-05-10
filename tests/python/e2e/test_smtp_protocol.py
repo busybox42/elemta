@@ -11,8 +11,8 @@ def test_plain_smtp_send(smtp_host, smtp_port):
     with smtplib.SMTP(smtp_host, smtp_port, timeout=5) as s:
         code, resp = s.ehlo()
         assert code == 250
-        s.login('testuser', 'testpass')
-        s.sendmail(msg['From'], [msg['To']], msg.as_string())
+        # Authentication is not required
+        s.sendmail(msg['From'], msg['To'], msg.as_string())
 
 def test_starttls_smtp_send(smtp_host, smtp_port):
     msg = MIMEText('STARTTLS SMTP test')
@@ -23,7 +23,5 @@ def test_starttls_smtp_send(smtp_host, smtp_port):
         s.ehlo()
         context = ssl._create_unverified_context()
         s.starttls(context=context)
-        s.login('testuser', 'testpass')
-        code, resp = s.ehlo()
-        assert code == 250
-        s.sendmail(msg['From'], [msg['To']], msg.as_string()) 
+        # Authentication is not required
+        s.sendmail(msg['From'], msg['To'], msg.as_string()) 

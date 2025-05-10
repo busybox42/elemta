@@ -23,6 +23,7 @@ func TestSMTPAuthenticator(t *testing.T) {
 		Enabled:        true,
 		Required:       true,
 		DataSourceType: "sqlite",
+		DataSourceName: "sqlite",
 		DataSourcePath: tempFile.Name(),
 	}
 

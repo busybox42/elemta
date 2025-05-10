@@ -60,7 +60,7 @@ func NewAuthenticator(config *AuthConfig) (*SMTPAuthenticator, error) {
 
 	// Create and connect to the datasource
 	dsConfig := datasource.Config{
-		Type:     config.DataSourceType,
+		Type:     config.DataSourceName,
 		Name:     config.DataSourceName,
 		Host:     config.DataSourceHost,
 		Port:     config.DataSourcePort,

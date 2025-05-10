@@ -24,7 +24,8 @@ enabled = ["greylisting", "spf", "dkim", "clamav", "rspamd"]
 enabled = true
 required = false  # Changed from true to false to allow unauthenticated access
 datasource_type = "file"
-datasource_path = "/app/config/users.txt"
+datasource_name = "file"
+datasource_path = "/app/config/elemta.db"
 
 [api]
 enabled = true

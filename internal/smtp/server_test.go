@@ -54,6 +54,7 @@ func TestNewServer(t *testing.T) {
 					Enabled:        true,
 					Required:       false,
 					DataSourceType: "sqlite",
+					DataSourceName: "sqlite",
 					DataSourcePath: dbPath,
 				},
 			},
