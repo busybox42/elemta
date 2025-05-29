@@ -70,6 +70,12 @@ scripts/
   - Restarts containers
   - Quick development iteration
 
+- **`run-dev.sh`** - Quick development server startup script
+  - Starts Elemta in development mode
+  - No authentication required
+  - Configurable port (default: 2530)
+  - Usage: `./run-dev.sh [-p PORT]`
+
 ## General Utility Scripts (root level)
 
 - **`elemta-api.sh`** - API client for Elemta management
@@ -108,6 +114,9 @@ scripts/
 # Quick rebuild and restart
 ./scripts/dev/rebuild.sh
 
+# Start development server on custom port
+./scripts/dev/run-dev.sh -p 2530
+
 # Debug email delivery
 ./scripts/debug/debug-email.sh
 ```
@@ -139,4 +148,4 @@ When adding new scripts:
 2. Make them executable (`chmod +x`)
 3. Add proper header comments with usage information
 4. Update this README
-5. Follow the existing naming conventions 
+5. Follow the existing naming conventions
