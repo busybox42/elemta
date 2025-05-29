@@ -706,7 +706,7 @@ func calculateNextRetry(retryCount int) time.Time {
 
 	// Base delay in seconds - exponential with retry count
 	// 1: 60s, 2: 5m, 3: 15m, 4: 1h, 5: 3h, 6+: 6h
-	delaySeconds := 60
+	var delaySeconds int
 
 	switch {
 	case retryCount == 1:

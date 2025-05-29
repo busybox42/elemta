@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -129,7 +128,7 @@ func (m *mockTLSManager) Stop() error {
 
 func TestSessionBasic(t *testing.T) {
 	// Create temporary directory for test
-	tempDir, err := ioutil.TempDir("", "elemta-session-test")
+	tempDir, err := os.MkdirTemp("", "elemta-session-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -217,7 +216,7 @@ func TestSessionBasic(t *testing.T) {
 
 func TestSessionAuthentication(t *testing.T) {
 	// Create temporary directory for test
-	tempDir, err := ioutil.TempDir("", "elemta-session-auth-test")
+	tempDir, err := os.MkdirTemp("", "elemta-session-auth-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -408,7 +407,7 @@ func TestSessionSTARTTLS(t *testing.T) {
 	}
 
 	// Create temporary directory for test
-	tempDir, err := ioutil.TempDir("", "elemta-starttls-test")
+	tempDir, err := os.MkdirTemp("", "elemta-starttls-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}

@@ -257,17 +257,15 @@ func (p *Postgres) ListUsers(ctx context.Context, filter map[string]interface{},
 	var args []interface{}
 	paramCount := 1
 
-	if filter != nil {
-		for key, value := range filter {
-			// Sanitize the key to prevent SQL injection
-			key = strings.ReplaceAll(key, "\"", "")
-			key = strings.ReplaceAll(key, "'", "")
-			key = strings.ReplaceAll(key, ";", "")
+	for key, value := range filter {
+		// Sanitize the key to prevent SQL injection
+		key = strings.ReplaceAll(key, "\"", "")
+		key = strings.ReplaceAll(key, "'", "")
+		key = strings.ReplaceAll(key, ";", "")
 
-			query += fmt.Sprintf(" AND %s = $%d", key, paramCount)
-			args = append(args, value)
-			paramCount++
-		}
+		query += fmt.Sprintf(" AND %s = $%d", key, paramCount)
+		args = append(args, value)
+		paramCount++
 	}
 
 	// Add pagination
@@ -345,7 +343,7 @@ func (p *Postgres) CreateUser(ctx context.Context, user User) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Insert the user
 	query := fmt.Sprintf(`
@@ -440,7 +438,7 @@ func (p *Postgres) UpdateUser(ctx context.Context, user User) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Update the user
 	query := fmt.Sprintf(`
@@ -558,7 +556,7 @@ func (p *Postgres) DeleteUser(ctx context.Context, username string) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Get the user ID first
 	var userID int64

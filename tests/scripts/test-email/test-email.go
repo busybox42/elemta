@@ -39,7 +39,7 @@ Subject: Test Email
 This is a test email sent from the Elemta test script.
 `
 
-	if _, err = fmt.Fprintf(wc, message); err != nil {
+	if _, err = fmt.Fprint(wc, message); err != nil {
 		fmt.Println("Error writing message:", err)
 		return
 	}

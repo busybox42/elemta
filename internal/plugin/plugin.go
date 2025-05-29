@@ -2,6 +2,7 @@
 package plugin
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -157,7 +158,7 @@ func (p *BuiltinPlugins) ScanForVirus(data []byte, messageID string) (bool, stri
 	}
 
 	// Scan data
-	result, err := scanner.ScanBytes(nil, data)
+	result, err := scanner.ScanBytes(context.TODO(), data)
 	if err != nil {
 		return true, "", fmt.Errorf("failed to scan message: %w", err)
 	}
@@ -287,7 +288,7 @@ func (p *BuiltinPlugins) ScanForSpam(data []byte, messageID string) (bool, float
 	}
 
 	// Scan data
-	result, err := scanner.ScanBytes(nil, data)
+	result, err := scanner.ScanBytes(context.TODO(), data)
 	if err != nil {
 		log.Printf("Warning: Failed to scan message: %v", err)
 

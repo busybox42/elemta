@@ -293,6 +293,7 @@ func (a *Auth) Authenticate(ctx context.Context, username, password string) (boo
 	if err := a.ds.UpdateUser(ctx, user); err != nil {
 		// Non-critical error, just log it in a real application
 		// For now, we'll ignore it and continue
+		_ = err // Explicitly ignore the error
 	}
 
 	return true, nil

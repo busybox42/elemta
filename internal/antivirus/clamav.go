@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"strings"
 	"time"
 )
@@ -20,7 +19,6 @@ type ClamAVConfig struct {
 // ClamAV represents a ClamAV scanner
 type ClamAV struct {
 	config      Config
-	conn        net.Conn
 	isConnected bool
 }
 

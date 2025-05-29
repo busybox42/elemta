@@ -23,7 +23,6 @@ type TLSManager struct {
 	tlsConfig         *tls.Config
 	certManager       *autocert.Manager
 	certInfo          *CertificateInfo
-	renewTimer        *time.Timer
 	renewMutex        sync.Mutex
 	stopChan          chan struct{}
 	logger            *log.Logger
@@ -84,7 +83,6 @@ func (m *TLSManager) setupTLSConfig() (*tls.Config, error) {
 			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
 			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
 		},
-		PreferServerCipherSuites: true,
 	}
 
 	// Apply custom TLS version if specified
@@ -142,7 +140,6 @@ func (m *TLSManager) setupTLSConfig() (*tls.Config, error) {
 		leTLSConfig.MinVersion = tlsConfig.MinVersion
 		leTLSConfig.MaxVersion = tlsConfig.MaxVersion
 		leTLSConfig.CipherSuites = tlsConfig.CipherSuites
-		leTLSConfig.PreferServerCipherSuites = tlsConfig.PreferServerCipherSuites
 		leTLSConfig.ClientAuth = tlsConfig.ClientAuth
 
 		return leTLSConfig, nil

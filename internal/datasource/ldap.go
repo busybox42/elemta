@@ -255,16 +255,15 @@ func (l *LDAP) ListUsers(ctx context.Context, filter map[string]interface{}, lim
 	// Build LDAP filter
 	ldapFilter := "(objectClass=posixAccount)"
 
-	if filter != nil {
-		for key, value := range filter {
-			switch key {
-			case "username":
-				ldapFilter = fmt.Sprintf("(&%s(uid=%s))", ldapFilter, ldap.EscapeFilter(value.(string)))
-			case "email":
-				ldapFilter = fmt.Sprintf("(&%s(mail=%s))", ldapFilter, ldap.EscapeFilter(value.(string)))
-			case "is_admin":
-				// This is a bit tricky in LDAP, we'll handle it after the search
-			}
+	// Add filters
+	for key, value := range filter {
+		switch key {
+		case "username":
+			ldapFilter = fmt.Sprintf("(&%s(uid=%s))", ldapFilter, ldap.EscapeFilter(value.(string)))
+		case "email":
+			ldapFilter = fmt.Sprintf("(&%s(mail=%s))", ldapFilter, ldap.EscapeFilter(value.(string)))
+		case "is_admin":
+			// This is a bit tricky in LDAP, we'll handle it after the search
 		}
 	}
 

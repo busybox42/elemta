@@ -3,7 +3,6 @@ package server
 import (
 	"crypto/x509"
 	"encoding/pem"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -58,7 +57,7 @@ var (
 
 // GetCertificateMetrics collects and exposes TLS certificate metrics
 func GetCertificateMetrics(certPath string, domain string) error {
-	certData, err := ioutil.ReadFile(certPath)
+	certData, err := os.ReadFile(certPath)
 	if err != nil {
 		log.Printf("Failed to read certificate file: %v, path: %s", err, certPath)
 		return err

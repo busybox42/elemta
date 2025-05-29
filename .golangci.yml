@@ -1,0 +1,40 @@
+run:
+  # timeout for analysis, e.g. 30s, 5m, default is 1m
+  timeout: 5m
+
+linters:
+  # Enable default linters + specific ones
+  enable:
+    - unused # Checks for unused code
+    # You can add other specific linters here, or enable presets like:
+    # - errcheck
+    # - govet
+    # - staticcheck
+    # - typecheck
+  # Or, enable all available linters (can be noisy)
+  # enable-all: true
+  # Or, use the default set and just add/remove specifics
+  # presets:
+  #  - bugs
+  #  - unused
+  #  - format
+
+# Linters-settings has been renamed/restructured in recent versions.
+# Specific settings are often placed under 'linters:' or within a 'settings:' block
+# for each linter if needed. For 'unused', default settings are usually fine.
+
+# Example for a specific linter setting (if you were using 'errcheck'):
+# settings:
+#   errcheck:
+#     check-type-assertions: true
+
+issues:
+  # Maximum issues count per one linter. Set to 0 to disable. Default is 50.
+  max-issues-per-linter: 0
+  # Maximum count of issues with the same text. Set to 0 to disable. Default is 3.
+  max-same-issues: 0
+  # Exclude specific issues or paths if necessary
+  # exclude-rules:
+  #   - path: _test\\.go
+  #     linters:
+  #       - funlen 

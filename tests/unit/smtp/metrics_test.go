@@ -202,13 +202,15 @@ func TestMetrics(t *testing.T) {
 
 			// Wait for context cancellation then shut down
 			<-ctx.Done()
-			server.Shutdown(context.Background())
+			if err := server.Shutdown(context.Background()); err != nil {
+				t.Logf("Metrics server shutdown error: %v", err)
+			}
 		}()
 
 		// Wait for server to be ready or error
 		<-serverReady
 		if serverError != nil {
-			t.Skip(fmt.Sprintf("Skipping test as metrics server failed to start: %v", serverError))
+			t.Skipf("Skipping test as metrics server failed to start: %v", serverError)
 		}
 
 		// Wait a moment for the server to be fully ready
@@ -260,31 +262,4 @@ func testGetGaugeValue(t *testing.T, gauge prometheus.Gauge) float64 {
 	}
 
 	return *metric.Gauge.Value
-}
-
-// Helper function to extract value from a prometheus metric
-func prometheusValue(m interface{}) (float64, error) {
-	var metric dto.Metric
-	metric.Reset() // Initialize the metric struct
-
-	switch v := m.(type) {
-	case prometheus.Counter:
-		if err := v.Write(&metric); err != nil {
-			return 0, err
-		}
-		if metric.Counter == nil {
-			return 0, fmt.Errorf("counter value is nil")
-		}
-		return *metric.Counter.Value, nil
-	case prometheus.Gauge:
-		if err := v.Write(&metric); err != nil {
-			return 0, err
-		}
-		if metric.Gauge == nil {
-			return 0, fmt.Errorf("gauge value is nil")
-		}
-		return *metric.Gauge.Value, nil
-	default:
-		return 0, fmt.Errorf("unsupported metric type: %T", m)
-	}
 }

@@ -129,11 +129,22 @@ func (s *Session) write(msg string) error {
 	return s.writer.Flush()
 }
 
+// writeOrLog writes a message and logs any error, but doesn't return it
+// This is useful for response messages where we want to continue even if write fails
+func (s *Session) writeOrLog(msg string) {
+	if err := s.write(msg); err != nil {
+		s.logger.Warn("failed to write response", "message", msg, "error", err)
+	}
+}
+
 func (s *Session) Handle() error {
 	s.logger.Info("starting new session")
 
 	// 220 <domain> <greeting> <ESMTP> <server-info>
-	s.write(fmt.Sprintf("220 %s ESMTP Elemta MTA ready\r\n", s.config.Hostname))
+	if err := s.write(fmt.Sprintf("220 %s ESMTP Elemta MTA ready\r\n", s.config.Hostname)); err != nil {
+		s.logger.Error("failed to send greeting", "error", err)
+		return err
+	}
 
 	// Set reasonable session timeout default if not configured
 	timeout := s.config.SessionTimeout
@@ -149,7 +160,9 @@ func (s *Session) Handle() error {
 
 	// Set a session overall timeout to prevent hung connections
 	overallDeadline := time.Now().Add(30 * time.Minute)
-	s.conn.SetDeadline(overallDeadline)
+	if err := s.conn.SetDeadline(overallDeadline); err != nil {
+		s.logger.Warn("failed to set session deadline", "error", err)
+	}
 
 	for {
 		// Check for command flooding
@@ -169,7 +182,9 @@ func (s *Session) Handle() error {
 		}
 
 		// Set read deadline for this command
-		s.conn.SetReadDeadline(time.Now().Add(timeout))
+		if err := s.conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+			s.logger.Warn("failed to set read deadline", "error", err)
+		}
 		line, err := s.reader.ReadString('\n')
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {

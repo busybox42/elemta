@@ -475,7 +475,9 @@ func (dm *DeliveryManager) deliverViaLMTP(recipient, from string, data []byte) e
 
 	// Set a timeout for all operations
 	deadline := time.Now().Add(time.Duration(dm.config.Delivery.Timeout) * time.Second)
-	conn.SetDeadline(deadline)
+	if err := conn.SetDeadline(deadline); err != nil {
+		return fmt.Errorf("failed to set connection deadline: %w", err)
+	}
 
 	// Create buffers for reading/writing
 	reader := bufio.NewReader(conn)

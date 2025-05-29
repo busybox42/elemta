@@ -343,16 +343,14 @@ func (s *SQLite) ListUsers(ctx context.Context, filter map[string]interface{}, l
 
 	// Add filters
 	var args []interface{}
-	if filter != nil {
-		for key, value := range filter {
-			// Sanitize the key to prevent SQL injection
-			key = strings.ReplaceAll(key, "`", "")
-			key = strings.ReplaceAll(key, "'", "")
-			key = strings.ReplaceAll(key, "\"", "")
+	for key, value := range filter {
+		// Sanitize the key to prevent SQL injection
+		key = strings.ReplaceAll(key, "`", "")
+		key = strings.ReplaceAll(key, "'", "")
+		key = strings.ReplaceAll(key, "\"", "")
 
-			query += fmt.Sprintf(" AND %s = ?", key)
-			args = append(args, value)
-		}
+		query += fmt.Sprintf(" AND %s = ?", key)
+		args = append(args, value)
 	}
 
 	// Add pagination
@@ -429,7 +427,7 @@ func (s *SQLite) CreateUser(ctx context.Context, user User) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Insert the user
 	query := fmt.Sprintf(`
@@ -516,7 +514,7 @@ func (s *SQLite) UpdateUser(ctx context.Context, user User) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Update the user
 	query := fmt.Sprintf(`
@@ -637,7 +635,7 @@ func (s *SQLite) DeleteUser(ctx context.Context, username string) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Delete the user (cascade will handle related records)
 	query := fmt.Sprintf("DELETE FROM %s WHERE username = ?", s.userTable)

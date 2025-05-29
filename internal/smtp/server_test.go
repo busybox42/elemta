@@ -208,7 +208,9 @@ func TestServerHandleConnection(t *testing.T) {
 	// Read the greeting
 	buffer := make([]byte, 1024)
 	deadline := time.Now().Add(2 * time.Second)
-	conn.SetReadDeadline(deadline)
+	if err := conn.SetReadDeadline(deadline); err != nil {
+		t.Logf("Warning: Failed to set read deadline: %v", err)
+	}
 	n, err := conn.Read(buffer)
 	if err != nil {
 		t.Fatalf("Failed to read from server: %v", err)
@@ -228,7 +230,9 @@ func TestServerHandleConnection(t *testing.T) {
 
 	// Read the response
 	deadline = time.Now().Add(2 * time.Second)
-	conn.SetReadDeadline(deadline)
+	if err := conn.SetReadDeadline(deadline); err != nil {
+		t.Logf("Warning: Failed to set read deadline: %v", err)
+	}
 	n, err = conn.Read(buffer)
 	if err != nil {
 		t.Fatalf("Failed to read response to QUIT: %v", err)

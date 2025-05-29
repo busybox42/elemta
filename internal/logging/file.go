@@ -19,7 +19,6 @@ type FileLogger struct {
 	mu        sync.Mutex
 	formatter LogFormatter
 	file      *os.File
-	rotateAt  time.Time
 	maxSize   int64
 	maxAge    time.Duration
 	maxFiles  int

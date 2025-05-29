@@ -553,52 +553,6 @@ func (qm *QueueManager) EnqueueMessage(msg *Message, priority Priority) error {
 	return nil
 }
 
-// processQueue continuously processes queued messages
-func (qm *QueueManager) processQueue() {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for qm.running {
-		<-ticker.C
-
-		messages, err := qm.getQueuedMessagesFromDir(qm.config.QueueDir)
-		if err != nil {
-			qm.logger.Error("failed to get queued messages", "error", err)
-			continue
-		}
-
-		// Sort messages by priority (highest first) and then by next retry time
-		sort.Slice(messages, func(i, j int) bool {
-			if messages[i].Priority != messages[j].Priority {
-				return messages[i].Priority > messages[j].Priority
-			}
-			return messages[i].NextRetry.Before(messages[j].NextRetry)
-		})
-
-		// Process messages that are ready for delivery
-		now := time.Now()
-		for _, msg := range messages {
-			if msg.NextRetry.After(now) {
-				continue // Skip messages not yet ready for retry
-			}
-
-			// Check if we have available workers
-			select {
-			case qm.workerPool <- struct{}{}:
-				// Worker slot acquired, process the message
-				go func(message *QueuedMessage) {
-					defer func() { <-qm.workerPool }() // Release worker slot when done
-					qm.processMessage(message)
-				}(msg)
-			default:
-				// No worker slots available, try again later
-				qm.logger.Debug("worker pool full, waiting for next cycle")
-				break
-			}
-		}
-	}
-}
-
 // cleanupQueue periodically removes old messages from the queue
 func (qm *QueueManager) cleanupQueue() {
 	ticker := time.NewTicker(time.Hour)
@@ -1430,41 +1384,6 @@ func (qm *QueueManager) saveQueuedMessage(msg *QueuedMessage) error {
 	return nil
 }
 
-// attemptDelivery tries to deliver a message to all recipients
-func (qm *QueueManager) attemptDelivery(msg *QueuedMessage, data []byte) error {
-	if qm.config.DevMode {
-		qm.logger.Info("dev mode: simulating delivery",
-			"id", msg.ID,
-			"from", msg.From,
-			"to", msg.To)
-		return nil
-	}
-
-	var lastError error
-	for _, recipient := range msg.To {
-		if err := qm.deliverToRecipient(recipient, msg.From, data); err != nil {
-			lastError = err
-			qm.logger.Error("recipient delivery failed",
-				"id", msg.ID,
-				"recipient", recipient,
-				"error", err)
-			continue
-		}
-		qm.logger.Info("recipient delivery successful",
-			"id", msg.ID,
-			"recipient", recipient)
-	}
-	return lastError
-}
-
-// deliverToRecipient delivers a message to a single recipient
-func (qm *QueueManager) deliverToRecipient(recipient, from string, data []byte) error {
-	// This would use the same logic as in the DeliveryManager
-	// For now, we'll just call the existing delivery manager's method
-	dm := NewDeliveryManager(qm.config)
-	return dm.deliverToRecipient(recipient, from, data)
-}
-
 // deliverToDomain attempts to deliver a message to all recipients at a specific domain
 func (qm *QueueManager) deliverToDomain(msg *QueuedMessage, domain string, recipients []string, data []byte) error {
 	// Look up MX records for the domain
@@ -1530,7 +1449,9 @@ func (qm *QueueManager) deliverToMX(msg *QueuedMessage, mxHost string, recipient
 	defer conn.Close()
 
 	// Set deadlines
-	conn.SetDeadline(time.Now().Add(time.Duration(qm.config.SMTPTimeout) * time.Second))
+	if err := conn.SetDeadline(time.Now().Add(time.Duration(qm.config.SMTPTimeout) * time.Second)); err != nil {
+		qm.logger.Warn("Failed to set connection deadline", "error", err)
+	}
 
 	// Create SMTP client
 	client, err := smtp.NewClient(conn, mxHost)
@@ -1606,7 +1527,9 @@ func (qm *QueueManager) deliverToMX(msg *QueuedMessage, mxHost string, recipient
 	}
 
 	// Quit the session
-	client.Quit()
+	if err := client.Quit(); err != nil {
+		qm.logger.Warn("Failed to quit SMTP session", "error", err, "host", mxHost)
+	}
 
 	// Mark all non-failed recipients as delivered
 	for _, rcpt := range recipients {

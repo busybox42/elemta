@@ -160,7 +160,10 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 	// If format=raw is specified, return raw message
 	if r.URL.Query().Get("format") == "raw" {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write(content)
+		n, err := w.Write(content)
+		if err != nil || n != len(content) {
+			http.Error(w, fmt.Sprintf("Error writing response: %v", err), http.StatusInternalServerError)
+		}
 		return
 	}
 

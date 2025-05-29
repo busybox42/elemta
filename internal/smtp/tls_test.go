@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -18,7 +17,7 @@ import (
 
 func TestTLSManager(t *testing.T) {
 	// Create temporary directory for test certificates
-	tempDir, err := ioutil.TempDir("", "elemta-tls-test")
+	tempDir, err := os.MkdirTemp("", "elemta-tls-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -110,7 +109,7 @@ func TestTLSManager(t *testing.T) {
 
 func TestTLSWrapConnection(t *testing.T) {
 	// Create temporary directory for test certificates
-	tempDir, err := ioutil.TempDir("", "elemta-tls-wrap-test")
+	tempDir, err := os.MkdirTemp("", "elemta-tls-wrap-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -150,7 +149,7 @@ func TestTLSWrapConnection(t *testing.T) {
 
 func TestCertificateInfo(t *testing.T) {
 	// Create temporary directory for test certificates
-	tempDir, err := ioutil.TempDir("", "elemta-cert-info-test")
+	tempDir, err := os.MkdirTemp("", "elemta-cert-info-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -218,7 +217,7 @@ func TestLetsEncryptSetup(t *testing.T) {
 	}
 
 	// Create temporary directory for Let's Encrypt cache
-	tempDir, err := ioutil.TempDir("", "elemta-letsencrypt-test")
+	tempDir, err := os.MkdirTemp("", "elemta-letsencrypt-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -399,7 +398,7 @@ func TestParseClientAuth(t *testing.T) {
 
 func TestCustomTLSConfig(t *testing.T) {
 	// Create temporary directory for test certificates
-	tempDir, err := ioutil.TempDir("", "elemta-custom-tls-test")
+	tempDir, err := os.MkdirTemp("", "elemta-custom-tls-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -468,12 +467,12 @@ func generateTestCertificate(certPath, keyPath string) error {
 	}
 
 	// Write certificate to file
-	if err := ioutil.WriteFile(certPath, cert, 0644); err != nil {
+	if err := os.WriteFile(certPath, cert, 0644); err != nil {
 		return err
 	}
 
 	// Write key to file
-	if err := ioutil.WriteFile(keyPath, key, 0600); err != nil {
+	if err := os.WriteFile(keyPath, key, 0600); err != nil {
 		return err
 	}
 
