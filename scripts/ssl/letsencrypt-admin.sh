@@ -1,496 +1,784 @@
 #!/bin/bash
-# letsencrypt-admin.sh - Let's Encrypt Certificate Management Script for Elemta SMTP Server
-# 
-# This script provides utilities for managing Let's Encrypt certificates for Elemta SMTP server.
-# Features:
-# - Check certificate status
-# - Force certificate renewal
-# - Revoke certificates
-# - Backup/restore certificates
-# - Toggle staging/production mode
-# - Import existing certificates
 
-set -e
+# Let's Encrypt Admin Script for Elemta
+# This script provides a unified interface for common Let's Encrypt certificate management operations
 
 # ANSI color codes
-RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
 BLUE='\033[0;34m'
-MAGENTA='\033[0;35m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Default values
+# Default settings
 CONFIG_FILE=""
-CERT_DIR=""
 DOMAIN=""
-EMAIL=""
-STAGING=false
-DEFAULT_CONFIG_PATHS=(
-  "/etc/elemta/elemta.toml"
-  "/var/elemta/config/elemta.toml"
-  "./elemta.toml"
-)
+ACTION=""
+BACKUP_DIR="/var/elemta/certs/backups"
+CERT_DIR="/var/elemta/certs"
+FORCE=false
 
-# Helper functions for colored output
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-log_step() { echo -e "${MAGENTA}[STEP]${NC} $1"; }
-log_header() { echo -e "\n${BOLD}${CYAN}$1${NC}\n"; }
+# Helper functions for formatted output
+info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
 
-# Function to check for required commands
-check_command() {
-  if ! command -v "$1" &> /dev/null; then
-    log_error "Required command '$1' not found. Please install it and try again."
+success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Show usage information
+function show_usage {
+    echo "Usage: $0 <action> [options]"
+    echo ""
+    echo "Actions:"
+    echo "  issue            Request a new certificate for a domain"
+    echo "  renew            Force renewal of an existing certificate"
+    echo "  backup           Backup current certificates"
+    echo "  restore          Restore certificates from backup"
+    echo "  switch           Switch to a different domain"
+    echo "  status           Show certificate status"
+    echo "  revoke           Revoke a certificate"
+    echo "  list-backups     List available backups"
+    echo "  help             Show this help message"
+    echo ""
+    echo "Options:"
+    echo "  -c, --config FILE       Path to elemta.toml configuration file"
+    echo "  -d, --domain DOMAIN     Domain name for the certificate"
+    echo "  -b, --backup-dir DIR    Backup directory (default: /var/elemta/certs/backups)"
+    echo "  -f, --force             Force the operation without confirmation"
+    echo "  -h, --help              Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0 issue -d mail.example.com"
+    echo "  $0 renew -c /etc/elemta/elemta.toml"
+    echo "  $0 backup -d mail.example.com"
+    echo "  $0 restore -d mail.example.com -b /path/to/backup"
+    echo "  $0 switch -d new.example.com -c /etc/elemta/elemta.toml"
+    echo "  $0 status -d mail.example.com"
     exit 1
-  fi
 }
 
-# Function to read config value from elemta.toml
-get_config_value() {
-  local section=$1
-  local key=$2
-  local result=$(grep -A20 "^\[$section\]" "$CONFIG_FILE" | grep "^$key\s*=" | head -1 | cut -d'=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//')
-  echo "$result"
-}
+# Process command line arguments
+if [ $# -eq 0 ]; then
+    show_usage
+fi
 
-# Function to read TLS config from elemta.toml
-read_tls_config() {
-  if [[ ! -f "$CONFIG_FILE" ]]; then
-    log_error "Configuration file not found: $CONFIG_FILE"
-    exit 1
-  fi
+ACTION="$1"
+shift
 
-  # Read TLS configuration
-  local tls_enabled=$(get_config_value "tls" "enabled")
-  if [[ "$tls_enabled" != "true" ]]; then
-    log_warning "TLS is not enabled in the configuration file"
-  fi
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -c|--config)
+            CONFIG_FILE="$2"
+            shift 2
+            ;;
+        -d|--domain)
+            DOMAIN="$2"
+            shift 2
+            ;;
+        -b|--backup-dir)
+            BACKUP_DIR="$2"
+            shift 2
+            ;;
+        -f|--force)
+            FORCE=true
+            shift
+            ;;
+        -h|--help)
+            show_usage
+            ;;
+        -*)
+            error "Unknown option: $1"
+            show_usage
+            ;;
+        *)
+            error "Unknown argument: $1"
+            show_usage
+            ;;
+    esac
+done
 
-  # Read certificate paths
-  CERT_DIR=$(dirname "$(get_config_value "tls" "cert_file")")
-  if [[ -z "$CERT_DIR" || "$CERT_DIR" == "." ]]; then
-    CERT_DIR="/var/elemta/certs"
-    log_info "Using default certificate directory: $CERT_DIR"
-  fi
-
-  # Read ACME configuration
-  local acme_enabled=$(get_config_value "tls.acme" "enabled")
-  if [[ "$acme_enabled" != "true" ]]; then
-    log_warning "ACME (Let's Encrypt) is not enabled in the configuration file"
-  fi
-
-  DOMAIN=$(get_config_value "tls.acme" "domains" | tr -d '[],"' | awk '{print $1}')
-  EMAIL=$(get_config_value "tls.acme" "email")
-  
-  local staging=$(get_config_value "tls.acme" "staging")
-  if [[ "$staging" == "true" ]]; then
-    STAGING=true
-  fi
-}
-
-# Function to find and set config file
-find_config_file() {
-  if [[ -n "$1" ]]; then
-    CONFIG_FILE="$1"
-    if [[ ! -f "$CONFIG_FILE" ]]; then
-      log_error "Specified configuration file not found: $CONFIG_FILE"
-      exit 1
-    fi
-  else
-    for path in "${DEFAULT_CONFIG_PATHS[@]}"; do
-      if [[ -f "$path" ]]; then
-        CONFIG_FILE="$path"
-        break
-      fi
+# Find configuration file if not specified
+if [ -z "$CONFIG_FILE" ]; then
+    for path in "/etc/elemta/elemta.toml" "/var/elemta/config/elemta.toml" "./elemta.toml"; do
+        if [ -f "$path" ]; then
+            CONFIG_FILE="$path"
+            info "Using configuration file: $CONFIG_FILE"
+            break
+        fi
     done
     
-    if [[ -z "$CONFIG_FILE" ]]; then
-      log_error "Could not find Elemta configuration file. Please specify with -c option."
-      exit 1
+    if [ -z "$CONFIG_FILE" ]; then
+        error "Could not find Elemta configuration file"
+        echo "Please specify a configuration file with -c or --config"
+        exit 1
     fi
-  fi
-  log_info "Using configuration file: $CONFIG_FILE"
+fi
+
+# Extract domain from config if not specified
+if [ -z "$DOMAIN" ] && [ -f "$CONFIG_FILE" ]; then
+    DOMAIN=$(grep -A 50 '^\[tls\]' "$CONFIG_FILE" | grep -m 1 "^acme_domain" | awk -F '=' '{print $2}' | tr -d ' "')
+    if [ -n "$DOMAIN" ]; then
+        info "Using domain from config: $DOMAIN"
+    else
+        # Try to get hostname from server section
+        DOMAIN=$(grep -A 50 '^\[server\]' "$CONFIG_FILE" | grep -m 1 "^hostname" | awk -F '=' '{print $2}' | tr -d ' "')
+        if [ -n "$DOMAIN" ]; then
+            info "Using hostname from config: $DOMAIN"
+        fi
+    fi
+fi
+
+# Create backup directory if it doesn't exist
+if [ ! -d "$BACKUP_DIR" ]; then
+    mkdir -p "$BACKUP_DIR"
+    if [ $? -ne 0 ]; then
+        error "Failed to create backup directory: $BACKUP_DIR"
+        exit 1
+    fi
+    success "Created backup directory: $BACKUP_DIR"
+fi
+
+# Extract certificate paths from configuration
+cert_file=$(grep -A 50 '^\[tls\]' "$CONFIG_FILE" | grep -m 1 "^cert_file" | awk -F '=' '{print $2}' | tr -d ' "')
+key_file=$(grep -A 50 '^\[tls\]' "$CONFIG_FILE" | grep -m 1 "^key_file" | awk -F '=' '{print $2}' | tr -d ' "')
+acme_storage=$(grep -A 50 '^\[tls\]' "$CONFIG_FILE" | grep -m 1 "^acme_storage_path" | awk -F '=' '{print $2}' | tr -d ' "')
+
+# Use default paths if not found in config
+if [ -z "$cert_file" ]; then
+    cert_file="$CERT_DIR/$DOMAIN.crt"
+fi
+
+if [ -z "$key_file" ]; then
+    key_file="$CERT_DIR/$DOMAIN.key"
+fi
+
+if [ -z "$acme_storage" ]; then
+    acme_storage="$CERT_DIR/acme"
+fi
+
+# Check if Elemta CLI is available
+elemta_cli_available=false
+if command -v elemta &> /dev/null; then
+    elemta_cli_available=true
+    info "Elemta CLI is available"
+else
+    warning "Elemta CLI is not available, some operations may be limited"
+fi
+
+# Function to backup certificates
+function backup_certificates {
+    local timestamp=$(date +%Y%m%d%H%M%S)
+    local backup_path="$BACKUP_DIR/${DOMAIN}_$timestamp"
+    
+    info "Backing up certificates for $DOMAIN to $backup_path"
+    
+    # Create backup directory
+    mkdir -p "$backup_path"
+    if [ $? -ne 0 ]; then
+        error "Failed to create backup directory: $backup_path"
+        return 1
+    fi
+    
+    # Copy certificate files
+    if [ -f "$cert_file" ]; then
+        cp "$cert_file" "$backup_path/"
+        success "Backed up certificate: $cert_file"
+    else
+        warning "Certificate file not found: $cert_file"
+    fi
+    
+    if [ -f "$key_file" ]; then
+        cp "$key_file" "$backup_path/"
+        success "Backed up private key: $key_file"
+    else
+        warning "Private key file not found: $key_file"
+    fi
+    
+    # Backup ACME account data
+    if [ -d "$acme_storage" ]; then
+        mkdir -p "$backup_path/acme"
+        cp -r "$acme_storage"/* "$backup_path/acme/" 2>/dev/null
+        success "Backed up ACME account data: $acme_storage"
+    else
+        warning "ACME storage directory not found: $acme_storage"
+    fi
+    
+    # Create metadata file
+    cat > "$backup_path/metadata.txt" << EOF
+Domain: $DOMAIN
+Certificate: $cert_file
+Private Key: $key_file
+ACME Storage: $acme_storage
+Date: $(date)
+Configuration: $CONFIG_FILE
+EOF
+    
+    success "Backup completed: $backup_path"
+    return 0
+}
+
+# Function to restore certificates
+function restore_certificates {
+    local backup_path=""
+    
+    # Find the latest backup for the domain if not specified
+    if [ -z "$1" ]; then
+        backup_path=$(find "$BACKUP_DIR" -type d -name "${DOMAIN}_*" | sort -r | head -1)
+        if [ -z "$backup_path" ]; then
+            error "No backup found for domain: $DOMAIN"
+            return 1
+        fi
+        info "Using latest backup: $backup_path"
+    else
+        backup_path="$1"
+    fi
+    
+    # Check if backup exists
+    if [ ! -d "$backup_path" ]; then
+        error "Backup directory not found: $backup_path"
+        return 1
+    fi
+    
+    # Verify backup metadata
+    if [ -f "$backup_path/metadata.txt" ]; then
+        info "Backup metadata:"
+        cat "$backup_path/metadata.txt"
+    else
+        warning "No metadata found in backup, this may not be a valid backup"
+        if [ "$FORCE" != "true" ]; then
+            read -p "Continue anyway? (y/n): " continue_restore
+            if [ "$continue_restore" != "y" ]; then
+                info "Restore cancelled"
+                return 1
+            fi
+        fi
+    fi
+    
+    # Create backup of current certificates
+    if [ "$FORCE" != "true" ]; then
+        info "Creating backup of current certificates before restoring"
+        backup_certificates
+    fi
+    
+    # Restore certificate files
+    cert_basename=$(basename "$cert_file")
+    key_basename=$(basename "$key_file")
+    
+    if [ -f "$backup_path/$cert_basename" ]; then
+        mkdir -p "$(dirname "$cert_file")"
+        cp "$backup_path/$cert_basename" "$cert_file"
+        success "Restored certificate to: $cert_file"
+    elif [ -f "$backup_path/$(basename "$cert_file")" ]; then
+        mkdir -p "$(dirname "$cert_file")"
+        cp "$backup_path/$(basename "$cert_file")" "$cert_file"
+        success "Restored certificate to: $cert_file"
+    else
+        warning "Certificate file not found in backup"
+    fi
+    
+    if [ -f "$backup_path/$key_basename" ]; then
+        mkdir -p "$(dirname "$key_file")"
+        cp "$backup_path/$key_basename" "$key_file"
+        success "Restored private key to: $key_file"
+    elif [ -f "$backup_path/$(basename "$key_file")" ]; then
+        mkdir -p "$(dirname "$key_file")"
+        cp "$backup_path/$(basename "$key_file")" "$key_file"
+        success "Restored private key to: $key_file"
+    else
+        warning "Private key file not found in backup"
+    fi
+    
+    # Restore ACME account data
+    if [ -d "$backup_path/acme" ]; then
+        mkdir -p "$acme_storage"
+        cp -r "$backup_path/acme/"* "$acme_storage/" 2>/dev/null
+        success "Restored ACME account data to: $acme_storage"
+    else
+        warning "ACME account data not found in backup"
+    fi
+    
+    success "Restore completed from: $backup_path"
+    
+    # Ask to restart Elemta
+    if [ "$FORCE" != "true" ]; then
+        read -p "Restart Elemta to apply changes? (y/n): " restart_elemta
+        if [ "$restart_elemta" = "y" ]; then
+            restart_elemta_service
+        fi
+    fi
+    
+    return 0
+}
+
+# Function to restart Elemta
+function restart_elemta_service {
+    info "Attempting to restart Elemta"
+    
+    if command -v systemctl &> /dev/null && systemctl list-unit-files | grep -q elemta; then
+        systemctl restart elemta
+        if systemctl is-active --quiet elemta; then
+            success "Successfully restarted Elemta systemd service"
+            return 0
+        else
+            error "Failed to restart Elemta systemd service"
+            return 1
+        fi
+    elif [ -f /etc/init.d/elemta ]; then
+        /etc/init.d/elemta restart
+        if /etc/init.d/elemta status | grep -q "running"; then
+            success "Successfully restarted Elemta init.d service"
+            return 0
+        else
+            error "Failed to restart Elemta init.d service"
+            return 1
+        fi
+    elif command -v docker &> /dev/null && docker ps -a | grep -q elemta; then
+        docker_id=$(docker ps -a | grep elemta | awk '{print $1}')
+        docker restart $docker_id
+        if docker ps | grep -q elemta; then
+            success "Successfully restarted Elemta Docker container"
+            return 0
+        else
+            error "Failed to restart Elemta Docker container"
+            return 1
+        fi
+    else
+        error "Could not determine how to restart Elemta"
+        return 1
+    fi
+}
+
+# Function to update configuration
+function update_config {
+    local section=$1
+    local key=$2
+    local value=$3
+    local config=$4
+    
+    # Escape any / characters in the value for sed
+    value=$(echo "$value" | sed 's/\//\\\//g')
+    
+    # Check if key exists in section
+    if grep -A 50 "^\[$section\]" "$config" | grep -m 1 -q "^$key[[:space:]]*="; then
+        # Update existing key
+        sed -i "/^\[$section\]/,/^\[.*\]/ s/^$key[[:space:]]*=.*/$key = \"$value\"/" "$config"
+    else
+        # Check if section exists
+        if ! grep -q "^\[$section\]" "$config"; then
+            # Add section
+            echo "" >> "$config"
+            echo "[$section]" >> "$config"
+        fi
+        
+        # Add new key at the end of the section
+        # Find the line number of the section header
+        section_line=$(grep -n "^\[$section\]" "$config" | cut -d: -f1)
+        
+        # Find the line number of the next section header or the end of file
+        next_section_line=$(tail -n +$((section_line + 1)) "$config" | grep -n "^\[.*\]" | head -1 | cut -d: -f1)
+        
+        if [ -z "$next_section_line" ]; then
+            # No next section, append to end of file
+            echo "$key = \"$value\"" >> "$config"
+        else
+            # Calculate insertion point
+            insertion_line=$((section_line + next_section_line - 1))
+            # Insert the new key before the next section
+            sed -i "$insertion_line i $key = \"$value\"" "$config"
+        fi
+    fi
 }
 
 # Function to check certificate status
-check_cert_status() {
-  local cert_file=$(get_config_value "tls" "cert_file")
-  local key_file=$(get_config_value "tls" "key_file")
-  
-  if [[ ! -f "$cert_file" ]]; then
-    log_error "Certificate file not found: $cert_file"
+function check_certificate_status {
+    info "Checking certificate status for domain: $DOMAIN"
+    
+    # Check if certificate file exists
+    if [ ! -f "$cert_file" ]; then
+        error "Certificate file not found: $cert_file"
+        return 1
+    fi
+    
+    # Check certificate details
+    echo "Certificate details:"
+    openssl x509 -in "$cert_file" -noout -subject -issuer -dates
+    
+    # Check if it's a Let's Encrypt certificate
+    if openssl x509 -in "$cert_file" -noout -issuer | grep -q "Let's Encrypt"; then
+        success "This is a Let's Encrypt certificate"
+    else
+        warning "This is not a Let's Encrypt certificate"
+    fi
+    
+    # Check if certificate matches domain
+    cert_domain=$(openssl x509 -in "$cert_file" -noout -subject | grep -o "CN = [^ ,]*" | sed 's/CN = //')
+    if [[ "$cert_domain" == "$DOMAIN" || "$cert_domain" == "*.$DOMAIN" ]]; then
+        success "Certificate domain matches: $cert_domain"
+    else
+        warning "Certificate domain ($cert_domain) does not match $DOMAIN"
+    fi
+    
+    # Check certificate validity
+    not_after=$(openssl x509 -in "$cert_file" -noout -enddate | cut -d= -f2)
+    not_after_epoch=$(date -d "$not_after" +%s 2>/dev/null || date -j -f "%b %d %H:%M:%S %Y %Z" "$not_after" +%s 2>/dev/null)
+    now_epoch=$(date +%s)
+    days_left=$(( (not_after_epoch - now_epoch) / 86400 ))
+    
+    if [ $days_left -lt 0 ]; then
+        error "Certificate has EXPIRED!"
+    elif [ $days_left -lt 7 ]; then
+        warning "Certificate will expire soon (${days_left} days left)"
+    else
+        success "Certificate is valid for ${days_left} more days"
+    fi
+    
+    # Check if private key matches certificate
+    if [ -f "$key_file" ]; then
+        cert_modulus=$(openssl x509 -in "$cert_file" -noout -modulus | md5sum)
+        key_modulus=$(openssl rsa -in "$key_file" -noout -modulus 2>/dev/null | md5sum)
+        
+        if [ "$cert_modulus" = "$key_modulus" ]; then
+            success "Private key matches certificate"
+        else
+            error "Private key does not match certificate!"
+        fi
+    else
+        error "Private key file not found: $key_file"
+    fi
+    
+    return 0
+}
+
+# Function to issue a new certificate
+function issue_certificate {
+    info "Issuing new certificate for domain: $DOMAIN"
+    
+    # Backup existing certificates
+    if [ -f "$cert_file" ] || [ -f "$key_file" ]; then
+        info "Backing up existing certificates"
+        backup_certificates
+    fi
+    
+    # Ensure ACME is enabled in config
+    update_config "tls" "enabled" "true" "$CONFIG_FILE"
+    update_config "tls" "acme_enabled" "true" "$CONFIG_FILE"
+    update_config "tls" "acme_domain" "$DOMAIN" "$CONFIG_FILE"
+    
+    # Use Elemta CLI if available
+    if [ "$elemta_cli_available" = true ]; then
+        elemta cert issue --domain "$DOMAIN"
+        if [ $? -eq 0 ]; then
+            success "Successfully issued certificate for $DOMAIN using Elemta CLI"
+            return 0
+        else
+            error "Failed to issue certificate using Elemta CLI"
+        fi
+    fi
+    
+    # Alternative: restart Elemta to trigger certificate issuance
+    info "Restarting Elemta to trigger certificate issuance"
+    restart_elemta_service
+    
+    # Wait for certificate to be issued
+    info "Waiting for certificate issuance (this may take a minute)..."
+    attempt=0
+    max_attempts=60
+    
+    while [ $attempt -lt $max_attempts ]; do
+        if [ -f "$cert_file" ]; then
+            # Check if certificate is fresh (less than 5 minutes old)
+            cert_time=$(stat -c %Y "$cert_file" 2>/dev/null || stat -f %m "$cert_file" 2>/dev/null)
+            now=$(date +%s)
+            age=$((now - cert_time))
+            
+            if [ $age -lt 300 ]; then
+                success "Certificate has been issued successfully"
+                check_certificate_status
+                return 0
+            fi
+        fi
+        
+        sleep 5
+        attempt=$((attempt + 1))
+        echo -n "."
+    done
+    
+    error "Timed out waiting for certificate issuance"
+    echo "Check Elemta logs for more information"
     return 1
-  fi
-  
-  if [[ ! -f "$key_file" ]]; then
-    log_error "Private key file not found: $key_file"
-    return 1
-  }
-  
-  log_header "Certificate Information"
-  
-  # Check expiration
-  local expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" | cut -d= -f2)
-  local expiry_epoch=$(date -d "$expiry_date" +%s)
-  local current_epoch=$(date +%s)
-  local seconds_left=$((expiry_epoch - current_epoch))
-  local days_left=$((seconds_left / 86400))
-  
-  echo -e "Certificate: ${BOLD}$cert_file${NC}"
-  echo -e "Private key: ${BOLD}$key_file${NC}"
-  echo -e "Domain:      ${BOLD}$(openssl x509 -noout -subject -in "$cert_file" | sed -n 's/.*CN = \([^,]*\).*/\1/p')${NC}"
-  echo -e "Issuer:      ${BOLD}$(openssl x509 -noout -issuer -in "$cert_file" | sed -n 's/.*CN = \([^,]*\).*/\1/p')${NC}"
-  echo -e "Valid from:  ${BOLD}$(openssl x509 -noout -startdate -in "$cert_file" | cut -d= -f2)${NC}"
-  echo -e "Valid until: ${BOLD}$expiry_date${NC}"
-  
-  if [[ $days_left -lt 0 ]]; then
-    echo -e "Status:      ${RED}EXPIRED${NC} ($((days_left * -1)) days ago)"
-  elif [[ $days_left -lt 7 ]]; then
-    echo -e "Status:      ${RED}CRITICAL${NC} (expires in $days_left days)"
-  elif [[ $days_left -lt 14 ]]; then
-    echo -e "Status:      ${YELLOW}WARNING${NC} (expires in $days_left days)"
-  else
-    echo -e "Status:      ${GREEN}VALID${NC} (expires in $days_left days)"
-  fi
-  
-  # Check certificate chain
-  echo -e "\nCertificate chain:"
-  openssl crl2pkcs7 -nocrl -certfile "$cert_file" | openssl pkcs7 -print_certs -noout
-  
-  # Check if private key matches certificate
-  if openssl x509 -noout -modulus -in "$cert_file" | openssl md5 | grep -q "$(openssl rsa -noout -modulus -in "$key_file" | openssl md5)"; then
-    echo -e "\nPrivate key: ${GREEN}Matches certificate${NC}"
-  else
-    echo -e "\nPrivate key: ${RED}DOES NOT MATCH CERTIFICATE${NC}"
-  fi
-  
-  return 0
 }
 
 # Function to force certificate renewal
-force_renewal() {
-  log_header "Forcing Certificate Renewal"
-  
-  # Check if Elemta supports the force-renew directive
-  log_info "Checking for Elemta's certificate renewal support..."
-  
-  if ! systemctl list-units --all | grep -q elemta; then
-    log_warning "Elemta service not found in systemd. Will attempt to renew using direct command."
+function renew_certificate {
+    info "Forcing renewal of certificate for domain: $DOMAIN"
     
-    if command -v elemta &> /dev/null; then
-      log_step "Running 'elemta acme renew --force'..."
-      if elemta acme renew --force; then
-        log_success "Certificate renewal successfully triggered"
-        log_info "Check the Elemta logs for the result of the renewal process"
-      else
-        log_error "Failed to trigger certificate renewal"
-      fi
-    else
-      log_error "Cannot find the Elemta command. Please renew the certificate manually."
-      log_info "You can try restarting the Elemta service to trigger automatic renewal."
+    # Backup existing certificates
+    if [ -f "$cert_file" ] || [ -f "$key_file" ]; then
+        info "Backing up existing certificates"
+        backup_certificates
     fi
-  else
-    log_step "Elemta service found. Attempting to restart service to trigger renewal..."
-    if sudo systemctl restart elemta; then
-      log_success "Elemta service restarted. Certificate renewal should be triggered."
-      log_info "Check the service logs with 'sudo journalctl -u elemta' to verify renewal"
-    else
-      log_error "Failed to restart Elemta service"
+    
+    # Use Elemta CLI if available
+    if [ "$elemta_cli_available" = true ]; then
+        elemta cert renew --force --domain "$DOMAIN"
+        if [ $? -eq 0 ]; then
+            success "Successfully renewed certificate for $DOMAIN using Elemta CLI"
+            return 0
+        else
+            error "Failed to renew certificate using Elemta CLI"
+        fi
     fi
-  fi
+    
+    # Alternative: update config to force renewal
+    info "Updating configuration to force certificate renewal"
+    update_config "tls" "force_renewal" "true" "$CONFIG_FILE"
+    
+    # Restart Elemta to trigger renewal
+    info "Restarting Elemta to trigger certificate renewal"
+    restart_elemta_service
+    
+    # Wait for certificate to be renewed
+    info "Waiting for certificate renewal (this may take a minute)..."
+    attempt=0
+    max_attempts=60
+    
+    while [ $attempt -lt $max_attempts ]; do
+        if [ -f "$cert_file" ]; then
+            # Check if certificate is fresh (less than 5 minutes old)
+            cert_time=$(stat -c %Y "$cert_file" 2>/dev/null || stat -f %m "$cert_file" 2>/dev/null)
+            now=$(date +%s)
+            age=$((now - cert_time))
+            
+            if [ $age -lt 300 ]; then
+                success "Certificate has been renewed successfully"
+                # Revert force_renewal setting
+                update_config "tls" "force_renewal" "false" "$CONFIG_FILE"
+                check_certificate_status
+                return 0
+            fi
+        fi
+        
+        sleep 5
+        attempt=$((attempt + 1))
+        echo -n "."
+    done
+    
+    error "Timed out waiting for certificate renewal"
+    # Revert force_renewal setting
+    update_config "tls" "force_renewal" "false" "$CONFIG_FILE"
+    echo "Check Elemta logs for more information"
+    return 1
+}
+
+# Function to switch to a different domain
+function switch_domain {
+    if [ -z "$DOMAIN" ]; then
+        error "Domain name is required for switch operation"
+        return 1
+    fi
+    
+    info "Switching to domain: $DOMAIN"
+    
+    # Backup existing certificates
+    info "Backing up existing certificates"
+    backup_certificates
+    
+    # Update configuration
+    update_config "tls" "acme_domain" "$DOMAIN" "$CONFIG_FILE"
+    
+    # Update certificate paths if using domain-based paths
+    old_cert_file="$cert_file"
+    old_key_file="$key_file"
+    
+    # Update paths if they contain the domain name
+    if echo "$cert_file" | grep -q "/[^/]*\.[^/]*\.crt$"; then
+        new_cert_file=$(echo "$cert_file" | sed "s|/[^/]*\.[^/]*\.crt$|/$DOMAIN.crt|")
+        update_config "tls" "cert_file" "$new_cert_file" "$CONFIG_FILE"
+        cert_file="$new_cert_file"
+        info "Updated certificate path: $cert_file"
+    fi
+    
+    if echo "$key_file" | grep -q "/[^/]*\.[^/]*\.key$"; then
+        new_key_file=$(echo "$key_file" | sed "s|/[^/]*\.[^/]*\.key$|/$DOMAIN.key|")
+        update_config "tls" "key_file" "$new_key_file" "$CONFIG_FILE"
+        key_file="$new_key_file"
+        info "Updated private key path: $key_file"
+    fi
+    
+    # Ask user if they want to issue a new certificate
+    if [ "$FORCE" != "true" ]; then
+        read -p "Issue a new certificate for $DOMAIN now? (y/n): " issue_new
+        if [ "$issue_new" = "y" ]; then
+            issue_certificate
+        else
+            info "Skipping certificate issuance"
+            info "Don't forget to issue a certificate before restarting Elemta"
+        fi
+    fi
+    
+    success "Successfully switched to domain: $DOMAIN"
+    return 0
 }
 
 # Function to revoke a certificate
-revoke_certificate() {
-  log_header "Revoking Certificate"
-  
-  if ! command -v elemta &> /dev/null; then
-    log_error "Cannot find the Elemta command. Manual revocation required."
-    log_info "To revoke a Let's Encrypt certificate manually, use certbot or acme.sh"
-    return 1
-  fi
-  
-  log_warning "This will revoke your current certificate. Are you sure? (y/N)"
-  read -r confirmation
-  if [[ ! "$confirmation" =~ ^[Yy]$ ]]; then
-    log_info "Revocation cancelled"
-    return 0
-  fi
-  
-  log_step "Attempting to revoke certificate..."
-  if elemta acme revoke; then
-    log_success "Certificate successfully revoked"
-  else
-    log_error "Failed to revoke certificate"
-    log_info "You may need to revoke manually using certbot or acme.sh"
-  fi
-}
-
-# Function to backup certificates
-backup_certificates() {
-  local cert_file=$(get_config_value "tls" "cert_file")
-  local key_file=$(get_config_value "tls" "key_file")
-  local backup_dir="$HOME/elemta_cert_backup_$(date +%Y%m%d_%H%M%S)"
-  
-  if [[ ! -f "$cert_file" || ! -f "$key_file" ]]; then
-    log_error "Certificate files not found"
-    return 1
-  fi
-  
-  log_header "Backing Up Certificates"
-  
-  log_step "Creating backup directory: $backup_dir"
-  mkdir -p "$backup_dir"
-  
-  log_step "Copying certificate files..."
-  cp "$cert_file" "$backup_dir/$(basename "$cert_file")"
-  cp "$key_file" "$backup_dir/$(basename "$key_file")"
-  
-  # Backup chain if it exists
-  local chain_file="${cert_file%.*}.chain.pem"
-  if [[ -f "$chain_file" ]]; then
-    cp "$chain_file" "$backup_dir/$(basename "$chain_file")"
-  fi
-  
-  # Backup ACME account
-  local acme_dir="/var/elemta/acme"
-  if [[ -d "$acme_dir" ]]; then
-    log_step "Backing up ACME account data..."
-    cp -r "$acme_dir" "$backup_dir/acme"
-  fi
-  
-  log_success "Certificates backed up to $backup_dir"
-  ls -la "$backup_dir"
-}
-
-# Function to restore certificates from backup
-restore_certificates() {
-  log_header "Restoring Certificates from Backup"
-  
-  log_step "Please enter the backup directory path:"
-  read -r backup_dir
-  
-  if [[ ! -d "$backup_dir" ]]; then
-    log_error "Backup directory not found: $backup_dir"
-    return 1
-  fi
-  
-  local cert_file=$(get_config_value "tls" "cert_file")
-  local key_file=$(get_config_value "tls" "key_file")
-  
-  # Make sure destination directories exist
-  mkdir -p "$(dirname "$cert_file")"
-  mkdir -p "$(dirname "$key_file")"
-  
-  # Find certificate files in backup
-  local backup_cert=$(find "$backup_dir" -name "*.crt" -o -name "*.pem" | grep -v "chain" | head -1)
-  local backup_key=$(find "$backup_dir" -name "*.key" | head -1)
-  
-  if [[ -z "$backup_cert" || -z "$backup_key" ]]; then
-    log_error "Could not find certificate files in backup directory"
-    return 1
-  fi
-  
-  log_step "Restoring certificate from $backup_cert to $cert_file"
-  cp "$backup_cert" "$cert_file"
-  
-  log_step "Restoring private key from $backup_key to $key_file"
-  cp "$backup_key" "$key_file"
-  
-  # Restore chain if it exists
-  local backup_chain=$(find "$backup_dir" -name "*.chain.pem" | head -1)
-  if [[ -n "$backup_chain" ]]; then
-    local chain_file="${cert_file%.*}.chain.pem"
-    log_step "Restoring certificate chain from $backup_chain to $chain_file"
-    cp "$backup_chain" "$chain_file"
-  fi
-  
-  # Restore ACME account if it exists
-  if [[ -d "$backup_dir/acme" ]]; then
-    log_step "Restoring ACME account data..."
-    cp -r "$backup_dir/acme" "/var/elemta/"
-  fi
-  
-  log_success "Certificates restored successfully"
-  log_warning "You may need to restart the Elemta service to apply the restored certificates"
-}
-
-# Function to toggle staging/production mode
-toggle_staging() {
-  log_header "Toggling Staging/Production Mode"
-  
-  local current_mode=$(get_config_value "tls.acme" "staging")
-  
-  if [[ "$current_mode" == "true" ]]; then
-    log_info "Currently using STAGING mode. Switching to PRODUCTION mode."
-    new_mode="false"
-    mode_name="PRODUCTION"
-  else
-    log_info "Currently using PRODUCTION mode. Switching to STAGING mode."
-    new_mode="true"
-    mode_name="STAGING"
-  fi
-  
-  log_warning "This will change your ACME mode to $mode_name. Are you sure? (y/N)"
-  read -r confirmation
-  if [[ ! "$confirmation" =~ ^[Yy]$ ]]; then
-    log_info "Mode change cancelled"
-    return 0
-  fi
-  
-  if sed -i "s/staging = $current_mode/staging = $new_mode/" "$CONFIG_FILE"; then
-    log_success "Successfully changed to $mode_name mode"
-    log_info "Please restart the Elemta service to apply changes"
-  else
-    log_error "Failed to update configuration file"
-  fi
-}
-
-# Function to import existing certificates
-import_certificates() {
-  log_header "Importing Existing Certificates"
-  
-  log_step "Please enter the path to the certificate file (.crt or .pem):"
-  read -r import_cert
-  
-  log_step "Please enter the path to the private key file (.key):"
-  read -r import_key
-  
-  if [[ ! -f "$import_cert" || ! -f "$import_key" ]]; then
-    log_error "Certificate or key file not found"
-    return 1
-  fi
-  
-  local cert_file=$(get_config_value "tls" "cert_file")
-  local key_file=$(get_config_value "tls" "key_file")
-  
-  # Make sure destination directories exist
-  mkdir -p "$(dirname "$cert_file")"
-  mkdir -p "$(dirname "$key_file")"
-  
-  log_step "Importing certificate from $import_cert to $cert_file"
-  cp "$import_cert" "$cert_file"
-  
-  log_step "Importing private key from $import_key to $key_file"
-  cp "$import_key" "$key_file"
-  
-  # Check if there's a chain file to import
-  log_step "Do you have a certificate chain file to import? (y/N)"
-  read -r has_chain
-  if [[ "$has_chain" =~ ^[Yy]$ ]]; then
-    log_step "Please enter the path to the chain file:"
-    read -r import_chain
+function revoke_certificate {
+    info "Revoking certificate for domain: $DOMAIN"
     
-    if [[ -f "$import_chain" ]]; then
-      local chain_file="${cert_file%.*}.chain.pem"
-      log_step "Importing certificate chain from $import_chain to $chain_file"
-      cp "$import_chain" "$chain_file"
-    else
-      log_error "Chain file not found"
+    # Check if certificate file exists
+    if [ ! -f "$cert_file" ]; then
+        error "Certificate file not found: $cert_file"
+        return 1
     fi
-  fi
-  
-  log_success "Certificates imported successfully"
-  log_info "Please check the imported certificate:"
-  check_cert_status
-  log_warning "You may need to restart the Elemta service to apply the imported certificates"
+    
+    # Confirm revocation
+    if [ "$FORCE" != "true" ]; then
+        warning "WARNING: Revoking a certificate is irreversible!"
+        read -p "Are you sure you want to revoke the certificate for $DOMAIN? (y/n): " confirm
+        if [ "$confirm" != "y" ]; then
+            info "Certificate revocation cancelled"
+            return 1
+        fi
+    fi
+    
+    # Use Elemta CLI if available
+    if [ "$elemta_cli_available" = true ]; then
+        elemta cert revoke --domain "$DOMAIN"
+        if [ $? -eq 0 ]; then
+            success "Successfully revoked certificate for $DOMAIN using Elemta CLI"
+            return 0
+        else
+            error "Failed to revoke certificate using Elemta CLI"
+            return 1
+        fi
+    else
+        error "Cannot revoke certificate without Elemta CLI"
+        echo "Please install or use Elemta CLI to revoke certificates"
+        return 1
+    fi
 }
 
-# Function to display script usage
-show_help() {
-  echo -e "${BOLD}Let's Encrypt Certificate Management Script for Elemta SMTP Server${NC}"
-  echo
-  echo "Usage: $0 [options] command"
-  echo
-  echo "Options:"
-  echo "  -c, --config FILE     Path to Elemta configuration file"
-  echo "  -h, --help            Display this help message"
-  echo
-  echo "Commands:"
-  echo "  status                Check certificate status"
-  echo "  renew                 Force certificate renewal"
-  echo "  revoke                Revoke current certificate"
-  echo "  backup                Backup certificates and ACME account"
-  echo "  restore               Restore certificates from backup"
-  echo "  toggle-staging        Toggle between staging and production mode"
-  echo "  import                Import existing certificates"
-  echo
-  echo "Example:"
-  echo "  $0 status                     # Check current certificate status"
-  echo "  $0 -c /etc/elemta/custom.toml renew  # Force renewal with custom config"
+# Function to list available backups
+function list_backups {
+    info "Listing backups for domain: $DOMAIN"
+    
+    # Find backups for the domain
+    backups=$(find "$BACKUP_DIR" -type d -name "${DOMAIN}_*" | sort)
+    
+    if [ -z "$backups" ]; then
+        warning "No backups found for domain: $DOMAIN"
+        return 1
+    fi
+    
+    echo "Available backups:"
+    echo "------------------"
+    
+    for backup in $backups; do
+        backup_date=$(echo "$backup" | grep -o "[0-9]\{14\}$" | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
+        
+        if [ -f "$backup/metadata.txt" ]; then
+            echo -e "${GREEN}Backup:${NC} $(basename "$backup")"
+            echo -e "${GREEN}Date:${NC} $backup_date"
+            echo -e "${GREEN}Files:${NC}"
+            
+            # Show certificate details if available
+            if [ -f "$backup/$(basename "$cert_file")" ]; then
+                echo "  Certificate: $(basename "$cert_file")"
+                cert_info=$(openssl x509 -in "$backup/$(basename "$cert_file")" -noout -subject -issuer -dates 2>/dev/null)
+                if [ -n "$cert_info" ]; then
+                    echo "$cert_info" | sed 's/^/    /'
+                fi
+            elif ls "$backup"/*.crt &>/dev/null; then
+                cert_file_in_backup=$(ls "$backup"/*.crt | head -1)
+                echo "  Certificate: $(basename "$cert_file_in_backup")"
+                cert_info=$(openssl x509 -in "$cert_file_in_backup" -noout -subject -issuer -dates 2>/dev/null)
+                if [ -n "$cert_info" ]; then
+                    echo "$cert_info" | sed 's/^/    /'
+                fi
+            fi
+            
+            echo ""
+        else
+            echo -e "${YELLOW}Backup:${NC} $(basename "$backup") (${YELLOW}incomplete or invalid${NC})"
+            echo -e "${YELLOW}Date:${NC} $backup_date"
+            echo ""
+        fi
+    done
+    
+    success "Found $(echo "$backups" | wc -l) backup(s)"
+    return 0
 }
 
-# Parse command line arguments
-POSITIONAL=()
-while [[ $# -gt 0 ]]; do
-  key="$1"
-  case $key in
-    -c|--config)
-      CONFIG_PARAM="$2"
-      shift 2
-      ;;
-    -h|--help)
-      show_help
-      exit 0
-      ;;
+# Execute action
+case "$ACTION" in
+    issue)
+        if [ -z "$DOMAIN" ]; then
+            error "Domain name is required for issue operation"
+            exit 1
+        fi
+        issue_certificate
+        ;;
+    renew)
+        if [ -z "$DOMAIN" ]; then
+            error "Domain name is required for renew operation"
+            exit 1
+        fi
+        renew_certificate
+        ;;
+    backup)
+        if [ -z "$DOMAIN" ]; then
+            error "Domain name is required for backup operation"
+            exit 1
+        fi
+        backup_certificates
+        ;;
+    restore)
+        if [ -z "$DOMAIN" ]; then
+            error "Domain name is required for restore operation"
+            exit 1
+        fi
+        restore_certificates
+        ;;
+    switch)
+        if [ -z "$DOMAIN" ]; then
+            error "Domain name is required for switch operation"
+            exit 1
+        fi
+        switch_domain
+        ;;
+    status)
+        if [ -z "$DOMAIN" ]; then
+            error "Domain name is required for status operation"
+            exit 1
+        fi
+        check_certificate_status
+        ;;
+    revoke)
+        if [ -z "$DOMAIN" ]; then
+            error "Domain name is required for revoke operation"
+            exit 1
+        fi
+        revoke_certificate
+        ;;
+    list-backups)
+        list_backups
+        ;;
+    help)
+        show_usage
+        ;;
     *)
-      POSITIONAL+=("$1")
-      shift
-      ;;
-  esac
-done
-set -- "${POSITIONAL[@]}"
-
-# Verify required commands are available
-check_command openssl
-check_command grep
-check_command sed
-check_command find
-
-# Find configuration file
-find_config_file "$CONFIG_PARAM"
-
-# Read TLS configuration
-read_tls_config
-
-# Execute requested command
-if [[ $# -eq 0 ]]; then
-  show_help
-  exit 0
-fi
-
-case "$1" in
-  status)
-    check_cert_status
-    ;;
-  renew)
-    force_renewal
-    ;;
-  revoke)
-    revoke_certificate
-    ;;
-  backup)
-    backup_certificates
-    ;;
-  restore)
-    restore_certificates
-    ;;
-  toggle-staging)
-    toggle_staging
-    ;;
-  import)
-    import_certificates
-    ;;
-  *)
-    log_error "Unknown command: $1"
-    show_help
-    exit 1
-    ;;
+        error "Unknown action: $ACTION"
+        show_usage
+        ;;
 esac
 
-exit 0 
+exit $?

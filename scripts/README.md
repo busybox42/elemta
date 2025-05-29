@@ -6,146 +6,195 @@ This directory contains various utility scripts organized by category for the El
 
 ```
 scripts/
-├── ssl/           # SSL/TLS certificate management scripts
+├── ssl/           # SSL/TLS certificate management scripts (comprehensive tools)
 ├── test/          # Testing and test runner scripts  
 ├── debug/         # Debugging and troubleshooting scripts
 ├── dev/           # Development utility scripts
+├── monitoring/    # Monitoring and alerting scripts
+├── docker/        # Docker deployment and container management
+├── queue/         # Queue management and inspection tools
+├── load-testing/  # Load testing and performance scripts
+├── build/         # Build and packaging scripts
 └── [root]         # General utility scripts
 ```
 
 ## SSL/TLS Certificate Management (`ssl/`)
 
-- **`letsencrypt-admin.sh`** - Comprehensive Let's Encrypt certificate management tool
-  - Check certificate status
-  - Force certificate renewal
-  - Revoke certificates
-  - Backup/restore certificates
-  - Toggle staging/production mode
-  - Import existing certificates
+**Comprehensive Let's Encrypt management tools:**
 
-- **`letsencrypt-test.sh`** - Tests Let's Encrypt/ACME configuration and readiness
-  - DNS resolution checks
-  - Port availability tests
+- **`letsencrypt-admin.sh`** - Advanced certificate management (784 lines)
+  - Complete ACME workflow management
+  - Certificate lifecycle operations
+  - Multi-domain support
+  - Staging/production environments
+  - Backup and recovery operations
+
+- **`letsencrypt-test.sh`** - Comprehensive testing suite (564 lines)
+  - Pre-deployment validation
+  - DNS resolution and propagation checks
+  - Port accessibility testing
   - Certificate path validation
-  - ACME connectivity tests
+  - ACME connectivity verification
 
-- **`letsencrypt-metrics.sh`** - Prometheus metrics exporter for Let's Encrypt certificates
-  - Certificate expiration metrics
-  - Renewal status tracking
-  - Can run as HTTP server or write to textfile
-
-- **`letsencrypt-monitor.sh`** - Advanced monitoring and alerting for Let's Encrypt certificates
-  - Continuous certificate monitoring
-  - Email/Slack notifications
+- **`letsencrypt-monitor.sh`** - Advanced monitoring system (471 lines)
+  - Real-time certificate monitoring
   - Automated renewal triggers
+  - Multi-channel alerting (email, Slack, webhooks)
+  - Prometheus metrics integration
+
+- **`letsencrypt-setup.sh`** - Initial setup and configuration (283 lines)
+  - Environment preparation
+  - Initial ACME registration
+  - Configuration file generation
+
+- **`letsencrypt-troubleshooter.sh`** - Diagnostic and repair tool (421 lines)
+  - Certificate issue diagnosis
+  - Common problem resolution
+  - Automated repair workflows
 
 ## Testing Scripts (`test/`)
 
 - **`run-all-tests.sh`** - Master test runner for the entire test suite
-  - Runs Go unit tests
-  - Optionally runs database tests
-  - Runs Python e2e tests
-  - Usage: `./run-all-tests.sh [--all]`
-
-- **`run-datasource-tests.sh`** - Database-specific test runner
-  - MySQL tests
-  - PostgreSQL tests
-  - LDAP tests
-  - Let's Encrypt tests
-  - Usage: `./run-datasource-tests.sh [mysql|postgres|ldap|letsencrypt|all]`
+- **`run-datasource-tests.sh`** - Database-specific test runner  
+- **`test-mode.sh`** - Test mode configuration and management
+- **`test-monitoring.sh`** - Monitoring stack testing
+- **`test-queue-only.sh`** - Queue-specific testing
+- **`test-queue.sh`** - Queue functionality tests
+- **`test-smtp.sh`** - SMTP protocol testing
 
 ## Debugging Scripts (`debug/`)
 
 - **`debug-email.sh`** - Email debugging and testing utility
-  - Sends test emails to Elemta SMTP server
-  - Checks delivery status
-  - Shows relevant logs
-  - Verifies mailbox delivery
 
 ## Development Scripts (`dev/`)
 
 - **`rebuild.sh`** - Development build and restart script
-  - Rebuilds Go binary
-  - Rebuilds Docker image
-  - Restarts containers
-  - Quick development iteration
-
 - **`run-dev.sh`** - Quick development server startup script
-  - Starts Elemta in development mode
-  - No authentication required
-  - Configurable port (default: 2530)
-  - Usage: `./run-dev.sh [-p PORT]`
+
+## Monitoring & Alerting (`monitoring/`)
+
+- **`setup-monitoring.sh`** - Complete monitoring stack deployment
+- **`setup-security-monitoring.sh`** - Security-focused monitoring setup
+- **`start-monitoring.sh`** - Start monitoring services
+- **`verify-monitoring-stack.sh`** - Monitoring system health checks
+
+## Docker Management (`docker/`)
+
+- **`docker-deploy.sh`** - Docker deployment automation
+- **`docker-undeploy.sh`** - Docker cleanup and removal
+- **`docker-entrypoint.sh`** - Container entry point script
+- **`entrypoint.sh`** - Application entry point
+
+## Queue Management (`queue/`)
+
+- **`check-queue.sh`** - Queue inspection and status
+- **`create-queue-entry.sh`** - Manual queue entry creation
+- **`simulate-queue.sh`** - Queue simulation for testing
+
+## Load Testing (`load-testing/`)
+
+- **`generate-test-load.sh`** - Email load generation for performance testing
+- **`generate-security-events.sh`** - Security event simulation
+
+## Build & Packaging (`build/`)
+
+- **`build_all.sh`** - Build all package types
+- **`build_debian.sh`** - Debian package builder
+- **`build_ubuntu.sh`** - Ubuntu package builder
+- **`build_rhel9.sh`** - RHEL 9 package builder
+- **`build_rpm.sh`** - RPM package builder
+- **`check_files.sh`** - Package file validation
 
 ## General Utility Scripts (root level)
 
 - **`elemta-api.sh`** - API client for Elemta management
 - **`elemta-cli.sh`** - Command-line interface wrapper
-- **`setup-monitoring.sh`** - Sets up monitoring stack (Prometheus, Grafana)
-- **`generate-test-load.sh`** - Generates test email load for performance testing
-- **`check-queue.sh`** - Queue inspection and management
+- **`build_plugins.sh`** - Plugin compilation and management
 - **`deploy-and-test.sh`** - Automated deployment and testing
-- **`docker-deploy.sh`** / **`docker-undeploy.sh`** - Docker deployment utilities
+- **`api_server.py`** - Python API server for testing
+- **`metrics_server.py`** - Metrics collection server
+- **`mock-queue.py`** - Queue mocking for development
 
 ## Usage Examples
 
 ### SSL Certificate Management
 ```bash
-# Check certificate status
-./scripts/ssl/letsencrypt-admin.sh status
+# Complete certificate setup
+./scripts/ssl/letsencrypt-setup.sh -d mail.example.tld -e admin@example.tld
 
-# Force certificate renewal
-./scripts/ssl/letsencrypt-admin.sh renew
-
-# Test Let's Encrypt configuration
+# Test configuration before deployment
 ./scripts/ssl/letsencrypt-test.sh -d mail.example.tld
+
+# Advanced certificate management
+./scripts/ssl/letsencrypt-admin.sh status
+./scripts/ssl/letsencrypt-admin.sh renew --force
+
+# Start monitoring
+./scripts/ssl/letsencrypt-monitor.sh --daemon
 ```
 
-### Running Tests
+### Testing & Development
 ```bash
-# Run all tests including database tests
+# Run comprehensive test suite
 ./scripts/test/run-all-tests.sh --all
 
-# Run only MySQL tests
-./scripts/test/run-datasource-tests.sh mysql
-```
-
-### Development
-```bash
-# Quick rebuild and restart
-./scripts/dev/rebuild.sh
-
-# Start development server on custom port
+# Start development environment
 ./scripts/dev/run-dev.sh -p 2530
 
-# Debug email delivery
+# Test specific components
+./scripts/test/test-smtp.sh
 ./scripts/debug/debug-email.sh
 ```
 
-### Monitoring
+### Deployment & Operations
 ```bash
-# Set up monitoring stack
-./scripts/setup-monitoring.sh
+# Deploy with Docker
+./scripts/docker/docker-deploy.sh
+
+# Set up monitoring
+./scripts/monitoring/setup-monitoring.sh
 
 # Generate test load
-./scripts/generate-test-load.sh 100
+./scripts/load-testing/generate-test-load.sh 1000
+
+# Check queue status
+./scripts/queue/check-queue.sh
+```
+
+### Build & Package
+```bash
+# Build all packages
+./scripts/build/build_all.sh
+
+# Build specific platform
+./scripts/build/build_debian.sh
+./scripts/build/build_rpm.sh
 ```
 
 ## Prerequisites
 
 Most scripts require:
-- Docker and Docker Compose
-- Go 1.19+
-- Python 3.8+ (for some scripts)
-- OpenSSL (for SSL scripts)
-- Standard Unix utilities (curl, grep, sed, etc.)
+- **Core:** Docker, Docker Compose, Go 1.19+, OpenSSL
+- **SSL Tools:** certbot or acme.sh, DNS management access
+- **Monitoring:** Prometheus, Grafana (auto-installed by setup scripts)
+- **Testing:** Python 3.8+, pytest (for Python tests)
+- **Building:** Platform-specific build tools (dpkg, rpm, etc.)
 
 Specific requirements are documented in individual script headers.
+
+## Security Considerations
+
+- SSL scripts require appropriate DNS/domain control
+- Monitoring scripts may need elevated privileges
+- Build scripts should run in isolated environments
+- All scripts validate inputs and provide secure defaults
 
 ## Contributing
 
 When adding new scripts:
-1. Place them in the appropriate category directory
-2. Make them executable (`chmod +x`)
-3. Add proper header comments with usage information
-4. Update this README
-5. Follow the existing naming conventions
+1. **Categorize properly** - Place in appropriate subdirectory
+2. **Make executable** - `chmod +x script-name.sh`
+3. **Document thoroughly** - Add header with usage, requirements
+4. **Update README** - Add entry to this documentation
+5. **Follow naming** - Use kebab-case with descriptive names
+6. **Test extensively** - Ensure scripts work in clean environments
