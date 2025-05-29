@@ -38,7 +38,7 @@ The Elemta server is configured using the `config/elemta.conf` file. This file i
 
 ```json
 {
-    "hostname": "mail.evil-admin.com",
+    "hostname": "mail.example.tld",
     "listen_addr": ":2525",
     "queue_dir": "./queue",
     "max_size": 26214400,

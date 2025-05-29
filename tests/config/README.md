@@ -18,7 +18,7 @@ To run Elemta with a test configuration:
 
 The test configuration includes:
 
-- Custom hostname: mail.evil-admin.com
+- Custom hostname: mail.example.tld
 - Listening on port 2525
 - Maximum message size: 25MB
 - Development mode disabled
