@@ -15,10 +15,8 @@ config/test.crt
 config/test.key
 config/examples/elemta-fixed.conf
 # AI-related files
-.cursor/prompts/
-.cursor/sessions/
-.cursor/rules/*.tmp
-.cursor/rules/*.bak
+.cursor/
+.cursorrules
 scripts/update_roadmap*.sh
 scripts/*_ai_*.sh
 *.txt
