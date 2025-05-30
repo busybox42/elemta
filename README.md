@@ -1,3 +1,5 @@
+![Elemta Logo](images/elemta.png)
+
 # Elemta - High-Performance SMTP Server
 
 Elemta is a high-performance, carrier-grade Mail Transfer Agent (MTA) written in Go. It's designed to be a modern, pluggable, and secure alternative to traditional MTAs like Postfix, Sendmail, and Exim.
