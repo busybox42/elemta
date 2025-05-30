@@ -333,12 +333,12 @@ func (e *Executor) updateMetrics(result *ExecutionResult) {
 }
 
 // GetMetrics returns current executor metrics
-func (e *Executor) GetMetrics() ExecutorMetrics {
+func (e *Executor) GetMetrics() *ExecutorMetrics {
 	e.metrics.mu.RLock()
 	defer e.metrics.mu.RUnlock()
 
 	// Create a copy to avoid race conditions
-	metrics := ExecutorMetrics{
+	metrics := &ExecutorMetrics{
 		TotalExecutions:      e.metrics.TotalExecutions,
 		SuccessfulExecutions: e.metrics.SuccessfulExecutions,
 		FailedExecutions:     e.metrics.FailedExecutions,

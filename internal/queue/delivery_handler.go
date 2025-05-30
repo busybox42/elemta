@@ -260,11 +260,10 @@ func (h *SMTPDeliveryHandler) connectSMTP(ctx context.Context, address string) (
 
 // MockDeliveryHandler implements DeliveryHandler for testing
 type MockDeliveryHandler struct {
-	logger      *slog.Logger
-	shouldFail  bool
-	failureRate float64
-	deliveries  []Message
-	mutex       sync.Mutex
+	logger     *slog.Logger
+	shouldFail bool
+	deliveries []Message
+	mutex      sync.Mutex
 }
 
 // NewMockDeliveryHandler creates a new mock delivery handler for testing

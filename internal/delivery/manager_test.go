@@ -444,9 +444,7 @@ func TestCreateTLSConfig(t *testing.T) {
 
 		if tlsConfig == nil {
 			t.Error("TLS config should not be nil")
-		}
-
-		if tlsConfig.MinVersion == 0 {
+		} else if tlsConfig.MinVersion == 0 {
 			t.Error("TLS min version should be set")
 		}
 	})

@@ -122,19 +122,8 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Ses
 }
 
 func (s *Session) write(msg string) error {
-	_, err := s.writer.WriteString(msg)
-	if err != nil {
-		return err
-	}
-	return s.writer.Flush()
-}
-
-// writeOrLog writes a message and logs any error, but doesn't return it
-// This is useful for response messages where we want to continue even if write fails
-func (s *Session) writeOrLog(msg string) {
-	if err := s.write(msg); err != nil {
-		s.logger.Warn("failed to write response", "message", msg, "error", err)
-	}
+	_, err := s.conn.Write([]byte(msg))
+	return err
 }
 
 func (s *Session) Handle() error {

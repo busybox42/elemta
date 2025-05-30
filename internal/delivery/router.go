@@ -228,7 +228,7 @@ func (r *Router) ruleMatches(rule *RoutingRule, msg *Message, domain string, rec
 
 		matched := false
 		for _, ruleDomain := range rule.FromDomain {
-			if strings.ToLower(ruleDomain) == fromDomain {
+			if strings.EqualFold(ruleDomain, fromDomain) {
 				matched = true
 				break
 			}
@@ -242,7 +242,7 @@ func (r *Router) ruleMatches(rule *RoutingRule, msg *Message, domain string, rec
 	if len(rule.ToDomain) > 0 {
 		matched := false
 		for _, ruleDomain := range rule.ToDomain {
-			if strings.ToLower(ruleDomain) == domain {
+			if strings.EqualFold(ruleDomain, domain) {
 				matched = true
 				break
 			}
@@ -256,7 +256,7 @@ func (r *Router) ruleMatches(rule *RoutingRule, msg *Message, domain string, rec
 	if len(rule.FromAddress) > 0 {
 		matched := false
 		for _, ruleAddr := range rule.FromAddress {
-			if strings.ToLower(ruleAddr) == strings.ToLower(msg.From) {
+			if strings.EqualFold(ruleAddr, msg.From) {
 				matched = true
 				break
 			}
@@ -271,7 +271,7 @@ func (r *Router) ruleMatches(rule *RoutingRule, msg *Message, domain string, rec
 		matched := false
 		for _, ruleAddr := range rule.ToAddress {
 			for _, recipient := range recipients {
-				if strings.ToLower(ruleAddr) == strings.ToLower(recipient) {
+				if strings.EqualFold(ruleAddr, recipient) {
 					matched = true
 					break
 				}

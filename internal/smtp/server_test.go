@@ -1,7 +1,6 @@
 package smtp
 
 import (
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -11,7 +10,7 @@ import (
 
 func TestNewServer(t *testing.T) {
 	// Create temporary directory for test
-	tempDir, err := ioutil.TempDir("", "elemta-server-test")
+	tempDir, err := os.MkdirTemp("", "elemta-server-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -25,7 +24,7 @@ func TestNewServer(t *testing.T) {
 
 	// Create SQLite database file for auth testing
 	dbPath := filepath.Join(tempDir, "auth.db")
-	if err := ioutil.WriteFile(dbPath, []byte{}, 0644); err != nil {
+	if err := os.WriteFile(dbPath, []byte{}, 0644); err != nil {
 		t.Fatalf("Failed to create test db file: %v", err)
 	}
 
@@ -97,7 +96,7 @@ func TestNewServer(t *testing.T) {
 
 func TestServerStartAndStop(t *testing.T) {
 	// Create temporary directory for test
-	tempDir, err := ioutil.TempDir("", "elemta-server-start-test")
+	tempDir, err := os.MkdirTemp("", "elemta-server-start-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -166,7 +165,7 @@ func TestServerStartAndStop(t *testing.T) {
 
 func TestServerHandleConnection(t *testing.T) {
 	// Create temporary directory for test
-	tempDir, err := ioutil.TempDir("", "elemta-server-conn-test")
+	tempDir, err := os.MkdirTemp("", "elemta-server-conn-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}

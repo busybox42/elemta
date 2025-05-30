@@ -34,15 +34,14 @@ type HostPool struct {
 
 // PooledConnection wraps a network connection with metadata
 type PooledConnection struct {
-	conn         net.Conn
-	host         string
-	port         int
-	createdAt    time.Time
-	lastUsed     time.Time
-	usageCount   int64
-	healthy      bool
-	inUse        bool
-	capabilities []string
+	conn       net.Conn
+	host       string
+	port       int
+	createdAt  time.Time
+	lastUsed   time.Time
+	usageCount int64
+	healthy    bool
+	inUse      bool
 }
 
 // PoolMetrics tracks connection pool statistics
