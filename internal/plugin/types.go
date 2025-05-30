@@ -24,6 +24,7 @@ const (
 	PluginTypeRateLimit  = "ratelimit"  // Rate limiting
 	PluginTypeGreylist   = "greylist"   // Greylisting
 	PluginTypeReputation = "reputation" // IP/domain reputation
+	PluginTypeSecurity   = "security"   // Security plugins (rate limiting, greylisting, etc.)
 	PluginTypeArchive    = "archive"    // Message archiving
 	PluginTypeFilter     = "filter"     // Content filtering
 	PluginTypeRouting    = "routing"    // Message routing
