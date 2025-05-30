@@ -368,15 +368,19 @@ func (cp *ConnectionPool) removePooledConnection(pool *HostPool, target *PooledC
 
 // isConnectionHealthy checks if a connection is still healthy
 func (cp *ConnectionPool) isConnectionHealthy(conn *PooledConnection) bool {
-	// Basic health check - set a short deadline and try to read
-	conn.conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	// Set a very short read deadline to check if the connection is still alive
+	if err := conn.conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
+		cp.logger.Warn("Failed to set read deadline for health check", slog.String("error", err.Error()))
+		return false
+	}
 
-	// Try to read one byte to check if connection is alive
-	buffer := make([]byte, 1)
-	_, err := conn.conn.Read(buffer)
+	// Try to read one byte (this should timeout immediately on a healthy connection)
+	_, err := conn.conn.Read(make([]byte, 1))
 
-	// Reset deadline
-	conn.conn.SetReadDeadline(time.Time{})
+	// Reset the read deadline
+	if resetErr := conn.conn.SetReadDeadline(time.Time{}); resetErr != nil {
+		cp.logger.Warn("Failed to reset read deadline after health check", slog.String("error", resetErr.Error()))
+	}
 
 	// If we get a timeout, connection is likely healthy (no data to read)
 	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {

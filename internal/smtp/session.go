@@ -126,6 +126,17 @@ func (s *Session) write(msg string) error {
 	return err
 }
 
+// writeWithLog writes a message and logs any errors, but doesn't return error
+// Used for SMTP response where we can't meaningfully handle write errors
+func (s *Session) writeWithLog(msg string) {
+	if err := s.write(msg); err != nil {
+		s.logger.Error("Failed to write SMTP response",
+			slog.String("message", msg),
+			slog.String("error", err.Error()),
+		)
+	}
+}
+
 func (s *Session) Handle() error {
 	s.logger.Info("starting new session")
 
@@ -162,7 +173,7 @@ func (s *Session) Handle() error {
 				s.logger.Warn("command flooding detected",
 					"commands", commandCount,
 					"period_seconds", elapsed.Seconds())
-				s.write("421 4.7.0 Too many commands, slow down\r\n")
+				s.writeWithLog("421 4.7.0 Too many commands, slow down\r\n")
 				return errors.New("command flooding detected")
 			}
 			// Reset counter if we're outside the flood period
@@ -179,7 +190,7 @@ func (s *Session) Handle() error {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				s.logger.Warn("session timeout, closing connection",
 					"timeout_seconds", timeout.Seconds())
-				s.write("421 4.4.2 Connection timed out\r\n")
+				s.writeWithLog("421 4.4.2 Connection timed out\r\n")
 				return fmt.Errorf("session timeout after %v", timeout)
 			}
 			s.logger.Error("read error", "error", err)
@@ -192,7 +203,7 @@ func (s *Session) Handle() error {
 		// Parse the command verb (first word) and arguments separately
 		parts := strings.Fields(line)
 		if len(parts) == 0 {
-			s.write("500 5.5.2 Invalid command\r\n")
+			s.writeWithLog("500 5.5.2 Invalid command\r\n")
 			continue
 		}
 
@@ -202,7 +213,7 @@ func (s *Session) Handle() error {
 		switch {
 		case verb == "QUIT":
 			s.logger.Info("client quit")
-			s.write("221 2.0.0 Goodbye\r\n")
+			s.writeWithLog("221 2.0.0 Goodbye\r\n")
 			return nil
 
 		case verb == "HELO" || verb == "EHLO":
@@ -219,34 +230,34 @@ func (s *Session) Handle() error {
 			// Respond with different formats for HELO vs EHLO (per RFC)
 			if verb == "HELO" {
 				// Simple response for HELO as per RFC 5321
-				s.write("250 " + s.config.Hostname + "\r\n")
+				s.writeWithLog("250 " + s.config.Hostname + "\r\n")
 			} else {
 				// Multi-line response for EHLO as per RFC 5321
-				s.write("250-" + s.config.Hostname + " greets " + clientIdentity + "\r\n")
+				s.writeWithLog("250-" + s.config.Hostname + " greets " + clientIdentity + "\r\n")
 
 				// RFC 1870 SIZE extension
-				s.write("250-SIZE " + strconv.FormatInt(s.config.MaxSize, 10) + "\r\n")
+				s.writeWithLog("250-SIZE " + strconv.FormatInt(s.config.MaxSize, 10) + "\r\n")
 
 				// RFC 6152 8BITMIME extension
-				s.write("250-8BITMIME\r\n")
+				s.writeWithLog("250-8BITMIME\r\n")
 
 				// RFC 2920 PIPELINING extension
-				s.write("250-PIPELINING\r\n")
+				s.writeWithLog("250-PIPELINING\r\n")
 
 				// RFC 3463 Enhanced status codes
-				s.write("250-ENHANCEDSTATUSCODES\r\n")
+				s.writeWithLog("250-ENHANCEDSTATUSCODES\r\n")
 
 				// RFC 2034 HELP
-				s.write("250-HELP\r\n")
+				s.writeWithLog("250-HELP\r\n")
 
 				// RFC 4954 CHUNKING (if enabled)
 				if s.config.DevMode {
-					s.write("250-CHUNKING\r\n")
+					s.writeWithLog("250-CHUNKING\r\n")
 				}
 
 				// RFC 2821 STARTTLS (if enabled)
 				if s.config.TLS != nil && s.config.TLS.Enabled && s.config.TLS.EnableStartTLS && !s.tls {
-					s.write("250-STARTTLS\r\n")
+					s.writeWithLog("250-STARTTLS\r\n")
 				}
 
 				// RFC 4954 AUTH (if enabled)
@@ -257,36 +268,36 @@ func (s *Session) Handle() error {
 						for i, method := range methods {
 							authMethods[i] = string(method)
 						}
-						s.write("250-AUTH " + strings.Join(authMethods, " ") + "\r\n")
+						s.writeWithLog("250-AUTH " + strings.Join(authMethods, " ") + "\r\n")
 					}
 				}
 
 				// RFC 3030 BINARYMIME (if CHUNKING is supported)
 				if s.config.DevMode {
-					s.write("250-BINARYMIME\r\n")
+					s.writeWithLog("250-BINARYMIME\r\n")
 				}
 
 				// The last line must have a space instead of a dash after the code
-				s.write("250 SMTPUTF8\r\n")
+				s.writeWithLog("250 SMTPUTF8\r\n")
 			}
 
 		case verb == "STARTTLS":
 			if s.tls {
-				s.write("503 5.5.1 TLS already active\r\n")
+				s.writeWithLog("503 5.5.1 TLS already active\r\n")
 				continue
 			}
 
 			if s.config.TLS == nil || !s.config.TLS.Enabled {
-				s.write("454 4.7.0 TLS not available\r\n")
+				s.writeWithLog("454 4.7.0 TLS not available\r\n")
 				continue
 			}
 
 			if s.tlsManager == nil {
-				s.write("454 4.7.0 TLS manager not available\r\n")
+				s.writeWithLog("454 4.7.0 TLS manager not available\r\n")
 				continue
 			}
 
-			s.write("220 2.0.0 Ready to start TLS\r\n")
+			s.writeWithLog("220 2.0.0 Ready to start TLS\r\n")
 
 			// Wrap the connection with TLS
 			if err := s.handleSTARTTLS(); err != nil {
@@ -302,18 +313,18 @@ func (s *Session) Handle() error {
 			// Pass the entire command line to handleAuth
 			if err := s.handleAuth(line); err != nil {
 				s.logger.Error("authentication error", "error", err)
-				s.write("535 5.7.8 Authentication failed\r\n")
+				s.writeWithLog("535 5.7.8 Authentication failed\r\n")
 			}
 
 		case verb == "MAIL" || strings.HasPrefix(line, "MAIL FROM:") || strings.HasPrefix(line, "mail from:"):
 			// Check if authentication is required but not authenticated
 			if s.authenticator != nil && s.authenticator.IsRequired() && !s.authenticated {
-				s.write("530 5.7.0 Authentication required\r\n")
+				s.writeWithLog("530 5.7.0 Authentication required\r\n")
 				continue
 			}
 
 			if s.state != INIT {
-				s.write("503 5.5.1 Bad sequence of commands\r\n")
+				s.writeWithLog("503 5.5.1 Bad sequence of commands\r\n")
 				continue
 			}
 
@@ -321,7 +332,7 @@ func (s *Session) Handle() error {
 
 		case verb == "RCPT" || strings.HasPrefix(line, "RCPT TO:") || strings.HasPrefix(line, "rcpt to:"):
 			if s.state != MAIL && s.state != RCPT {
-				s.write("503 5.5.1 Bad sequence of commands\r\n")
+				s.writeWithLog("503 5.5.1 Bad sequence of commands\r\n")
 				continue
 			}
 
@@ -329,12 +340,12 @@ func (s *Session) Handle() error {
 
 		case verb == "DATA":
 			if s.state != RCPT {
-				s.write("503 5.5.1 Bad sequence of commands\r\n")
+				s.writeWithLog("503 5.5.1 Bad sequence of commands\r\n")
 				continue
 			}
 
 			// Inform client to start sending data
-			s.write("354 Start mail input; end with <CRLF>.<CRLF>\r\n")
+			s.writeWithLog("354 Start mail input; end with <CRLF>.<CRLF>\r\n")
 
 			// Read the message data
 			data, err := s.readData()
@@ -342,10 +353,10 @@ func (s *Session) Handle() error {
 				// Handle different error types with appropriate responses
 				if strings.Contains(err.Error(), "message too large") {
 					s.logger.Error("message size exceeded", "error", err)
-					s.write("552 5.3.4 Message size exceeds fixed maximum message size\r\n")
+					s.writeWithLog("552 5.3.4 Message size exceeds fixed maximum message size\r\n")
 				} else {
 					s.logger.Error("data read error", "error", err)
-					s.write("451 4.3.0 Error processing message data\r\n")
+					s.writeWithLog("451 4.3.0 Error processing message data\r\n")
 				}
 				continue
 			}
@@ -357,7 +368,7 @@ func (s *Session) Handle() error {
 
 			// Before saving, validate message has required headers
 			if !s.validateMessageHeaders() {
-				s.write("554 5.6.0 Message has invalid headers\r\n")
+				s.writeWithLog("554 5.6.0 Message has invalid headers\r\n")
 				continue
 			}
 
@@ -369,10 +380,10 @@ func (s *Session) Handle() error {
 				} else if strings.Contains(err.Error(), "spam") {
 					// Error already sent by saveMessage()
 				} else if strings.Contains(err.Error(), "relay not allowed") {
-					s.write("550 5.7.1 Relaying denied\r\n")
+					s.writeWithLog("550 5.7.1 Relaying denied\r\n")
 				} else {
 					s.logger.Error("save message error", "error", err)
-					s.write("451 4.3.0 Error saving message\r\n")
+					s.writeWithLog("451 4.3.0 Error saving message\r\n")
 				}
 				continue
 			}
@@ -380,27 +391,27 @@ func (s *Session) Handle() error {
 			// Set state back to INIT and report success with message ID
 			s.state = INIT
 			s.logger.Info("message accepted", "id", s.message.id)
-			s.write(fmt.Sprintf("250 2.0.0 Ok: message %s queued\r\n", s.message.id))
+			s.writeWithLog(fmt.Sprintf("250 2.0.0 Ok: message %s queued\r\n", s.message.id))
 
 		case verb == "RSET":
 			// Reset message and state
 			s.message = NewMessage()
 			s.state = INIT
-			s.write("250 2.0.0 Ok: reset state\r\n")
+			s.writeWithLog("250 2.0.0 Ok: reset state\r\n")
 
 		case verb == "NOOP":
-			s.write("250 2.0.0 Ok\r\n")
+			s.writeWithLog("250 2.0.0 Ok\r\n")
 
 		case verb == "VRFY":
 			// We don't support VRFY for security reasons
-			s.write("252 2.1.5 Cannot verify user\r\n")
+			s.writeWithLog("252 2.1.5 Cannot verify user\r\n")
 
 		case verb == "EXPN":
 			// We don't support EXPN for security reasons
-			s.write("252 2.1.5 Cannot expand list\r\n")
+			s.writeWithLog("252 2.1.5 Cannot expand list\r\n")
 
 		case verb == "HELP":
-			s.write("214 2.0.0 SMTP server ready\r\n")
+			s.writeWithLog("214 2.0.0 SMTP server ready\r\n")
 
 		case strings.HasPrefix(verb, "XDEBUG"):
 			s.logger.Info("xdebug command", "command", line)
@@ -408,7 +419,7 @@ func (s *Session) Handle() error {
 
 		default:
 			s.logger.Warn("unknown command", "command", line)
-			s.write("500 5.5.2 Command not recognized\r\n")
+			s.writeWithLog("500 5.5.2 Command not recognized\r\n")
 		}
 	}
 }
@@ -456,7 +467,7 @@ func (s *Session) handleXDEBUG(cmd string) {
 	}
 
 	if args == "" {
-		s.write("250-Debug information:\r\n")
+		s.writeWithLog("250-Debug information:\r\n")
 
 		// Generate a stable session ID for debugging
 		sessionID, ok := s.Context.Get("session_id")
@@ -466,54 +477,54 @@ func (s *Session) handleXDEBUG(cmd string) {
 			s.Context.Set("session_id", sessionID)
 		}
 
-		s.write("250-Session ID: " + sessionID.(string) + "\r\n")
-		s.write("250-Client IP: " + s.conn.RemoteAddr().String() + "\r\n")
-		s.write("250-Hostname: " + s.config.Hostname + "\r\n")
-		s.write("250-State: " + stateToString(s.state) + "\r\n")
+		s.writeWithLog("250-Session ID: " + sessionID.(string) + "\r\n")
+		s.writeWithLog("250-Client IP: " + s.conn.RemoteAddr().String() + "\r\n")
+		s.writeWithLog("250-Hostname: " + s.config.Hostname + "\r\n")
+		s.writeWithLog("250-State: " + stateToString(s.state) + "\r\n")
 
 		// Handle nil message case properly
 		if s.message != nil {
-			s.write("250-Mail From: " + s.message.from + "\r\n")
-			s.write("250-Rcpt To: " + strings.Join(s.message.to, ", ") + "\r\n")
-			s.write("250-Message ID: " + s.message.id + "\r\n")
-			s.write("250-Message Size: " + strconv.Itoa(len(s.message.data)) + " bytes\r\n")
+			s.writeWithLog("250-Mail From: " + s.message.from + "\r\n")
+			s.writeWithLog("250-Rcpt To: " + strings.Join(s.message.to, ", ") + "\r\n")
+			s.writeWithLog("250-Message ID: " + s.message.id + "\r\n")
+			s.writeWithLog("250-Message Size: " + strconv.Itoa(len(s.message.data)) + " bytes\r\n")
 
 			// Add plugin scan information if available
 			if s.builtinPlugins != nil && s.message.data != nil && len(s.message.data) > 0 {
-				s.write("250-Plugin Scans:\r\n")
+				s.writeWithLog("250-Plugin Scans:\r\n")
 
 				// ClamAV virus scan results
 				clean, infection, err := s.builtinPlugins.ScanForVirus(s.message.data, s.message.id)
 				if err != nil {
-					s.write("250-  ClamAV: Error - " + err.Error() + "\r\n")
+					s.writeWithLog("250-  ClamAV: Error - " + err.Error() + "\r\n")
 				} else if !clean {
-					s.write("250-  ClamAV: Virus detected - " + infection + "\r\n")
+					s.writeWithLog("250-  ClamAV: Virus detected - " + infection + "\r\n")
 				} else {
-					s.write("250-  ClamAV: Clean\r\n")
+					s.writeWithLog("250-  ClamAV: Clean\r\n")
 				}
 
 				// Rspamd spam scan results
 				clean, score, rules, err := s.builtinPlugins.ScanForSpam(s.message.data, s.message.id)
 				if err != nil {
-					s.write("250-  Rspamd: Error - " + err.Error() + "\r\n")
+					s.writeWithLog("250-  Rspamd: Error - " + err.Error() + "\r\n")
 				} else if !clean {
 					rulesList := ""
 					if len(rules) > 0 {
 						rulesList = " (" + strings.Join(rules, ", ") + ")"
 					}
-					s.write(fmt.Sprintf("250-  Rspamd: Spam detected - Score: %.2f%s\r\n", score, rulesList))
+					s.writeWithLog(fmt.Sprintf("250-  Rspamd: Spam detected - Score: %.2f%s\r\n", score, rulesList))
 				} else {
-					s.write(fmt.Sprintf("250-  Rspamd: Clean - Score: %.2f\r\n", score))
+					s.writeWithLog(fmt.Sprintf("250-  Rspamd: Clean - Score: %.2f\r\n", score))
 				}
 			}
 		} else {
-			s.write("250-Mail From: <none>\r\n")
-			s.write("250-Rcpt To: <none>\r\n")
-			s.write("250-Message ID: <none>\r\n")
-			s.write("250-Message Size: 0 bytes\r\n")
+			s.writeWithLog("250-Mail From: <none>\r\n")
+			s.writeWithLog("250-Rcpt To: <none>\r\n")
+			s.writeWithLog("250-Message ID: <none>\r\n")
+			s.writeWithLog("250-Message Size: 0 bytes\r\n")
 		}
 
-		s.write("250 Context: " + s.Context.Dump() + "\r\n")
+		s.writeWithLog("250 Context: " + s.Context.Dump() + "\r\n")
 		return
 	}
 
@@ -522,19 +533,19 @@ func (s *Session) handleXDEBUG(cmd string) {
 
 	switch subCmd {
 	case "HELP":
-		s.write("250-XDEBUG Commands:\r\n")
-		s.write("250-XDEBUG - Show all debug information\r\n")
-		s.write("250-XDEBUG CONTEXT - Show context information\r\n")
-		s.write("250-XDEBUG CONTEXT GET <key> - Get a context value\r\n")
-		s.write("250-XDEBUG CONTEXT SET <key> <value> - Set a context value\r\n")
-		s.write("250-XDEBUG CONTEXT DELETE <key> - Delete a context value\r\n")
-		s.write("250-XDEBUG CONTEXT CLEAR - Clear all context values\r\n")
-		s.write("250 XDEBUG HELP - Show this help message\r\n")
+		s.writeWithLog("250-XDEBUG Commands:\r\n")
+		s.writeWithLog("250-XDEBUG - Show all debug information\r\n")
+		s.writeWithLog("250-XDEBUG CONTEXT - Show context information\r\n")
+		s.writeWithLog("250-XDEBUG CONTEXT GET <key> - Get a context value\r\n")
+		s.writeWithLog("250-XDEBUG CONTEXT SET <key> <value> - Set a context value\r\n")
+		s.writeWithLog("250-XDEBUG CONTEXT DELETE <key> - Delete a context value\r\n")
+		s.writeWithLog("250-XDEBUG CONTEXT CLEAR - Clear all context values\r\n")
+		s.writeWithLog("250 XDEBUG HELP - Show this help message\r\n")
 
 	case "CONTEXT":
 		if len(parts) == 1 {
-			s.write("250-Context dump:\r\n")
-			s.write("250 " + s.Context.Dump() + "\r\n")
+			s.writeWithLog("250-Context dump:\r\n")
+			s.writeWithLog("250 " + s.Context.Dump() + "\r\n")
 			return
 		}
 
@@ -545,50 +556,50 @@ func (s *Session) handleXDEBUG(cmd string) {
 		switch contextOp {
 		case "GET":
 			if len(contextParts) < 2 {
-				s.write("501 Missing key\r\n")
+				s.writeWithLog("501 Missing key\r\n")
 				return
 			}
 			key := strings.TrimSpace(contextParts[1])
 			if value, ok := s.Context.Get(key); ok {
-				s.write("250 " + key + " = " + value.(string) + "\r\n")
+				s.writeWithLog("250 " + key + " = " + value.(string) + "\r\n")
 			} else {
-				s.write("250 Key not found: " + key + "\r\n")
+				s.writeWithLog("250 Key not found: " + key + "\r\n")
 			}
 
 		case "SET":
 			if len(contextParts) < 2 {
-				s.write("501 Missing key and value\r\n")
+				s.writeWithLog("501 Missing key and value\r\n")
 				return
 			}
 			keyValue := strings.SplitN(contextParts[1], " ", 2)
 			if len(keyValue) < 2 {
-				s.write("501 Missing value\r\n")
+				s.writeWithLog("501 Missing value\r\n")
 				return
 			}
 			key := strings.TrimSpace(keyValue[0])
 			value := strings.TrimSpace(keyValue[1])
 			s.Context.Set(key, value)
-			s.write("250 Set " + key + " = " + value + "\r\n")
+			s.writeWithLog("250 Set " + key + " = " + value + "\r\n")
 
 		case "DELETE":
 			if len(contextParts) < 2 {
-				s.write("501 Missing key\r\n")
+				s.writeWithLog("501 Missing key\r\n")
 				return
 			}
 			key := strings.TrimSpace(contextParts[1])
 			s.Context.Delete(key)
-			s.write("250 Deleted key: " + key + "\r\n")
+			s.writeWithLog("250 Deleted key: " + key + "\r\n")
 
 		case "CLEAR":
 			s.Context.Clear()
-			s.write("250 Context cleared\r\n")
+			s.writeWithLog("250 Context cleared\r\n")
 
 		default:
-			s.write("501 Unknown context operation: " + contextOp + "\r\n")
+			s.writeWithLog("501 Unknown context operation: " + contextOp + "\r\n")
 		}
 
 	default:
-		s.write("501 Unknown XDEBUG command: " + subCmd + "\r\n")
+		s.writeWithLog("501 Unknown XDEBUG command: " + subCmd + "\r\n")
 	}
 }
 
@@ -705,13 +716,13 @@ func (s *Session) saveMessage() error {
 		if err != nil {
 			s.logger.Warn("virus scan failed", "error", err)
 			if s.config.Antivirus != nil && s.config.Antivirus.RejectOnFailure {
-				s.write("554 5.7.1 Unable to scan for viruses\r\n")
+				s.writeWithLog("554 5.7.1 Unable to scan for viruses\r\n")
 				return errors.New("virus scan failed")
 			}
 		} else if !clean {
 			// Message contains virus
 			s.logger.Warn("virus detected", "virus", infection)
-			s.write(fmt.Sprintf("554 5.7.1 Message contains a virus: %s\r\n", infection))
+			s.writeWithLog(fmt.Sprintf("554 5.7.1 Message contains a virus: %s\r\n", infection))
 			return errors.New("message contains virus")
 		}
 	}
@@ -723,7 +734,7 @@ func (s *Session) saveMessage() error {
 		if err != nil {
 			s.logger.Warn("spam scan failed", "error", err)
 			if s.config.Antispam != nil && s.config.Antispam.RejectOnSpam {
-				s.write("554 5.7.1 Unable to scan for spam\r\n")
+				s.writeWithLog("554 5.7.1 Unable to scan for spam\r\n")
 				return errors.New("spam scan failed")
 			}
 		} else if !clean {
@@ -733,7 +744,7 @@ func (s *Session) saveMessage() error {
 			if len(rules) > 0 {
 				rulesList = " (" + strings.Join(rules, ", ") + ")"
 			}
-			s.write(fmt.Sprintf("554 5.7.1 Message identified as spam (score %.2f)%s\r\n", score, rulesList))
+			s.writeWithLog(fmt.Sprintf("554 5.7.1 Message identified as spam (score %.2f)%s\r\n", score, rulesList))
 			return errors.New("message is spam")
 		} else {
 			s.logger.Info("message is not spam", "score", score, "rules", rules)
@@ -812,7 +823,7 @@ func (s *Session) handleMailFrom(line string) {
 	// Validate the email address
 	if addr == "" || !validateEmailAddress(addr) {
 		s.logger.Warn("invalid address in MAIL FROM", "command", line)
-		s.write("501 5.1.7 Invalid address format\r\n")
+		s.writeWithLog("501 5.1.7 Invalid address format\r\n")
 		return
 	}
 
@@ -831,13 +842,13 @@ func (s *Session) handleMailFrom(line string) {
 			size, err := strconv.ParseInt(sizeParam, 10, 64)
 			if err != nil {
 				s.logger.Warn("invalid size parameter", "size", sizeParam)
-				s.write("501 5.5.4 Invalid SIZE parameter\r\n")
+				s.writeWithLog("501 5.5.4 Invalid SIZE parameter\r\n")
 				return
 			}
 
 			if size > s.config.MaxSize {
 				s.logger.Warn("message too large", "size", size, "max", s.config.MaxSize)
-				s.write(fmt.Sprintf("552 5.3.4 Message size exceeds limit of %d bytes\r\n", s.config.MaxSize))
+				s.writeWithLog(fmt.Sprintf("552 5.3.4 Message size exceeds limit of %d bytes\r\n", s.config.MaxSize))
 				return
 			}
 		}
@@ -848,7 +859,7 @@ func (s *Session) handleMailFrom(line string) {
 	s.message.from = addr
 	s.state = MAIL
 	s.logger.Info("mail from accepted", "from", addr, "size_param", sizeParam)
-	s.write("250 2.1.0 Sender ok\r\n")
+	s.writeWithLog("250 2.1.0 Sender ok\r\n")
 }
 
 // handleRcptTo handles the RCPT TO command with proper parsing
@@ -859,14 +870,14 @@ func (s *Session) handleRcptTo(line string) {
 	// Validate the email address
 	if addr == "" || !validateEmailAddress(addr) {
 		s.logger.Warn("invalid address in RCPT TO", "command", line)
-		s.write("501 5.1.3 Invalid address format\r\n")
+		s.writeWithLog("501 5.1.3 Invalid address format\r\n")
 		return
 	}
 
 	// Check recipient limit
 	if len(s.message.to) >= 100 {
 		s.logger.Warn("too many recipients", "count", len(s.message.to))
-		s.write("452 4.5.3 Too many recipients\r\n")
+		s.writeWithLog("452 4.5.3 Too many recipients\r\n")
 		return
 	}
 
@@ -874,24 +885,24 @@ func (s *Session) handleRcptTo(line string) {
 	s.message.to = append(s.message.to, addr)
 	s.state = RCPT
 	s.logger.Info("rcpt to accepted", "to", addr, "count", len(s.message.to))
-	s.write("250 2.1.5 Recipient ok\r\n")
+	s.writeWithLog("250 2.1.5 Recipient ok\r\n")
 }
 
 // handleAuth handles the AUTH command
 func (s *Session) handleAuth(cmd string) error {
 	if s.authenticated {
-		s.write("503 5.5.1 Already authenticated\r\n")
+		s.writeWithLog("503 5.5.1 Already authenticated\r\n")
 		return nil
 	}
 
 	if !s.authenticator.IsEnabled() {
-		s.write("503 5.5.1 Authentication not enabled\r\n")
+		s.writeWithLog("503 5.5.1 Authentication not enabled\r\n")
 		return nil
 	}
 
 	parts := strings.Fields(cmd)
 	if len(parts) < 2 {
-		s.write("501 5.5.4 Syntax error in parameters\r\n")
+		s.writeWithLog("501 5.5.4 Syntax error in parameters\r\n")
 		return nil
 	}
 
@@ -904,7 +915,7 @@ func (s *Session) handleAuth(cmd string) error {
 	case AuthMethodCramMD5:
 		return s.handleAuthCramMD5()
 	default:
-		s.write("504 5.5.4 Authentication mechanism not supported\r\n")
+		s.writeWithLog("504 5.5.4 Authentication mechanism not supported\r\n")
 		return nil
 	}
 }
@@ -923,12 +934,12 @@ func (s *Session) handleAuthPlain(cmd string) error {
 			authData = strings.TrimSpace(cmd[len(prefix):])
 			s.logger.Debug("AUTH PLAIN one-step mode", "authData", authData)
 		} else {
-			s.write("501 5.5.4 Invalid AUTH PLAIN format\r\n")
+			s.writeWithLog("501 5.5.4 Invalid AUTH PLAIN format\r\n")
 			return nil
 		}
 	} else {
 		// AUTH PLAIN
-		s.write("334 \r\n")
+		s.writeWithLog("334 \r\n")
 		line, err := s.reader.ReadString('\n')
 		if err != nil {
 			return err
@@ -939,7 +950,7 @@ func (s *Session) handleAuthPlain(cmd string) error {
 
 	data, err := base64.StdEncoding.DecodeString(authData)
 	if err != nil {
-		s.write("501 5.5.2 Invalid base64 encoding\r\n")
+		s.writeWithLog("501 5.5.2 Invalid base64 encoding\r\n")
 		return nil
 	}
 
@@ -949,7 +960,7 @@ func (s *Session) handleAuthPlain(cmd string) error {
 
 	parts = strings.Split(string(data), "\x00")
 	if len(parts) != 3 {
-		s.write("501 5.5.2 Invalid PLAIN authentication data\r\n")
+		s.writeWithLog("501 5.5.2 Invalid PLAIN authentication data\r\n")
 		return nil
 	}
 
@@ -971,7 +982,7 @@ func (s *Session) handleAuthPlain(cmd string) error {
 // handleAuthLogin handles LOGIN authentication
 func (s *Session) handleAuthLogin() error {
 	// Send username challenge
-	s.write("334 " + base64.StdEncoding.EncodeToString([]byte("Username:")) + "\r\n")
+	s.writeWithLog("334 " + base64.StdEncoding.EncodeToString([]byte("Username:")) + "\r\n")
 	line, err := s.reader.ReadString('\n')
 	if err != nil {
 		return err
@@ -979,13 +990,13 @@ func (s *Session) handleAuthLogin() error {
 	usernameB64 := strings.TrimSpace(line)
 	usernameBytes, err := base64.StdEncoding.DecodeString(usernameB64)
 	if err != nil {
-		s.write("501 5.5.2 Invalid base64 encoding\r\n")
+		s.writeWithLog("501 5.5.2 Invalid base64 encoding\r\n")
 		return nil
 	}
 	username := string(usernameBytes)
 
 	// Send password challenge
-	s.write("334 " + base64.StdEncoding.EncodeToString([]byte("Password:")) + "\r\n")
+	s.writeWithLog("334 " + base64.StdEncoding.EncodeToString([]byte("Password:")) + "\r\n")
 	line, err = s.reader.ReadString('\n')
 	if err != nil {
 		return err
@@ -993,7 +1004,7 @@ func (s *Session) handleAuthLogin() error {
 	passwordB64 := strings.TrimSpace(line)
 	passwordBytes, err := base64.StdEncoding.DecodeString(passwordB64)
 	if err != nil {
-		s.write("501 5.5.2 Invalid base64 encoding\r\n")
+		s.writeWithLog("501 5.5.2 Invalid base64 encoding\r\n")
 		return nil
 	}
 	password := string(passwordBytes)
@@ -1013,7 +1024,7 @@ func (s *Session) handleAuthCramMD5() error {
 	// CRAM-MD5 requires plaintext password storage which is a security risk
 	// Most modern systems disable CRAM-MD5 in favor of PLAIN/LOGIN over TLS
 	s.logger.Warn("CRAM-MD5 authentication attempted but disabled for security")
-	s.write("504 5.5.4 CRAM-MD5 authentication mechanism disabled for security reasons\r\n")
+	s.writeWithLog("504 5.5.4 CRAM-MD5 authentication mechanism disabled for security reasons\r\n")
 	return nil
 }
 
@@ -1028,7 +1039,7 @@ func (s *Session) authenticate(username, password string) error {
 	// Perform authentication
 	if s.authenticator == nil {
 		metrics.AuthFailures.Inc()
-		s.write("535 5.7.8 Authentication failed: authenticator not configured\r\n")
+		s.writeWithLog("535 5.7.8 Authentication failed: authenticator not configured\r\n")
 		return errors.New("authenticator not configured")
 	}
 
@@ -1036,14 +1047,14 @@ func (s *Session) authenticate(username, password string) error {
 	if err != nil {
 		s.logger.Error("Authentication failed", "username", username, "error", err)
 		metrics.AuthFailures.Inc()
-		s.write("535 5.7.8 Authentication failed\r\n")
+		s.writeWithLog("535 5.7.8 Authentication failed\r\n")
 		return err
 	}
 
 	if !authenticated {
 		s.logger.Warn("Authentication failed", "username", username)
 		metrics.AuthFailures.Inc()
-		s.write("535 5.7.8 Authentication credentials invalid\r\n")
+		s.writeWithLog("535 5.7.8 Authentication credentials invalid\r\n")
 		return fmt.Errorf("authentication failed for user %s", username)
 	}
 
@@ -1055,7 +1066,7 @@ func (s *Session) authenticate(username, password string) error {
 	metrics.AuthSuccesses.Inc()
 
 	// Send success message
-	s.write("235 2.7.0 Authentication successful\r\n")
+	s.writeWithLog("235 2.7.0 Authentication successful\r\n")
 	return nil
 }
 

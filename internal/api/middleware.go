@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/busybox42/elemta/internal/auth"
@@ -182,7 +183,11 @@ func (am *AuthMiddleware) writeError(w http.ResponseWriter, statusCode int, mess
 		"status":  statusCode,
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		// If JSON encoding fails, fall back to plain text
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintf(w, "Error: %s", message)
+	}
 }
 
 // CORS middleware for handling Cross-Origin Resource Sharing
