@@ -1,4 +1,4 @@
-<img src="images/elemta.png?v=2" alt="Elemta Logo" width="80%">
+![Elemta Logo](images/elemta.png?v=2)
 
 # Elemta - High-Performance SMTP Server
 
