@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elemta MTA Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #3b82f6;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .stat-card h3 {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #1e293b;
+        }
+
+        .queue-section {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+            overflow: hidden;
+        }
+
+        .queue-header {
+            background: #f1f5f9;
+            padding: 1.5rem;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .queue-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .queue-tabs {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .queue-tab {
+            padding: 0.5rem 1rem;
+            background: #e2e8f0;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .queue-tab.active {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .queue-tab:hover:not(.active) {
+            background: #cbd5e1;
+        }
+
+        .queue-content {
+            padding: 1.5rem;
+        }
+
+        .message-list {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .message-item {
+            padding: 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .message-item:hover {
+            border-color: #3b82f6;
+            background: #f8fafc;
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .message-id {
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            background: #f1f5f9;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            color: #475569;
+        }
+
+        .message-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #64748b;
+        }
+
+        .error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .success {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .refresh-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #e2e8f0;
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 0.5rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .priority-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .priority-critical { background: #fef2f2; color: #991b1b; }
+        .priority-high { background: #fef7f3; color: #c2410c; }
+        .priority-normal { background: #f0fdf4; color: #166534; }
+        .priority-low { background: #f8fafc; color: #475569; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Elemta MTA Dashboard</h1>
+            <p>Mail Transfer Agent Management & Monitoring</p>
+        </div>
+
+        <div id="error-message" class="error" style="display: none;"></div>
+        <div id="success-message" class="success" style="display: none;"></div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Active Messages</h3>
+                <div class="value" id="active-count">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Deferred Messages</h3>
+                <div class="value" id="deferred-count">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Hold Messages</h3>
+                <div class="value" id="hold-count">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Failed Messages</h3>
+                <div class="value" id="failed-count">-</div>
+            </div>
+        </div>
+
+        <div class="queue-section">
+            <div class="queue-header">
+                <h2>Message Queues <span id="refresh-indicator" class="refresh-indicator" style="display: none;"></span></h2>
+                <div class="queue-tabs">
+                    <button class="queue-tab active" data-queue="active">Active</button>
+                    <button class="queue-tab" data-queue="deferred">Deferred</button>
+                    <button class="queue-tab" data-queue="hold">Hold</button>
+                    <button class="queue-tab" data-queue="failed">Failed</button>
+                </div>
+            </div>
+            <div class="queue-content">
+                <div class="message-actions" style="margin-bottom: 1rem;">
+                    <button class="btn btn-primary" onclick="refreshQueue()">Refresh</button>
+                    <button class="btn btn-success" onclick="flushQueue()">Flush Queue</button>
+                    <button class="btn btn-danger" onclick="flushAllQueues()">Flush All</button>
+                </div>
+                <div id="queue-content">
+                    <div class="loading">Loading queue data...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentQueue = 'active';
+        let refreshInterval;
+
+        // API endpoints
+        const API_BASE = '/api';
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeEventListeners();
+            loadQueueStats();
+            loadQueue(currentQueue);
+            startAutoRefresh();
+        });
+
+        function initializeEventListeners() {
+            // Queue tab switching
+            document.querySelectorAll('.queue-tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const queue = this.dataset.queue;
+                    switchQueue(queue);
+                });
+            });
+        }
+
+        function switchQueue(queue) {
+            currentQueue = queue;
+            
+            // Update active tab
+            document.querySelectorAll('.queue-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelector(`[data-queue="${queue}"]`).classList.add('active');
+            
+            loadQueue(queue);
+        }
+
+        async function loadQueueStats() {
+            try {
+                const response = await fetch(`${API_BASE}/queue/stats`);
+                const stats = await response.json();
+                
+                document.getElementById('active-count').textContent = stats.active_count || 0;
+                document.getElementById('deferred-count').textContent = stats.deferred_count || 0;
+                document.getElementById('hold-count').textContent = stats.hold_count || 0;
+                document.getElementById('failed-count').textContent = stats.failed_count || 0;
+            } catch (error) {
+                console.error('Error loading queue stats:', error);
+                showError('Failed to load queue statistics');
+            }
+        }
+
+        async function loadQueue(queueType) {
+            showRefreshIndicator(true);
+            
+            try {
+                const response = await fetch(`${API_BASE}/queue/${queueType}`);
+                const messages = await response.json();
+                
+                displayMessages(messages);
+                hideError();
+            } catch (error) {
+                console.error('Error loading queue:', error);
+                showError(`Failed to load ${queueType} queue`);
+                document.getElementById('queue-content').innerHTML = '<div class="error">Failed to load queue data</div>';
+            } finally {
+                showRefreshIndicator(false);
+            }
+        }
+
+        function displayMessages(messages) {
+            const container = document.getElementById('queue-content');
+            
+            if (!messages || messages.length === 0) {
+                container.innerHTML = '<div class="loading">No messages in this queue</div>';
+                return;
+            }
+            
+            const messageList = document.createElement('div');
+            messageList.className = 'message-list';
+            
+            messages.forEach(message => {
+                const messageItem = createMessageItem(message);
+                messageList.appendChild(messageItem);
+            });
+            
+            container.innerHTML = '';
+            container.appendChild(messageList);
+        }
+
+        function createMessageItem(message) {
+            const item = document.createElement('div');
+            item.className = 'message-item';
+            
+            const priority = getPriorityLabel(message.priority);
+            const createdAt = new Date(message.created_at).toLocaleString();
+            const toList = Array.isArray(message.to) ? message.to.join(', ') : message.to;
+            
+            item.innerHTML = `
+                <div class="message-header">
+                    <div>
+                        <span class="message-id">${message.id}</span>
+                        <span class="priority-badge priority-${priority.toLowerCase()}">${priority}</span>
+                    </div>
+                    <div class="message-actions">
+                        <button class="btn btn-primary" onclick="viewMessage('${message.id}')">View</button>
+                        <button class="btn btn-danger" onclick="deleteMessage('${message.id}')">Delete</button>
+                    </div>
+                </div>
+                <div>
+                    <strong>From:</strong> ${message.from || 'Unknown'}<br>
+                    <strong>To:</strong> ${toList || 'Unknown'}<br>
+                    <strong>Subject:</strong> ${message.subject || 'No Subject'}<br>
+                    <strong>Created:</strong> ${createdAt}<br>
+                    <strong>Attempts:</strong> ${message.retry_count || 0}
+                </div>
+            `;
+            
+            return item;
+        }
+
+        function getPriorityLabel(priority) {
+            switch (priority) {
+                case 4: return 'Critical';
+                case 3: return 'High';
+                case 2: return 'Normal';
+                case 1: return 'Low';
+                default: return 'Normal';
+            }
+        }
+
+        async function viewMessage(messageId) {
+            try {
+                const response = await fetch(`${API_BASE}/queue/message/${messageId}`);
+                const message = await response.json();
+                
+                // Create a popup window to display the message
+                const popup = window.open('', '_blank', 'width=800,height=600,scrollbars=yes');
+                popup.document.write(`
+                    <html>
+                    <head><title>Message ${messageId}</title></head>
+                    <body style="font-family: monospace; padding: 20px;">
+                    <h2>Message ${messageId}</h2>
+                    <pre>${message.content || 'No content available'}</pre>
+                    </body>
+                    </html>
+                `);
+                popup.document.close();
+            } catch (error) {
+                console.error('Error viewing message:', error);
+                showError('Failed to load message content');
+            }
+        }
+
+        async function deleteMessage(messageId) {
+            if (!confirm(`Are you sure you want to delete message ${messageId}?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/queue/message/${messageId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    showSuccess(`Message ${messageId} deleted successfully`);
+                    refreshQueue();
+                } else {
+                    throw new Error('Delete request failed');
+                }
+            } catch (error) {
+                console.error('Error deleting message:', error);
+                showError('Failed to delete message');
+            }
+        }
+
+        async function flushQueue() {
+            if (!confirm(`Are you sure you want to flush the ${currentQueue} queue?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/queue/${currentQueue}/flush`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    showSuccess(`${currentQueue} queue flushed successfully`);
+                    refreshQueue();
+                } else {
+                    throw new Error('Flush request failed');
+                }
+            } catch (error) {
+                console.error('Error flushing queue:', error);
+                showError('Failed to flush queue');
+            }
+        }
+
+        async function flushAllQueues() {
+            if (!confirm('Are you sure you want to flush ALL queues? This action cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/queue/all/flush`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    showSuccess('All queues flushed successfully');
+                    refreshQueue();
+                } else {
+                    throw new Error('Flush all request failed');
+                }
+            } catch (error) {
+                console.error('Error flushing all queues:', error);
+                showError('Failed to flush all queues');
+            }
+        }
+
+        function refreshQueue() {
+            loadQueueStats();
+            loadQueue(currentQueue);
+        }
+
+        function startAutoRefresh() {
+            refreshInterval = setInterval(() => {
+                loadQueueStats();
+                loadQueue(currentQueue);
+            }, 30000); // Refresh every 30 seconds
+        }
+
+        function showRefreshIndicator(show) {
+            const indicator = document.getElementById('refresh-indicator');
+            indicator.style.display = show ? 'inline-block' : 'none';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            
+            setTimeout(() => {
+                hideError();
+            }, 5000);
+        }
+
+        function hideError() {
+            document.getElementById('error-message').style.display = 'none';
+        }
+
+        function showSuccess(message) {
+            const successDiv = document.getElementById('success-message');
+            successDiv.textContent = message;
+            successDiv.style.display = 'block';
+            
+            setTimeout(() => {
+                successDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+        });
+    </script>
+</body>
+</html> 

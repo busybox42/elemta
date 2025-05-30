@@ -18,12 +18,14 @@ type Server struct {
 	httpServer *http.Server
 	queueMgr   *queue.Manager
 	listenAddr string
+	webRoot    string
 }
 
 // Config represents API server configuration
 type Config struct {
 	Enabled    bool   `toml:"enabled" json:"enabled"`
 	ListenAddr string `toml:"listen_addr" json:"listen_addr"`
+	WebRoot    string `toml:"web_root" json:"web_root"`
 }
 
 // NewServer creates a new API server
@@ -37,11 +39,17 @@ func NewServer(config *Config, queueDir string) (*Server, error) {
 		listenAddr = "127.0.0.1:8025"
 	}
 
+	webRoot := config.WebRoot
+	if webRoot == "" {
+		webRoot = "./web/static"
+	}
+
 	queueMgr := queue.NewManager(queueDir)
 
 	return &Server{
 		queueMgr:   queueMgr,
 		listenAddr: listenAddr,
+		webRoot:    webRoot,
 	}, nil
 }
 
@@ -49,16 +57,23 @@ func NewServer(config *Config, queueDir string) (*Server, error) {
 func (s *Server) Start() error {
 	r := mux.NewRouter()
 
+	// Serve static files for the web interface
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(s.webRoot))))
+
+	// Serve the main dashboard at root
+	r.HandleFunc("/", s.handleDashboard).Methods("GET")
+	r.HandleFunc("/dashboard", s.handleDashboard).Methods("GET")
+
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
 
-	// Queue management routes
-	api.HandleFunc("/queue", s.handleGetAllQueues).Methods("GET")
-	api.HandleFunc("/queue/{type}", s.handleGetQueue).Methods("GET")
-	api.HandleFunc("/queue/{type}/flush", s.handleFlushQueue).Methods("POST")
+	// Queue management routes - more specific routes first
+	api.HandleFunc("/queue/stats", s.handleGetQueueStats).Methods("GET")
 	api.HandleFunc("/queue/message/{id}", s.handleGetMessage).Methods("GET")
 	api.HandleFunc("/queue/message/{id}", s.handleDeleteMessage).Methods("DELETE")
-	api.HandleFunc("/queue/stats", s.handleGetQueueStats).Methods("GET")
+	api.HandleFunc("/queue/{type}/flush", s.handleFlushQueue).Methods("POST")
+	api.HandleFunc("/queue/{type}", s.handleGetQueue).Methods("GET")
+	api.HandleFunc("/queue", s.handleGetAllQueues).Methods("GET")
 
 	// Create HTTP server
 	s.httpServer = &http.Server{
@@ -204,6 +219,11 @@ func (s *Server) handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetQueueStats(w http.ResponseWriter, r *http.Request) {
 	stats := s.queueMgr.GetStats()
 	writeJSON(w, stats)
+}
+
+// handleDashboard serves the main dashboard page
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, s.webRoot+"/index.html")
 }
 
 // Helper functions
