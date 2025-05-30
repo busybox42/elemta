@@ -11,10 +11,9 @@ Elemta is a high-performance, carrier-grade Mail Transfer Agent (MTA) written in
 - **Security-First Design**: Built-in SPF, DKIM, DMARC, and ARC validation
 - **Modern Queue Management**: Sophisticated queue system with priority, retry, and status tracking
 - **Comprehensive Monitoring**: Detailed metrics and logging with Prometheus and Grafana integration
-- **Containerized Deployment**: Ready for Docker and Kubernetes
+- **Cloud-Native Deployment**: Ready for Docker and Kubernetes
 - **Horizontal Scalability**: Designed to scale out across multiple nodes
 - **API-Driven**: RESTful API for management and monitoring
-- **Native Packages**: Support for RHEL/CentOS 8/9, Debian 11, and Ubuntu 22.04
 - **Flexible Configuration**: Support for both YAML and TOML configuration formats
 - **TLS Encryption**: Built-in support for Let's Encrypt integration
 
@@ -108,62 +107,16 @@ For more information about email authentication, see [Email Authentication Docum
 
 ### Prerequisites
 
-- Go 1.20 or higher
+- Docker and Docker Compose (for containerized deployment)
+- Kubernetes cluster (for Kubernetes deployment)
+- Go 1.20 or higher (for source builds)
 - Git
 
 ### Installation
 
-#### From Source
+Elemta is designed for cloud-native deployment. While source builds are available for development, Docker and Kubernetes are the recommended deployment methods for production environments.
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/elemta/elemta.git
-   cd elemta
-   ```
-
-2. Build the binary:
-   ```bash
-   go build -o elemta cmd/elemta/main.go
-   ```
-
-3. Run the server:
-   ```bash
-   ./elemta -config config/elemta.yaml
-   ```
-
-#### Using Native Packages
-
-We provide native packages for various Linux distributions:
-
-#### RHEL/CentOS 8
-```bash
-sudo dnf install -y https://github.com/elemta/elemta/releases/download/v0.1.0/elemta-0.1.0-1.el8.x86_64.rpm
-```
-
-#### RHEL/CentOS 9
-```bash
-sudo dnf install -y https://github.com/elemta/elemta/releases/download/v0.1.0/elemta-0.1.0-1.el9.x86_64.rpm
-```
-
-#### Debian 11
-```bash
-wget https://github.com/elemta/elemta/releases/download/v0.1.0/elemta_0.1.0-1_amd64.deb
-sudo dpkg -i elemta_0.1.0-1_amd64.deb
-```
-
-#### Ubuntu 22.04
-```bash
-wget https://github.com/elemta/elemta/releases/download/v0.1.0/elemta_0.1.0-1_amd64.deb
-sudo dpkg -i elemta_0.1.0-1_amd64.deb
-```
-
-After installation, you can manage the service using systemd:
-```bash
-sudo systemctl start elemta
-sudo systemctl enable elemta
-```
-
-### Using Docker
+#### Using Docker (Recommended)
 
 For a quick deployment with all components (including ClamAV and Rspamd), you can use Docker:
 
@@ -186,6 +139,40 @@ For a quick deployment with all components (including ClamAV and Rspamd), you ca
    ```bash
    # Send a test email via SMTP
    telnet localhost 2525
+   ```
+
+#### Using Kubernetes
+
+Elemta can be deployed on Kubernetes using the provided manifests:
+
+```bash
+# Deploy Elemta to Kubernetes
+kubectl apply -f k8s/
+
+# Check deployment status
+kubectl get pods -l app=elemta
+
+# Access services
+kubectl port-forward service/elemta-web 8025:8025
+kubectl port-forward service/elemta-smtp 2525:25
+```
+
+#### From Source
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/elemta/elemta.git
+   cd elemta
+   ```
+
+2. Build the binary:
+   ```bash
+   go build -o elemta cmd/elemta/main.go
+   ```
+
+3. Run the server:
+   ```bash
+   ./elemta -config config/elemta.yaml
    ```
 
 ### Configuration
@@ -380,26 +367,6 @@ go mod download
 go build -o elemta cmd/elemta/main.go
 ```
 
-### Building Native Packages
-
-Elemta includes a package builder for creating native packages for various Linux distributions:
-
-```bash
-# Navigate to the package builder directory
-cd linux-package-builder
-
-# Build all packages
-./build_all.sh
-
-# Or build a specific package type
-./build_rpm.sh      # RHEL/CentOS 8
-./build_rhel9.sh    # RHEL/CentOS 9
-./build_debian.sh   # Debian 11
-./build_ubuntu.sh   # Ubuntu 22.04
-```
-
-For more information about the package builder, see [linux-package-builder/README.md](linux-package-builder/README.md).
-
 ### Running Tests
 
 ```bash
@@ -409,6 +376,40 @@ go test ./...
 # Run tests with coverage
 go test -cover ./...
 ```
+
+## Distribution Packages (Future)
+
+While Elemta is currently focused on cloud-native deployment via Docker and Kubernetes, we plan to provide native packages for traditional Linux distributions in the future:
+
+### Planned Package Support
+
+- **RHEL/CentOS 8/9**: RPM packages via `dnf`
+- **Debian 11**: DEB packages via `apt`
+- **Ubuntu 22.04 LTS**: DEB packages via `apt`
+- **Alpine Linux**: APK packages
+- **Arch Linux**: AUR packages
+
+### Package Builder
+
+Elemta includes experimental package building capabilities:
+
+```bash
+# Navigate to the package builder directory
+cd linux-package-builder
+
+# Build experimental packages (not production-ready)
+./build_all.sh
+
+# Or build a specific package type
+./build_rpm.sh      # RHEL/CentOS 8
+./build_rhel9.sh    # RHEL/CentOS 9
+./build_debian.sh   # Debian 11
+./build_ubuntu.sh   # Ubuntu 22.04
+```
+
+**Note**: These packages are currently experimental and not recommended for production use. For production deployments, please use the Docker or Kubernetes deployment methods.
+
+For more information about the package builder, see [linux-package-builder/README.md](linux-package-builder/README.md).
 
 ### Creating Plugins
 
