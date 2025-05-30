@@ -5,10 +5,10 @@
 set -e
 
 echo "Setting up monitoring environment..."
-./scripts/setup-monitoring.sh
+./scripts/monitoring/setup-monitoring.sh
 
 echo "Setting up security monitoring..."
-./scripts/setup-security-monitoring.sh
+./scripts/monitoring/setup-security-monitoring.sh
 
 echo "Updating Prometheus configuration..."
 cat > monitoring/prometheus/prometheus.yml << EOF
@@ -52,4 +52,4 @@ echo "- AlertManager: http://localhost:9093"
 echo "- Rspamd Web Interface: http://localhost:11334"
 
 echo "To verify the deployment, run:"
-echo "  ./scripts/verify-monitoring-stack.sh" 
+echo "  ./scripts/monitoring/verify-monitoring-stack.sh" 

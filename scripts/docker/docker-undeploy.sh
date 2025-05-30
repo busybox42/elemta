@@ -21,6 +21,6 @@ docker volume prune -f
 
 echo "Undeployment complete!"
 echo "To redeploy, run:"
-echo "  ./scripts/setup-monitoring.sh"
-echo "  ./scripts/setup-security-monitoring.sh"
+echo "  ./scripts/monitoring/setup-monitoring.sh"
+echo "  ./scripts/monitoring/setup-security-monitoring.sh"
 echo "  docker-compose -f docker-compose-monitoring.yml up -d" 

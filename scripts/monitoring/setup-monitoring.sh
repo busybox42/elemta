@@ -246,6 +246,6 @@ EOF
 fi
 
 # Make the script executable
-chmod +x scripts/setup-monitoring.sh
+chmod +x scripts/monitoring/setup-monitoring.sh
 
 echo "Monitoring setup complete. You can now run docker-compose -f docker-compose-monitoring.yml up" 
