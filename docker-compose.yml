@@ -69,6 +69,35 @@ services:
       retries: 3
       start_period: 15s
 
+  elemta-web:
+    image: elemta_node:latest
+    container_name: elemta_web
+    restart: unless-stopped
+    ports:
+      - "8025:8025"  # Web UI port
+    volumes:
+      - elemta_queue:/app/queue:ro
+      - elemta_logs:/app/logs:ro
+      - ./web:/app/web:ro
+      - ./config/elemta.db:/app/config/elemta.db:ro
+    environment:
+      - TZ=UTC
+      - NODE_ID=web
+      - ELEMTA_CONFIG_PATH=/app/config/elemta.toml
+    entrypoint: []
+    command: ["/app/elemta", "web", "--listen", "0.0.0.0:8025", "--auth-enabled", "--queue-dir", "/app/queue", "--web-root", "/app/web/static"]
+    networks:
+      - elemta_network
+    depends_on:
+      - elemta-api
+      - elemta
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8025/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
   elemta-clamav:
     image: clamav/clamav:latest
     container_name: elemta-clamav
