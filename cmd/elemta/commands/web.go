@@ -15,6 +15,7 @@ var (
 	webListenAddr string
 	webRoot       string
 	webQueueDir   string
+	authEnabled   bool
 )
 
 var webCmd = &cobra.Command{
@@ -32,14 +33,16 @@ func init() {
 	webCmd.Flags().StringVarP(&webListenAddr, "listen", "l", "127.0.0.1:8025", "Address to listen on")
 	webCmd.Flags().StringVar(&webRoot, "web-root", "./web/static", "Path to web static files")
 	webCmd.Flags().StringVar(&webQueueDir, "queue-dir", "./queue", "Path to queue directory")
+	webCmd.Flags().BoolVar(&authEnabled, "auth-enabled", false, "Enable authentication and authorization")
 }
 
 func runWeb(cmd *cobra.Command, args []string) {
 	// Create API config
 	apiConfig := &api.Config{
-		Enabled:    true,
-		ListenAddr: webListenAddr,
-		WebRoot:    webRoot,
+		Enabled:     true,
+		ListenAddr:  webListenAddr,
+		WebRoot:     webRoot,
+		AuthEnabled: authEnabled,
 	}
 
 	// Create and start API server

@@ -132,7 +132,7 @@ func (a *SMTPAuthenticator) IsRequired() bool {
 
 // GetSupportedMethods returns the supported authentication methods
 func (a *SMTPAuthenticator) GetSupportedMethods() []AuthMethod {
-	return []AuthMethod{AuthMethodPlain, AuthMethodLogin}
+	return []AuthMethod{AuthMethodPlain, AuthMethodLogin, AuthMethodCramMD5}
 }
 
 // Close closes the authenticator and releases resources

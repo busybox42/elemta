@@ -912,6 +912,8 @@ func (s *Session) handleAuth(cmd string) error {
 		return s.handleAuthPlain(cmd)
 	case AuthMethodLogin:
 		return s.handleAuthLogin()
+	case AuthMethodCramMD5:
+		return s.handleAuthCramMD5()
 	default:
 		s.write("504 5.5.4 Authentication mechanism not supported\r\n")
 		return nil
@@ -1014,6 +1016,15 @@ func (s *Session) handleAuthLogin() error {
 		return nil
 	}
 
+	return nil
+}
+
+// handleAuthCramMD5 handles CRAM-MD5 authentication
+func (s *Session) handleAuthCramMD5() error {
+	// CRAM-MD5 requires plaintext password storage which is a security risk
+	// Most modern systems disable CRAM-MD5 in favor of PLAIN/LOGIN over TLS
+	s.logger.Warn("CRAM-MD5 authentication attempted but disabled for security")
+	s.write("504 5.5.4 CRAM-MD5 authentication mechanism disabled for security reasons\r\n")
 	return nil
 }
 

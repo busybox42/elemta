@@ -9,23 +9,31 @@ import (
 	"strings"
 	"time"
 
+	"github.com/busybox42/elemta/internal/auth"
+	"github.com/busybox42/elemta/internal/datasource"
 	"github.com/busybox42/elemta/internal/queue"
 	"github.com/gorilla/mux"
 )
 
 // Server represents an API server for Elemta
 type Server struct {
-	httpServer *http.Server
-	queueMgr   *queue.Manager
-	listenAddr string
-	webRoot    string
+	httpServer     *http.Server
+	queueMgr       *queue.Manager
+	listenAddr     string
+	webRoot        string
+	authSystem     *auth.Auth
+	rbac           *auth.RBAC
+	apiKeyManager  *auth.APIKeyManager
+	sessionManager *auth.SessionManager
+	authMiddleware *AuthMiddleware
 }
 
 // Config represents API server configuration
 type Config struct {
-	Enabled    bool   `toml:"enabled" json:"enabled"`
-	ListenAddr string `toml:"listen_addr" json:"listen_addr"`
-	WebRoot    string `toml:"web_root" json:"web_root"`
+	Enabled     bool   `toml:"enabled" json:"enabled"`
+	ListenAddr  string `toml:"listen_addr" json:"listen_addr"`
+	WebRoot     string `toml:"web_root" json:"web_root"`
+	AuthEnabled bool   `toml:"auth_enabled" json:"auth_enabled"`
 }
 
 // NewServer creates a new API server
@@ -46,32 +54,151 @@ func NewServer(config *Config, queueDir string) (*Server, error) {
 
 	queueMgr := queue.NewManager(queueDir)
 
-	return &Server{
+	server := &Server{
 		queueMgr:   queueMgr,
 		listenAddr: listenAddr,
 		webRoot:    webRoot,
-	}, nil
+	}
+
+	// Initialize authentication if enabled
+	if config.AuthEnabled {
+		if err := server.initializeAuth(); err != nil {
+			return nil, fmt.Errorf("failed to initialize authentication: %w", err)
+		}
+	}
+
+	return server, nil
+}
+
+// initializeAuth initializes the authentication system
+func (s *Server) initializeAuth() error {
+	// Create a mock datasource for demonstration
+	// In production, you'd configure this based on your needs
+	mockDS := datasource.NewMockDataSource("api-auth")
+	if err := mockDS.Connect(); err != nil {
+		return fmt.Errorf("failed to connect to datasource: %w", err)
+	}
+
+	// Create default admin user
+	adminUser := datasource.User{
+		Username: "admin",
+		Password: "$2a$10$Pl9NFlwcWTYXix7cAVhKX.A1KMJLAu0/tuHWcHXfip/p/RY90hIwS", // "password"
+		Email:    "admin@elemta.local",
+		FullName: "System Administrator",
+		IsActive: true,
+		IsAdmin:  true,
+		Groups:   []string{"admin"},
+	}
+	mockDS.AddMockUser(adminUser)
+
+	// Create test user
+	testUser := datasource.User{
+		Username: "user",
+		Password: "$2a$10$Pl9NFlwcWTYXix7cAVhKX.A1KMJLAu0/tuHWcHXfip/p/RY90hIwS", // "password"
+		Email:    "user@elemta.local",
+		FullName: "Test User",
+		IsActive: true,
+		IsAdmin:  false,
+		Groups:   []string{"user"},
+	}
+	mockDS.AddMockUser(testUser)
+
+	// Initialize auth system
+	authConfig := auth.Config{DataSource: mockDS}
+	authSystem, err := auth.New(authConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create auth system: %w", err)
+	}
+
+	// Initialize RBAC
+	rbac := auth.NewRBAC(authSystem)
+
+	// Initialize API key manager
+	apiKeyManager := auth.NewAPIKeyManager(rbac)
+
+	// Initialize session manager
+	sessionConfig := auth.SessionConfig{
+		MaxAge:       24 * time.Hour,
+		CookieName:   "elemta_session",
+		SecureCookie: false, // Set to true in production with HTTPS
+		HTTPOnly:     true,
+		SameSite:     "lax",
+	}
+	sessionManager := auth.NewSessionManager(sessionConfig)
+
+	// Create authentication middleware
+	authMiddleware := NewAuthMiddleware(rbac, apiKeyManager, sessionManager)
+
+	s.authSystem = authSystem
+	s.rbac = rbac
+	s.apiKeyManager = apiKeyManager
+	s.sessionManager = sessionManager
+	s.authMiddleware = authMiddleware
+
+	return nil
 }
 
 // Start starts the API server
 func (s *Server) Start() error {
 	r := mux.NewRouter()
 
+	// Apply global middleware
+	if s.authMiddleware != nil {
+		r.Use(s.authMiddleware.CORS)
+		r.Use(LoggingMiddleware)
+	}
+
 	// Serve static files for the web interface
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(s.webRoot))))
 
-	// Serve the main dashboard at root
+	// Serve the main dashboard at root (no auth required for now)
 	r.HandleFunc("/", s.handleDashboard).Methods("GET")
 	r.HandleFunc("/dashboard", s.handleDashboard).Methods("GET")
+
+	// Authentication routes (if auth is enabled)
+	if s.authMiddleware != nil {
+		auth := r.PathPrefix("/auth").Subrouter()
+		auth.HandleFunc("/login", s.handleLogin).Methods("POST")
+		auth.HandleFunc("/logout", s.handleLogout).Methods("POST")
+		auth.HandleFunc("/me", s.handleMe).Methods("GET")
+
+		// API key management routes (require authentication)
+		apiKeys := r.PathPrefix("/auth/apikeys").Subrouter()
+		apiKeys.Use(s.authMiddleware.RequireAuth)
+		apiKeys.HandleFunc("", s.handleListAPIKeys).Methods("GET")
+		apiKeys.HandleFunc("", s.handleCreateAPIKey).Methods("POST")
+		apiKeys.HandleFunc("/{id}", s.handleGetAPIKey).Methods("GET")
+		apiKeys.HandleFunc("/{id}", s.handleUpdateAPIKey).Methods("PUT")
+		apiKeys.HandleFunc("/{id}", s.handleDeleteAPIKey).Methods("DELETE")
+		apiKeys.HandleFunc("/{id}/revoke", s.handleRevokeAPIKey).Methods("POST")
+	}
 
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
 
+	// Apply authentication middleware to API routes if enabled
+	if s.authMiddleware != nil {
+		// Queue view operations require queue:view permission
+		api.Use(s.authMiddleware.RequirePermission(auth.PermissionQueueView))
+	}
+
 	// Queue management routes - more specific routes first
 	api.HandleFunc("/queue/stats", s.handleGetQueueStats).Methods("GET")
+
+	// Message operations that require higher permissions
+	if s.authMiddleware != nil {
+		// Message deletion requires queue:delete permission
+		deleteHandler := s.authMiddleware.RequirePermission(auth.PermissionQueueDelete)(http.HandlerFunc(s.handleDeleteMessage))
+		api.Handle("/queue/message/{id}", deleteHandler).Methods("DELETE")
+		// Queue flushing requires queue:flush permission
+		flushHandler := s.authMiddleware.RequirePermission(auth.PermissionQueueFlush)(http.HandlerFunc(s.handleFlushQueue))
+		api.Handle("/queue/{type}/flush", flushHandler).Methods("POST")
+	} else {
+		api.HandleFunc("/queue/message/{id}", s.handleDeleteMessage).Methods("DELETE")
+		api.HandleFunc("/queue/{type}/flush", s.handleFlushQueue).Methods("POST")
+	}
+
 	api.HandleFunc("/queue/message/{id}", s.handleGetMessage).Methods("GET")
-	api.HandleFunc("/queue/message/{id}", s.handleDeleteMessage).Methods("DELETE")
-	api.HandleFunc("/queue/{type}/flush", s.handleFlushQueue).Methods("POST")
 	api.HandleFunc("/queue/{type}", s.handleGetQueue).Methods("GET")
 	api.HandleFunc("/queue", s.handleGetAllQueues).Methods("GET")
 
@@ -86,6 +213,9 @@ func (s *Server) Start() error {
 	// Start server in a goroutine
 	go func() {
 		log.Printf("Starting API server on %s", s.listenAddr)
+		if s.authMiddleware != nil {
+			log.Printf("Authentication enabled - default admin:password")
+		}
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("API server error: %v", err)
 		}
@@ -226,6 +356,291 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, s.webRoot+"/index.html")
 }
 
+// Authentication handlers
+
+// handleLogin handles user login
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if s.authSystem == nil {
+		http.Error(w, "Authentication not enabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	var loginReq struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Authenticate user
+	ctx := context.Background()
+	authenticated, err := s.authSystem.Authenticate(ctx, loginReq.Username, loginReq.Password)
+	if err != nil || !authenticated {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	// Create session
+	session, err := s.sessionManager.CreateSession(loginReq.Username, r.UserAgent(), r.RemoteAddr)
+	if err != nil {
+		http.Error(w, "Failed to create session", http.StatusInternalServerError)
+		return
+	}
+
+	// Set session cookie
+	s.sessionManager.SetCookie(w, session.ID)
+
+	// Get user permissions
+	permissions, _ := s.rbac.GetUserPermissions(ctx, loginReq.Username)
+
+	writeJSON(w, map[string]interface{}{
+		"status":      "success",
+		"username":    loginReq.Username,
+		"session_id":  session.ID,
+		"permissions": permissions,
+	})
+}
+
+// handleLogout handles user logout
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if s.sessionManager == nil {
+		http.Error(w, "Authentication not enabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	sessionID := s.sessionManager.GetSessionFromRequest(r)
+	if sessionID != "" {
+		s.sessionManager.RevokeSession(sessionID)
+	}
+
+	// Clear session cookie
+	s.sessionManager.ClearCookie(w)
+
+	writeJSON(w, map[string]string{"status": "success", "message": "Logged out"})
+}
+
+// handleMe returns current user information
+func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
+	if s.authMiddleware == nil {
+		http.Error(w, "Authentication not enabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	authCtx := GetAuthContext(r)
+	if authCtx == nil {
+		http.Error(w, "Not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	// Get user details
+	ctx := context.Background()
+	user, err := s.authSystem.GetUser(ctx, authCtx.Username)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	// Don't return password
+	user.Password = ""
+
+	writeJSON(w, map[string]interface{}{
+		"user":        user,
+		"permissions": authCtx.Permissions,
+		"is_api_key":  authCtx.IsAPIKey,
+	})
+}
+
+// API Key management handlers
+
+// handleListAPIKeys lists API keys for the current user
+func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
+	authCtx := GetAuthContext(r)
+	if authCtx == nil {
+		http.Error(w, "Not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	keys := s.apiKeyManager.ListAPIKeys(authCtx.Username)
+	writeJSON(w, keys)
+}
+
+// handleCreateAPIKey creates a new API key
+func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	authCtx := GetAuthContext(r)
+	if authCtx == nil {
+		http.Error(w, "Not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		Name        string            `json:"name"`
+		Description string            `json:"description"`
+		Permissions []auth.Permission `json:"permissions"`
+		ExpiryDays  *int              `json:"expiry_days,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	var expiryDuration *time.Duration
+	if req.ExpiryDays != nil && *req.ExpiryDays > 0 {
+		duration := time.Duration(*req.ExpiryDays) * 24 * time.Hour
+		expiryDuration = &duration
+	}
+
+	apiKey, keyString, err := s.apiKeyManager.CreateAPIKey(
+		authCtx.Username,
+		req.Name,
+		req.Description,
+		req.Permissions,
+		expiryDuration,
+	)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create API key: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, map[string]interface{}{
+		"api_key": apiKey,
+		"key":     keyString, // Only returned once
+	})
+}
+
+// handleGetAPIKey gets a specific API key
+func (s *Server) handleGetAPIKey(w http.ResponseWriter, r *http.Request) {
+	authCtx := GetAuthContext(r)
+	if authCtx == nil {
+		http.Error(w, "Not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	keyID := vars["id"]
+
+	apiKey, err := s.apiKeyManager.GetAPIKey(keyID)
+	if err != nil {
+		http.Error(w, "API key not found", http.StatusNotFound)
+		return
+	}
+
+	// Users can only see their own keys (unless admin)
+	if apiKey.Username != authCtx.Username && !s.isAdmin(authCtx) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
+	writeJSON(w, apiKey)
+}
+
+// handleUpdateAPIKey updates an API key
+func (s *Server) handleUpdateAPIKey(w http.ResponseWriter, r *http.Request) {
+	authCtx := GetAuthContext(r)
+	if authCtx == nil {
+		http.Error(w, "Not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	keyID := vars["id"]
+
+	var req struct {
+		Name        string            `json:"name"`
+		Description string            `json:"description"`
+		Permissions []auth.Permission `json:"permissions"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Check ownership
+	apiKey, err := s.apiKeyManager.GetAPIKey(keyID)
+	if err != nil {
+		http.Error(w, "API key not found", http.StatusNotFound)
+		return
+	}
+
+	if apiKey.Username != authCtx.Username && !s.isAdmin(authCtx) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
+	if err := s.apiKeyManager.UpdateAPIKey(keyID, req.Name, req.Description, req.Permissions); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update API key: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, map[string]string{"status": "success", "message": "API key updated"})
+}
+
+// handleDeleteAPIKey deletes an API key
+func (s *Server) handleDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
+	authCtx := GetAuthContext(r)
+	if authCtx == nil {
+		http.Error(w, "Not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	keyID := vars["id"]
+
+	// Check ownership
+	apiKey, err := s.apiKeyManager.GetAPIKey(keyID)
+	if err != nil {
+		http.Error(w, "API key not found", http.StatusNotFound)
+		return
+	}
+
+	if apiKey.Username != authCtx.Username && !s.isAdmin(authCtx) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
+	if err := s.apiKeyManager.DeleteAPIKey(keyID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to delete API key: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]string{"status": "success", "message": "API key deleted"})
+}
+
+// handleRevokeAPIKey revokes an API key
+func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
+	authCtx := GetAuthContext(r)
+	if authCtx == nil {
+		http.Error(w, "Not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	keyID := vars["id"]
+
+	// Check ownership
+	apiKey, err := s.apiKeyManager.GetAPIKey(keyID)
+	if err != nil {
+		http.Error(w, "API key not found", http.StatusNotFound)
+		return
+	}
+
+	if apiKey.Username != authCtx.Username && !s.isAdmin(authCtx) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
+	if err := s.apiKeyManager.RevokeAPIKey(keyID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to revoke API key: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]string{"status": "success", "message": "API key revoked"})
+}
+
 // Helper functions
 
 // writeJSON writes a JSON response
@@ -253,4 +668,14 @@ func parseQueueType(qType string) (queue.QueueType, error) {
 	default:
 		return "", fmt.Errorf("invalid queue type: %s", qType)
 	}
+}
+
+// isAdmin checks if the user has admin permissions
+func (s *Server) isAdmin(authCtx *AuthContext) bool {
+	for _, perm := range authCtx.Permissions {
+		if perm == auth.PermissionSystemAdmin {
+			return true
+		}
+	}
+	return false
 }
