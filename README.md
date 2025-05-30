@@ -167,26 +167,24 @@ For a quick deployment with all components (including ClamAV and Rspamd), you ca
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/elemta/elemta.git
+   git clone https://github.com/busybox42/elemta.git
    cd elemta
-   ```
-
-2. Build and start the containers:
-   ```bash
    docker-compose up -d
    ```
 
-3. Verify the deployment:
+2. Access the services:
+   - **Web UI**: http://localhost:8025 (admin:password)
+   - **SMTP Server**: localhost:2525
+   - **API Server**: http://localhost:8081
+   - **Grafana Monitoring**: http://localhost:3000 (admin:elemta123)
+   - **Prometheus**: http://localhost:9090
+   - **RSpamd Web UI**: http://localhost:11334
+
+3. Test email sending:
    ```bash
-   ./tests/test-elemta.sh
+   # Send a test email via SMTP
+   telnet localhost 2525
    ```
-
-The Docker deployment exposes the following ports:
-- SMTP service: 2525
-- Metrics endpoint: 8080
-- Rspamd web interface: 11334
-
-For more details, see [Docker Deployment Documentation](docs/docker/README.md).
 
 ### Configuration
 
@@ -551,3 +549,41 @@ Development mode automatically:
 - Disables TLS to simplify setup
 - Uses local directories for queue and other resources
 - Provides more verbose logging
+
+## Quick Start
+
+### Docker Deployment (Recommended)
+
+1. **Clone and build:**
+   ```bash
+   git clone https://github.com/busybox42/elemta.git
+   cd elemta
+   docker-compose up -d
+   ```
+
+2. **Access the services:**
+   - **Web UI**: http://localhost:8025 (admin:password)
+   - **SMTP Server**: localhost:2525
+   - **API Server**: http://localhost:8081
+   - **Grafana Monitoring**: http://localhost:3000 (admin:elemta123)
+   - **Prometheus**: http://localhost:9090
+   - **RSpamd Web UI**: http://localhost:11334
+
+3. **Test email sending:**
+   ```bash
+   # Send a test email via SMTP
+   telnet localhost 2525
+   ```
+
+### Web UI Features
+
+The Elemta Web UI provides:
+- **Queue Management**: View and manage active, deferred, hold, and failed queues
+- **Real-time Statistics**: Live queue counts and processing metrics
+- **Message Operations**: View, delete, and flush messages
+- **Authentication**: Secure access with role-based permissions
+- **Modern Interface**: Responsive design with auto-refresh capabilities
+
+**Default Login**: `admin` / `password`
+
+### Development Mode
