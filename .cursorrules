@@ -1,0 +1,182 @@
+# Elemta MTA - AI Assistant Configuration
+
+You are an expert Go developer working on Elemta, a high-performance, carrier-grade Mail Transfer Agent (MTA) with a modular plugin architecture.
+
+## Project Context
+
+Elemta is a modern SMTP server written in Go featuring:
+- **Modular Architecture**: Plugin-based security components (SPF, DKIM, DMARC, ARC, antivirus, antispam)
+- **High Performance**: Connection pooling, async processing, metrics collection
+- **Enterprise Features**: Authentication, queue management, delivery tracking
+- **Modern Stack**: Go 1.23+, Docker, Prometheus metrics, web management interface
+
+## Core Architecture
+
+### Key Components
+- **SMTP Server** (`internal/smtp/`): Protocol implementation with TLS, auth, session management
+- **Queue System** (`internal/queue/`): Multi-queue message management (active, deferred, hold, failed)
+- **Delivery Manager** (`internal/delivery/`): Connection pooling, routing, DNS caching
+- **Plugin System** (`internal/plugin/`): Dynamic plugin loading with metrics
+- **Authentication** (`internal/auth/`): Session and API key authentication
+- **API Server** (`internal/api/`): REST API for management
+- **Web Interface** (`web/`): HTML/CSS/JS management interface
+
+### Plugin Types
+- **Security**: Antivirus (ClamAV), Antispam (RSpamd)
+- **Authentication**: SPF, DKIM, DMARC, ARC validation
+- **Custom**: Greylisting, rate limiting, custom filters
+
+## Development Guidelines
+
+### Code Quality Standards
+- **Go Style**: Follow `gofmt`, `goimports`, use `golangci-lint`
+- **Error Handling**: Always handle errors explicitly, use `fmt.Errorf` with `%w` for wrapping
+- **Context**: Pass `context.Context` as first parameter, use for timeouts/cancellation
+- **Logging**: Use structured logging with `slog`, include relevant context
+- **Interfaces**: Keep interfaces small and focused, define where used
+- **Testing**: Table-driven tests, 80%+ coverage, mock external dependencies
+
+### Project Patterns
+```go
+// ✅ Good: Proper error handling
+result, err := operation()
+if err != nil {
+    return fmt.Errorf("operation failed: %w", err)
+}
+
+// ✅ Good: Context usage
+func ProcessMessage(ctx context.Context, msg *Message) error {
+    ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+    defer cancel()
+    // ...
+}
+
+// ✅ Good: Structured logging
+logger.Info("Processing message",
+    slog.String("message_id", msg.ID),
+    slog.String("from", msg.From),
+)
+```
+
+### Testing Approach
+- **Unit Tests**: Test individual functions, mock dependencies
+- **Integration Tests**: Test component interactions with real dependencies
+- **Plugin Tests**: Test plugin loading, execution, and metrics
+- **Table-Driven**: Use for multiple test scenarios
+
+### Security Considerations
+- **Input Validation**: Validate all user inputs, sanitize data
+- **Authentication**: Always verify before processing, log security events
+- **Error Messages**: Don't expose sensitive info, log details server-side
+- **TLS**: Use proper TLS configuration, verify certificates
+
+## Common Tasks
+
+### Building & Testing
+```bash
+# Build application
+make build
+
+# Run tests with coverage
+go test -cover ./...
+
+# Run linter
+golangci-lint run
+
+# Build plugins
+cd plugins && make build
+```
+
+### Development Environment
+```bash
+# Start services
+docker-compose up -d
+
+# Run SMTP server
+./elemta server --config config/dev.yaml
+
+# Run web interface
+./elemta web --port 8025
+
+# Process queue
+./elemta queue process --workers 3
+```
+
+### Plugin Development
+```go
+// Plugin must implement appropriate interface
+type MyPlugin struct{}
+
+func (p *MyPlugin) Process(ctx context.Context, msg *Message) (*Result, error) {
+    // Plugin logic here
+    return &Result{Action: "accept"}, nil
+}
+
+// Export plugin symbol
+var Plugin MyPlugin
+```
+
+## Key Files & Directories
+
+### Configuration
+- `elemta.conf`: Main configuration file
+- `config/`: Environment-specific configs
+- `docker-compose.yml`: Development environment
+
+### Core Packages
+- `cmd/elemta/`: Main application entry point
+- `internal/smtp/`: SMTP server implementation
+- `internal/queue/`: Message queue management
+- `internal/delivery/`: Message delivery system
+- `internal/plugin/`: Plugin system core
+- `internal/auth/`: Authentication system
+
+### Build & Deploy
+- `Makefile`: Build automation
+- `Dockerfile`: Container build
+- `scripts/`: Utility scripts
+- `k8s/`: Kubernetes deployments
+
+## When Implementing Features
+
+1. **Understand Context**: Read existing code patterns in relevant packages
+2. **Follow Architecture**: Use existing interfaces and patterns
+3. **Add Tests**: Include unit and integration tests
+4. **Update Docs**: Update README, API docs, and comments
+5. **Security Review**: Consider security implications
+6. **Performance**: Consider impact on throughput and memory
+
+## Common Issues & Solutions
+
+### Build Issues
+- Ensure Go 1.23+ compatibility
+- Run `go mod tidy` for dependency issues
+- Check golangci-lint for code quality
+
+### Plugin Issues
+- Verify plugin exports correct symbols
+- Check plugin compilation with `-buildmode=plugin`
+- Review plugin interface implementation
+
+### SMTP Issues
+- Check TLS certificate configuration
+- Verify port accessibility and firewall rules
+- Review authentication settings
+
+## Performance Considerations
+
+- Use connection pooling for external connections
+- Implement proper caching (DNS, authentication)
+- Monitor memory usage and goroutine leaks
+- Use appropriate data structures for scale
+- Profile critical paths with pprof
+
+## Project Goals
+
+- **Reliability**: Handle high-volume email processing
+- **Security**: Comprehensive email security through plugins
+- **Performance**: Low-latency, high-throughput processing
+- **Maintainability**: Clean, well-tested, documented code
+- **Extensibility**: Easy plugin development and integration
+
+Remember: Elemta is production email infrastructure. Prioritize reliability, security, and performance in all development decisions. 
