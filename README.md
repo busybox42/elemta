@@ -161,7 +161,7 @@ kubectl port-forward service/elemta-smtp 2525:25
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/elemta/elemta.git
+   git clone https://github.com/busybox42/elemta.git
    cd elemta
    ```
 
@@ -231,19 +231,19 @@ Elemta provides comprehensive monitoring capabilities using Prometheus and Grafa
 
 ```bash
 # Set up the basic monitoring environment
-./scripts/setup-monitoring.sh
+./scripts/monitoring/setup-monitoring.sh
 
 # Set up security monitoring with ClamAV and Rspamd
-./scripts/setup-security-monitoring.sh
+./scripts/monitoring/setup-security-monitoring.sh
 
 # Start the monitoring stack
 docker-compose -f docker-compose-monitoring.yml up -d
 
 # Verify the monitoring setup
-./scripts/verify-monitoring-stack.sh
+./scripts/monitoring/verify-monitoring-stack.sh
 
 # Generate test load to see metrics in action
-./scripts/generate-test-load.sh
+./scripts/load-testing/generate-test-load.sh
 ```
 
 #### TLS and Let's Encrypt Monitoring
@@ -260,7 +260,7 @@ To set up Let's Encrypt certificate monitoring:
 
 ```bash
 # Start the certificate monitoring service
-sudo ./scripts/letsencrypt-monitor.sh
+./scripts/ssl/letsencrypt-monitor.sh
 
 # Access the certificate dashboard
 # Open http://localhost:9090/ in your browser
@@ -345,7 +345,7 @@ Alerts can be sent via email, Slack, PagerDuty, or other notification channels c
 
 For more information about monitoring, see [docs/monitoring/README.md](docs/monitoring/README.md).
 For details on security monitoring, see [docs/monitoring/security-monitoring.md](docs/monitoring/security-monitoring.md).
-For information on log management, see [docs/monitoring/logging.md](docs/monitoring/logging.md).
+For information on log management, see [docs/logging.md](docs/logging.md).
 
 ## CLI Tools
 
@@ -357,7 +357,7 @@ Elemta provides command-line tools for managing the server and queue. For detail
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/elemta.git
+git clone https://github.com/busybox42/elemta.git
 cd elemta
 
 # Install dependencies
@@ -419,7 +419,7 @@ Elemta's plugin system makes it easy to extend functionality. Here's a simple ex
 package myplugin
 
 import (
-    "github.com/yourusername/elemta/internal/plugin"
+    "github.com/busybox42/elemta/internal/plugin"
 )
 
 type MyPlugin struct {
@@ -481,7 +481,7 @@ Elemta provides comprehensive testing capabilities, including test mode, queue t
 ./scripts/deploy-and-test.sh
 
 # Test only the queue functionality
-make test-queue-only
+./scripts/test/test-queue-only.sh
 
 # Test only SMTP functionality
 ./scripts/test-smtp.sh
@@ -494,22 +494,23 @@ make test-queue-only
 
 Elemta is currently in active development, focusing on Phase 1 (Core Infrastructure Stabilization). 
 
-Our development is guided by a detailed roadmap that outlines:
-- Current state assessment
-- Development phases and timelines
-- Key features for each phase
-- Immediate next steps
+Our development priorities include:
+- **Core SMTP Protocol**: Complete SMTP command implementation
+- **Queue Management**: Enhanced retry logic and delivery tracking  
+- **Plugin System**: Expanded plugin types and improved interface
+- **Security**: Complete email authentication stack (SPF, DKIM, DMARC, ARC)
+- **Monitoring**: Comprehensive observability and alerting
+- **Performance**: Optimization for high-throughput email processing
 
-For developers interested in contributing, please refer to the roadmap in `.cursor/rules/elemta_roadmap.mdc` 
-for a comprehensive view of our development plan.
+For detailed development status and contributor guidance, see the documentation in `docs/`.
 
 ## Let's Encrypt Integration
 
 Elemta includes built-in support for automatic TLS certificate provisioning via Let's Encrypt:
 
-- **Quick Setup**: Use our setup script: `tools/letsencrypt-setup.sh`
-- **Troubleshooting**: Use our troubleshooter: `tools/letsencrypt-troubleshooter.sh`
-- **Monitoring**: Ongoing certificate monitoring: `tools/letsencrypt-monitor.sh`
+- **Quick Setup**: Use our setup script: `scripts/ssl/letsencrypt-setup.sh`
+- **Troubleshooting**: Use our troubleshooter: `scripts/ssl/letsencrypt-troubleshooter.sh`
+- **Monitoring**: Ongoing certificate monitoring: `scripts/ssl/letsencrypt-monitor.sh`
 
 See `docs/letsencrypt-guide.md` for complete documentation.
 
@@ -519,6 +520,7 @@ See `docs/letsencrypt-guide.md` for complete documentation.
 - [Configuration Reference](docs/configuration.md)
 - [Plugin Development](docs/plugins.md)
 - [Let's Encrypt Guide](docs/letsencrypt-guide.md)
+- [Testing Documentation](docs/testing.md)
 
 ### Development Mode
 
@@ -541,10 +543,10 @@ Elemta includes special flags for development:
 For convenience, a development script is provided:
 ```bash
 # Run with default settings (port 2530)
-./run-dev.sh
+./scripts/dev/run-dev.sh
 
 # Run with custom port
-./run-dev.sh --port 3000
+./scripts/dev/run-dev.sh --port 3000
 ```
 
 Development mode automatically:
