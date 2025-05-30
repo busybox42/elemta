@@ -1,4 +1,4 @@
-![Elemta Logo](images/elemta.png)
+![Elemta Logo](images/elemta.png?v=2)
 
 # Elemta - High-Performance SMTP Server
 
