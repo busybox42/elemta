@@ -47,7 +47,7 @@ func NewServer(config *Config) (*Server, error) {
 	}
 
 	if config.ListenAddr == "" {
-		config.ListenAddr = ":25" // Default SMTP port
+		config.ListenAddr = ":2525" // Default SMTP port (non-privileged)
 	}
 
 	// Set up logger

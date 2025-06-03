@@ -290,7 +290,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	if config.ListenAddr == "" {
-		config.ListenAddr = ":25"
+		config.ListenAddr = ":2525"
 	}
 	if config.QueueDir == "" {
 		config.QueueDir = "./queue"
@@ -315,7 +315,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	if config.TLS == nil {
 		config.TLS = &TLSConfig{
 			Enabled:    false,
-			ListenAddr: ":465",
+			ListenAddr: ":2465",
 			MinVersion: "tls1.2",
 			RenewalConfig: &CertRenewalConfig{
 				AutoRenew:      true,
@@ -430,7 +430,7 @@ func LoadConfig(configPath string) (*Config, error) {
 // DefaultConfig returns a default configuration with sane defaults
 func DefaultConfig() *Config {
 	return &Config{
-		ListenAddr:            ":25",
+		ListenAddr:            ":2525",
 		Hostname:              "localhost",
 		MaxSize:               10 * 1024 * 1024, // 10MB
 		QueueDir:              "./queue",
@@ -444,7 +444,7 @@ func DefaultConfig() *Config {
 		// TLS configuration with enhanced certificate management
 		TLS: &TLSConfig{
 			Enabled:        false,
-			ListenAddr:     ":465",
+			ListenAddr:     ":2465",
 			MinVersion:     "tls1.2",
 			EnableStartTLS: true, // Enable STARTTLS by default when TLS is enabled
 			RenewalConfig: &CertRenewalConfig{

@@ -59,7 +59,7 @@ func DefaultConfig() *Config {
 
 	// Set default server configuration
 	cfg.Server.Hostname = "localhost"
-	cfg.Server.Listen = ":25"
+	cfg.Server.Listen = ":2525"
 	cfg.Server.TLS = false
 
 	// Set default queue directory

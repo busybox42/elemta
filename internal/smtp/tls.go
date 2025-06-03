@@ -569,7 +569,7 @@ func (m *TLSManager) StartTLSListener(ctx context.Context) (net.Listener, error)
 
 	listenAddr := m.config.TLS.ListenAddr
 	if listenAddr == "" {
-		listenAddr = ":465" // Default SMTPS port
+		listenAddr = ":2465" // Default SMTPS port (non-privileged)
 	}
 
 	// Create TLS listener
