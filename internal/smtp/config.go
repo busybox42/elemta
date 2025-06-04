@@ -16,6 +16,7 @@ type Config struct {
 	MaxSize       int64    `toml:"max_size" json:"max_size"`
 	DevMode       bool     `toml:"dev_mode" json:"dev_mode"`
 	AllowedRelays []string `toml:"allowed_relays" json:"allowed_relays"`
+	LocalDomains  []string `toml:"local_domains" json:"local_domains"`
 	Hostname      string   `toml:"hostname" json:"hostname"`
 	MaxWorkers    int      `toml:"max_workers" json:"max_workers"`
 	MaxRetries    int      `toml:"max_retries" json:"max_retries"`

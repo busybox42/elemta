@@ -5,6 +5,12 @@ listen = ":2525"
 queue_dir = "/app/queue"
 max_size = 10485760  # 10MB message size limit
 
+# Local domains for which we accept mail directly (no relay)
+local_domains = ["example.com", "localhost", "mail.example.com"]
+
+# IP addresses and networks allowed to relay (internal networks allowed automatically)
+allowed_relays = ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+
 [tls]
 enabled = true
 cert_file = "/app/certs/test.crt"
@@ -22,10 +28,23 @@ enabled = ["greylisting", "spf", "dkim", "clamav", "rspamd"]
 
 [auth]
 enabled = true
-required = false  # Changed from true to false to allow unauthenticated access
-datasource_type = "file"
-datasource_name = "file"
-datasource_path = "/app/config/elemta.db"
+required = false  # Authentication required for external connections, but not internal
+datasource_type = "ldap"
+datasource_name = "ldap"
+datasource_host = "elemta-ldap"
+datasource_port = 389
+datasource_db = "dc=example,dc=com"
+datasource_user = "cn=admin,dc=example,dc=com"
+datasource_pass = "admin"
+
+# LDAP specific configuration
+[auth.ldap]
+base_dn = "dc=example,dc=com"
+user_dn = "ou=people"
+group_dn = "ou=groups"
+user_filter = "(&(objectClass=posixAccount)(mail=%s))"
+bind_dn = "cn=admin,dc=example,dc=com"
+bind_password = "admin"
 
 [api]
 enabled = true

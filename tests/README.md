@@ -1,77 +1,60 @@
-# Elemta Tests
+# Elemta Test Suite
 
-This directory contains all tests for the Elemta Mail Transfer Agent (MTA).
+This directory contains various test scripts for validating Elemta functionality.
 
-## Directory Structure
+## Test Files
 
-- `unit/`: Go unit tests for various components
-  - `smtp/`: Tests for the SMTP server implementation
-  - `context/`: Tests for the context package
-  
-- `k8s/`: Kubernetes deployment tests
-  - `test-elemta.sh`: Main test script for the Kubernetes deployment
-  - `simple-test.sh`: Basic connectivity tests
-  - `test-clamav.sh`: ClamAV-specific tests
-  - `test-rspamd.sh`: Rspamd-specific tests
-  - `test-k8s-email.sh`: End-to-end email flow tests
-  - `test-deployment.yaml`: Test deployment configuration
-  - `test-pod.yaml`: Test pod configuration
-  - `k8s-test-summary.md`: Summary of Kubernetes test results
+### Authentication Tests
+- `test_smtp_auth.py` - Tests SMTP authentication with LDAP
+- `test_ldap_success.py` - Validates LDAP connection and user authentication
+- `test_auth_chain.sh` - Shell script for testing the complete authentication chain
 
-- `python/`: Python test scripts
-  - `test_smtp.py`: Basic SMTP test
-  - `test_smtp_auth.py`: SMTP authentication test
-  - `test_security.py`: Security features test
+### SMTP Protocol Tests
+- `test_smtp_complete.py` - Complete SMTP session testing
+- `test_smtp_docker.py` - SMTP tests specifically for Docker environment
 
-- `docker/`: Docker test files
-  - `docker-compose.test.yml`: Docker Compose test configuration
-  - `Dockerfile.test`: Test Dockerfile
+### Relay Control Tests
+- `test_relay_control.py` - Tests internal network relay without authentication
+- `test_external_relay.py` - Tests external relay behavior and authentication requirements
 
-- `config/`: Test configuration files
-  - `test-elemta.conf`: Test configuration for Elemta
-
-- `data/`: Test data files
-  - `eicar.txt`: EICAR test file for antivirus testing
+### Delivery Tests
+- `test_lmtp_direct.py` - Direct LMTP delivery testing to Dovecot
 
 ## Running Tests
 
-### Unit Tests
+### Prerequisites
+1. Ensure Elemta stack is running: `docker-compose up -d`
+2. Wait for all services to be ready (LDAP, Dovecot, etc.)
 
-To run all Go unit tests:
-
+### Individual Tests
 ```bash
-make unit-test
+# Test SMTP authentication
+python3 tests/test_smtp_auth.py
+
+# Test relay control
+python3 tests/test_relay_control.py
+
+# Test complete SMTP pipeline
+python3 tests/test_smtp_complete.py
 ```
 
-### Kubernetes Tests
-
-To run the main Kubernetes test:
-
+### Authentication Chain Test
 ```bash
-make k8s-test
+# Full authentication chain test
+bash tests/test_auth_chain.sh
 ```
 
-### Python Tests
+## Test Requirements
 
-To run a Python test:
+- Python 3 with `smtplib` and `email` modules
+- Access to Elemta SMTP server (localhost:2525)
+- LDAP server with test users configured
+- Dovecot LMTP server running
 
-```bash
-python3 tests/python/test_smtp.py
-```
+## Notes
 
-### Docker Tests
-
-To run Docker tests:
-
-```bash
-docker-compose -f tests/docker/docker-compose.test.yml up -d
-```
-
-## Adding New Tests
-
-- For Go unit tests, add them to the appropriate subdirectory in `tests/unit/`
-- For Kubernetes tests, add shell scripts to `tests/k8s/`
-- For Python tests, add scripts to `tests/python/`
-- For Docker tests, add files to `tests/docker/`
-- For test configurations, add files to `tests/config/`
-- For test data, add files to `tests/data/` 
+These tests were developed during the implementation of:
+- LDAP authentication integration
+- Network-based relay control
+- LMTP delivery pipeline
+- Antivirus/antispam header insertion 

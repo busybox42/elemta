@@ -76,6 +76,16 @@ func NewAuthenticator(config *AuthConfig) (*SMTPAuthenticator, error) {
 		dsConfig.Options["db_path"] = config.DataSourcePath
 	}
 
+	// For LDAP, map the database field to base_dn and set user/group DNs
+	if config.DataSourceName == "ldap" {
+		if config.DataSourceDB != "" {
+			dsConfig.Options["base_dn"] = config.DataSourceDB
+		}
+		// Set default user and group DNs for our LDAP setup
+		dsConfig.Options["user_dn"] = "ou=people"
+		dsConfig.Options["group_dn"] = "ou=groups"
+	}
+
 	ds, err := datasource.Factory(dsConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create datasource: %w", err)

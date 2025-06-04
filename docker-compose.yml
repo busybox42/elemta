@@ -45,6 +45,7 @@ services:
       - elemta-rspamd
       - elemta-api
       - elemta-dovecot
+      - elemta-ldap
 
   elemta-api:
     image: python:3.9-slim
@@ -137,6 +138,34 @@ services:
       retries: 5
       start_period: 120s
   
+  elemta-ldap:
+    image: osixia/openldap:latest
+    container_name: elemta-ldap
+    hostname: elemta-ldap
+    ports:
+      - "1389:389"     # LDAP port
+      - "1636:636"     # LDAPS port  
+    environment:
+      - LDAP_ORGANISATION=Elemta
+      - LDAP_DOMAIN=example.com
+      - LDAP_ADMIN_PASSWORD=admin
+      - LDAP_BASE_DN=dc=example,dc=com
+      - LDAP_TLS_VERIFY_CLIENT=never
+      - LDAP_RFC2307BIS_SCHEMA=true
+      - LDAP_REMOVE_CONFIG_AFTER_SETUP=true
+      - LDAP_TLS=false
+    volumes:
+      - ldap_data:/var/lib/ldap
+      - ldap_config:/etc/ldap/slapd.d
+    networks:
+      - elemta_network
+    healthcheck:
+      test: ["CMD", "ldapsearch", "-x", "-b", "dc=example,dc=com", "-s", "base", "-LLL"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
   elemta-dovecot:
     image: alpine:latest
     container_name: elemta-dovecot
@@ -145,7 +174,7 @@ services:
       - "14143:14143"  # IMAP port
       - "2424:2424"    # LMTP port
     command: >
-      sh -c "apk add --no-cache dovecot dovecot-lmtpd netcat-openbsd &&
+      sh -c "apk add --no-cache dovecot dovecot-lmtpd dovecot-ldap netcat-openbsd &&
              adduser -D -h /var/mail -u 5000 vmail 2>/dev/null || echo 'User vmail already exists' &&
              mkdir -p /var/mail &&
              mkdir -p /var/mail/recipient@example.com/new &&
@@ -167,6 +196,8 @@ services:
              echo 'auth_debug_passwords = yes' >> /etc/dovecot/dovecot.conf && 
              echo 'auth_verbose = yes' >> /etc/dovecot/dovecot.conf &&
              echo 'mail_location = maildir:/var/mail/%u' >> /etc/dovecot/dovecot.conf &&
+             echo 'mail_uid = vmail' >> /etc/dovecot/dovecot.conf &&
+             echo 'mail_gid = vmail' >> /etc/dovecot/dovecot.conf &&
              echo 'lmtp_save_to_detail_mailbox = yes' >> /etc/dovecot/dovecot.conf &&
              echo 'auth_mechanisms = plain login' >> /etc/dovecot/dovecot.conf &&
              echo 'service lmtp {' >> /etc/dovecot/dovecot.conf &&
@@ -176,11 +207,13 @@ services:
              echo '  }' >> /etc/dovecot/dovecot.conf &&
              echo '  user = vmail' >> /etc/dovecot/dovecot.conf &&
              echo '}' >> /etc/dovecot/dovecot.conf &&
-             echo 'service imap {' >> /etc/dovecot/dovecot.conf &&
+             echo 'ssl = no' >> /etc/dovecot/dovecot.conf &&
+             echo 'service imap-login {' >> /etc/dovecot/dovecot.conf &&
              echo '  inet_listener imap {' >> /etc/dovecot/dovecot.conf &&
-             echo '    address = 0.0.0.0' >> /etc/dovecot/dovecot.conf &&
              echo '    port = 14143' >> /etc/dovecot/dovecot.conf &&
              echo '  }' >> /etc/dovecot/dovecot.conf &&
+             echo '}' >> /etc/dovecot/dovecot.conf &&
+             echo 'service imap {' >> /etc/dovecot/dovecot.conf &&
              echo '}' >> /etc/dovecot/dovecot.conf &&
              echo 'service auth {' >> /etc/dovecot/dovecot.conf &&
              echo '  unix_listener auth-userdb {' >> /etc/dovecot/dovecot.conf &&
@@ -189,19 +222,31 @@ services:
              echo '  }' >> /etc/dovecot/dovecot.conf &&
              echo '}' >> /etc/dovecot/dovecot.conf &&
              echo 'passdb {' >> /etc/dovecot/dovecot.conf &&
-             echo '  driver = passwd-file' >> /etc/dovecot/dovecot.conf &&
-             echo '  args = /etc/dovecot/passwd' >> /etc/dovecot/dovecot.conf &&
+             echo '  driver = ldap' >> /etc/dovecot/dovecot.conf &&
+             echo '  args = /etc/dovecot/dovecot-ldap.conf.ext' >> /etc/dovecot/dovecot.conf &&
              echo '}' >> /etc/dovecot/dovecot.conf &&
              echo 'userdb {' >> /etc/dovecot/dovecot.conf &&
-             echo '  driver = passwd-file' >> /etc/dovecot/dovecot.conf &&
-             echo '  args = /etc/dovecot/passwd' >> /etc/dovecot/dovecot.conf &&
-             echo '  default_fields = uid=5000 gid=5000 home=/var/mail/%u' >> /etc/dovecot/dovecot.conf &&
+             echo '  driver = ldap' >> /etc/dovecot/dovecot.conf &&
+             echo '  args = /etc/dovecot/dovecot-ldap.conf.ext' >> /etc/dovecot/dovecot.conf &&
              echo '}' >> /etc/dovecot/dovecot.conf &&
+             echo 'hosts = elemta-ldap:389' > /etc/dovecot/dovecot-ldap.conf.ext &&
+             echo 'ldap_version = 3' >> /etc/dovecot/dovecot-ldap.conf.ext &&
+             echo 'base = ou=people,dc=example,dc=com' >> /etc/dovecot/dovecot-ldap.conf.ext &&
+             echo 'deref = never' >> /etc/dovecot/dovecot-ldap.conf.ext &&
+             echo 'scope = subtree' >> /etc/dovecot/dovecot-ldap.conf.ext &&
+             echo 'dn = cn=admin,dc=example,dc=com' >> /etc/dovecot/dovecot-ldap.conf.ext &&
+             echo 'dnpass = admin' >> /etc/dovecot/dovecot-ldap.conf.ext &&
+             echo 'auth_bind = yes' >> /etc/dovecot/dovecot-ldap.conf.ext &&
+             echo 'auth_bind_userdn = uid=%n,ou=people,dc=example,dc=com' >> /etc/dovecot/dovecot-ldap.conf.ext &&
+             echo 'user_attrs = =uid=5000,=gid=5000,=home=/var/mail/%u' >> /etc/dovecot/dovecot-ldap.conf.ext &&
+             echo 'user_filter = (&(objectClass=posixAccount)(mail=%u))' >> /etc/dovecot/dovecot-ldap.conf.ext &&
+             echo 'pass_attrs = uid=user,userPassword=password' >> /etc/dovecot/dovecot-ldap.conf.ext &&
+             echo 'pass_filter = (&(objectClass=posixAccount)(mail=%u))' >> /etc/dovecot/dovecot-ldap.conf.ext &&
+             echo 'default_pass_scheme = SSHA' >> /etc/dovecot/dovecot-ldap.conf.ext &&
              echo 'log_path = /var/log/dovecot.log' >> /etc/dovecot/dovecot.conf &&
              echo 'info_log_path = /var/log/dovecot.log' >> /etc/dovecot/dovecot.conf &&
              echo 'debug_log_path = /var/log/dovecot.log' >> /etc/dovecot/dovecot.conf &&
-             echo 'recipient@example.com:{PLAIN}password:5000:5000::/var/mail/recipient@example.com::' > /etc/dovecot/passwd &&
-             echo 'sender@example.com:{PLAIN}password:5000:5000::/var/mail/sender@example.com::' >> /etc/dovecot/passwd &&
+             echo 'disable_plaintext_auth = no' >> /etc/dovecot/dovecot.conf &&
              echo 'Creating test message for testing...' &&
              echo 'From: sender@example.com' > /var/mail/recipient@example.com/cur/test-message:2,S &&
              echo 'To: recipient@example.com' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
@@ -217,6 +262,8 @@ services:
     volumes:
       - dovecot_data:/var/mail
     restart: unless-stopped
+    depends_on:
+      - elemta-ldap
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "14143"]
       interval: 30s
@@ -317,6 +364,38 @@ services:
     depends_on:
       - prometheus
 
+  # Webmail Interface
+  elemta-roundcube:
+    image: roundcube/roundcubemail:latest
+    container_name: elemta_roundcube
+    ports:
+      - "8026:80"
+    environment:
+      - ROUNDCUBEMAIL_DB_TYPE=sqlite
+      - ROUNDCUBEMAIL_SKIN=elastic
+      - ROUNDCUBEMAIL_DEFAULT_HOST=elemta-dovecot
+      - ROUNDCUBEMAIL_DEFAULT_PORT=14143
+      - ROUNDCUBEMAIL_SMTP_SERVER=elemta
+      - ROUNDCUBEMAIL_SMTP_PORT=2525
+      - ROUNDCUBEMAIL_UPLOAD_MAX_FILESIZE=25M
+      - ROUNDCUBEMAIL_ASPELL_ENABLE=true
+    volumes:
+      - roundcube_data:/var/roundcube
+      - ./docker/roundcube/config:/var/roundcube/config:ro
+    networks:
+      - elemta_network
+    restart: unless-stopped
+    depends_on:
+      - elemta-dovecot
+      - elemta
+      - elemta-ldap
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 networks:
   elemta_network:
     driver: bridge
@@ -340,4 +419,11 @@ volumes:
     driver: local
   alertmanager_data:
     driver: local
-  dovecot_data: 
+  dovecot_data:
+    driver: local
+  ldap_data:
+    driver: local
+  ldap_config:
+    driver: local
+  roundcube_data:
+    driver: local

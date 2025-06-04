@@ -17,17 +17,18 @@ import (
 
 // Server represents an SMTP server
 type Server struct {
-	config        *Config
-	listener      net.Listener
-	running       bool
-	pluginManager *plugin.Manager
-	authenticator Authenticator
-	metrics       *Metrics
-	metricsServer *http.Server
-	apiServer     *api.Server
-	queueManager  *QueueManager
-	tlsManager    TLSHandler
-	logger        *log.Logger
+	config           *Config
+	listener         net.Listener
+	running          bool
+	pluginManager    *plugin.Manager
+	authenticator    Authenticator
+	metrics          *Metrics
+	metricsServer    *http.Server
+	apiServer        *api.Server
+	queueManager     *QueueManager
+	queueIntegration *QueueProcessorIntegration // New queue system integration
+	tlsManager       TLSHandler
+	logger           *log.Logger
 }
 
 // NewServer creates a new SMTP server
@@ -126,14 +127,24 @@ func NewServer(config *Config) (*Server, error) {
 			config.TLS.EnableStartTLS)
 	}
 
+	// Initialize new queue system integration
+	queueIntegration, err := NewQueueProcessorIntegration(config)
+	if err != nil {
+		logger.Printf("Warning: Failed to initialize new queue system: %v", err)
+		// Continue with old system for now
+	} else {
+		logger.Printf("New queue system with delivery handlers initialized")
+	}
+
 	server := &Server{
-		config:        config,
-		running:       false,
-		pluginManager: pluginManager,
-		authenticator: authenticator,
-		metrics:       metrics,
-		queueManager:  queueManager,
-		logger:        logger,
+		config:           config,
+		running:          false,
+		pluginManager:    pluginManager,
+		authenticator:    authenticator,
+		metrics:          metrics,
+		queueManager:     queueManager,
+		queueIntegration: queueIntegration,
+		logger:           logger,
 	}
 
 	// Initialize TLS manager if TLS is enabled
@@ -193,13 +204,21 @@ func (s *Server) Start() error {
 	s.running = true
 	s.logger.Printf("SMTP server running on %s", s.config.ListenAddr)
 
-	// Start the queue manager if queue processor is enabled
-	if s.config.QueueProcessorEnabled {
-		s.logger.Printf("Starting queue processor with interval %d seconds and %d workers",
-			s.config.QueueProcessInterval, s.config.QueueWorkers)
-		s.StartQueueProcessor()
+	// Start the new queue system if available
+	if s.queueIntegration != nil {
+		s.logger.Printf("Starting new queue system with delivery handlers")
+		if err := s.queueIntegration.Start(); err != nil {
+			s.logger.Printf("Warning: Failed to start new queue system: %v", err)
+		} else {
+			s.logger.Printf("New queue system started successfully")
+		}
 	} else {
-		s.logger.Printf("Queue processor disabled")
+		// Fallback to old queue manager if queue processor is enabled
+		if s.config.QueueProcessorEnabled {
+			s.logger.Printf("Starting old queue processor with interval %d seconds and %d workers",
+				s.config.QueueProcessInterval, s.config.QueueWorkers)
+			s.StartQueueProcessor()
+		}
 	}
 
 	// Start metrics server if enabled
@@ -317,6 +336,11 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 	session.queueManager = s.queueManager
 	session.tlsManager = s.tlsManager
 
+	// Set the queue integration if available
+	if s.queueIntegration != nil {
+		session.queueIntegration = s.queueIntegration
+	}
+
 	// Handle the SMTP session
 	err := session.Handle()
 	if err != nil {
@@ -370,6 +394,14 @@ func (s *Server) Close() error {
 	if s.tlsManager != nil {
 		if err := s.tlsManager.Stop(); err != nil {
 			log.Printf("Error stopping TLS manager: %v", err)
+		}
+	}
+
+	// Stop queue integration
+	if s.queueIntegration != nil {
+		log.Printf("Stopping queue integration")
+		if err := s.queueIntegration.Stop(); err != nil {
+			log.Printf("Error stopping queue integration: %v", err)
 		}
 	}
 

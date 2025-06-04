@@ -121,6 +121,9 @@ func startServer() {
 	// Map authentication config
 	smtpConfig.Auth = cfg.Auth
 
+	// Map delivery config
+	smtpConfig.Delivery = cfg.Delivery
+
 	fmt.Printf("[DEBUG] cfg.TLS: %+v\n", *cfg.TLS)
 	fmt.Printf("[DEBUG] smtpConfig.TLS: %+v\n", *smtpConfig.TLS)
 

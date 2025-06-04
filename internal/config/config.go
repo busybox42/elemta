@@ -51,6 +51,9 @@ type Config struct {
 		Workers  int  `yaml:"workers" toml:"workers"`
 		Debug    bool `yaml:"debug" toml:"debug"`
 	} `yaml:"queue_processor" toml:"queue_processor"`
+
+	// Delivery configuration
+	Delivery *smtp.DeliveryConfig `yaml:"delivery" toml:"delivery"`
 }
 
 // DefaultConfig returns the default configuration

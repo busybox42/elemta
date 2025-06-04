@@ -1,0 +1,12 @@
+hosts = elemta-ldap:389
+dn = cn=admin,dc=example,dc=com
+dnpass = admin
+auth_bind = yes
+ldap_version = 3
+base = ou=people,dc=example,dc=com
+deref = never
+scope = subtree
+user_filter = (&(objectClass=posixAccount)(mail=%u))
+pass_filter = (&(objectClass=posixAccount)(mail=%u))
+user_attrs = =uid=5000,=gid=5000,=home=/var/mail/%u
+default_pass_scheme = SSHA 

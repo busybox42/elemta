@@ -126,8 +126,37 @@ func (l *LDAP) Authenticate(ctx context.Context, username, password string) (boo
 		return false, ErrNotConnected
 	}
 
-	// Get the user's DN
-	userDN := l.getUserDN(username)
+	// First, search for the user by email address to get the actual DN
+	var userDN string
+	var searchFilter string
+
+	// Check if username looks like an email address
+	if strings.Contains(username, "@") {
+		// Search by email address
+		searchFilter = fmt.Sprintf("(mail=%s)", ldap.EscapeFilter(username))
+	} else {
+		// Search by uid
+		searchFilter = fmt.Sprintf("(uid=%s)", ldap.EscapeFilter(username))
+	}
+
+	searchRequest := ldap.NewSearchRequest(
+		l.userDN,
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 1, 5, false,
+		searchFilter,
+		[]string{"dn"},
+		nil,
+	)
+
+	searchResult, err := l.conn.Search(searchRequest)
+	if err != nil {
+		return false, fmt.Errorf("failed to search for user: %w", err)
+	}
+
+	if len(searchResult.Entries) == 0 {
+		return false, nil // User not found
+	}
+
+	userDN = searchResult.Entries[0].DN
 
 	// Try to bind with the user's credentials
 	conn, err := ldap.Dial("tcp", fmt.Sprintf("%s:%d", l.config.Host, l.config.Port))

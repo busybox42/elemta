@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 
 	"github.com/busybox42/elemta/internal/plugin"
+	"github.com/busybox42/elemta/internal/queue"
 	"github.com/google/uuid"
 )
 
@@ -43,21 +44,22 @@ type TLSHandler interface {
 }
 
 type Session struct {
-	conn           net.Conn
-	reader         *bufio.Reader
-	writer         *bufio.Writer
-	state          State
-	message        *Message
-	config         *Config
-	logger         *slog.Logger
-	Context        *Context
-	authenticated  bool
-	username       string
-	authenticator  Authenticator
-	queueManager   *QueueManager
-	tlsManager     TLSHandler
-	tls            bool // Flag to indicate if this session is using TLS
-	builtinPlugins *plugin.BuiltinPlugins
+	conn             net.Conn
+	reader           *bufio.Reader
+	writer           *bufio.Writer
+	state            State
+	message          *Message
+	config           *Config
+	logger           *slog.Logger
+	Context          *Context
+	authenticated    bool
+	username         string
+	authenticator    Authenticator
+	queueManager     *QueueManager
+	queueIntegration *QueueProcessorIntegration
+	tlsManager       TLSHandler
+	tls              bool // Flag to indicate if this session is using TLS
+	builtinPlugins   *plugin.BuiltinPlugins
 }
 
 // For testing purposes only
@@ -694,17 +696,12 @@ func (s *Session) saveMessage() error {
 		return nil
 	}
 
+	// Relay permissions are now checked in handleRcptTo()
+	// This is just a final safety check for explicit allowed relays configuration
 	if len(s.config.AllowedRelays) > 0 {
-		clientIP := s.conn.RemoteAddr().(*net.TCPAddr).IP.String()
-		allowed := false
-		for _, relay := range s.config.AllowedRelays {
-			if relay == clientIP {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			s.logger.Warn("relay denied", "ip", clientIP)
+		clientIP := GetClientIP(s.conn)
+		if clientIP != nil && !IsAllowedRelay(clientIP, s.config.AllowedRelays) {
+			s.logger.Warn("relay denied by allowed_relays configuration", "ip", clientIP.String())
 			return errors.New("relay not allowed")
 		}
 	}
@@ -715,6 +712,8 @@ func (s *Session) saveMessage() error {
 		clean, infection, err := s.builtinPlugins.ScanForVirus(s.message.data, s.message.id)
 		if err != nil {
 			s.logger.Warn("virus scan failed", "error", err)
+			// Add header indicating scan failed
+			s.message.data = addHeaderToMessage(s.message.data, "X-Virus-Scanned", "Error (ClamAV)")
 			if s.config.Antivirus != nil && s.config.Antivirus.RejectOnFailure {
 				s.writeWithLog("554 5.7.1 Unable to scan for viruses\r\n")
 				return errors.New("virus scan failed")
@@ -722,8 +721,12 @@ func (s *Session) saveMessage() error {
 		} else if !clean {
 			// Message contains virus
 			s.logger.Warn("virus detected", "virus", infection)
+			s.message.data = addHeaderToMessage(s.message.data, "X-Virus-Scanned", fmt.Sprintf("Infected (ClamAV): %s", infection))
 			s.writeWithLog(fmt.Sprintf("554 5.7.1 Message contains a virus: %s\r\n", infection))
 			return errors.New("message contains virus")
+		} else {
+			// Message is clean
+			s.message.data = addHeaderToMessage(s.message.data, "X-Virus-Scanned", "Clean (ClamAV)")
 		}
 	}
 
@@ -733,6 +736,8 @@ func (s *Session) saveMessage() error {
 		clean, score, rules, err := s.builtinPlugins.ScanForSpam(s.message.data, s.message.id)
 		if err != nil {
 			s.logger.Warn("spam scan failed", "error", err)
+			// Add header indicating scan failed
+			s.message.data = addHeaderToMessage(s.message.data, "X-Spam-Scanned", "Error (Rspamd)")
 			if s.config.Antispam != nil && s.config.Antispam.RejectOnSpam {
 				s.writeWithLog("554 5.7.1 Unable to scan for spam\r\n")
 				return errors.New("spam scan failed")
@@ -744,28 +749,55 @@ func (s *Session) saveMessage() error {
 			if len(rules) > 0 {
 				rulesList = " (" + strings.Join(rules, ", ") + ")"
 			}
+			// Add spam headers
+			s.message.data = addHeaderToMessage(s.message.data, "X-Spam-Scanned", "Yes")
+			s.message.data = addHeaderToMessage(s.message.data, "X-Spam-Score", fmt.Sprintf("%.2f", score))
+			s.message.data = addHeaderToMessage(s.message.data, "X-Spam-Status", "Yes")
+			if len(rules) > 0 {
+				s.message.data = addHeaderToMessage(s.message.data, "X-Spam-Rules", strings.Join(rules, " "))
+			}
 			s.writeWithLog(fmt.Sprintf("554 5.7.1 Message identified as spam (score %.2f)%s\r\n", score, rulesList))
 			return errors.New("message is spam")
 		} else {
 			s.logger.Info("message is not spam", "score", score, "rules", rules)
+			// Add headers for clean message
+			s.message.data = addHeaderToMessage(s.message.data, "X-Spam-Scanned", "Yes")
+			s.message.data = addHeaderToMessage(s.message.data, "X-Spam-Score", fmt.Sprintf("%.2f", score))
+			s.message.data = addHeaderToMessage(s.message.data, "X-Spam-Status", "No")
+			if len(rules) > 0 {
+				s.message.data = addHeaderToMessage(s.message.data, "X-Spam-Rules", strings.Join(rules, " "))
+			}
 		}
 	}
 
-	// Use the shared QueueManager to enqueue the message with normal priority
-	if s.queueManager == nil {
-		// Fallback to create a new one if we don't have a shared instance
-		s.logger.Warn("no shared queue manager, creating new instance")
-		s.queueManager = NewQueueManager(s.config)
+	// Use the new queue integration if available, otherwise fallback to old queue manager
+	if s.queueIntegration != nil {
+		// Use new queue system with delivery handlers
+		if err := s.queueIntegration.EnqueueMessage(s.message, queue.PriorityNormal); err != nil {
+			s.logger.Error("failed to enqueue message in new queue system", "error", err)
+			return err
+		}
+		s.logger.Info("message queued successfully in new queue system",
+			"id", s.message.id,
+			"priority", "normal")
+	} else {
+		// Fallback to old queue manager
+		if s.queueManager == nil {
+			// Fallback to create a new one if we don't have a shared instance
+			s.logger.Warn("no shared queue manager, creating new instance")
+			s.queueManager = NewQueueManager(s.config)
+		}
+
+		if err := s.queueManager.EnqueueMessage(s.message, PriorityNormal); err != nil {
+			s.logger.Error("failed to enqueue message", "error", err)
+			return err
+		}
+
+		s.logger.Info("message queued successfully in old queue system",
+			"id", s.message.id,
+			"priority", PriorityNormal)
 	}
 
-	if err := s.queueManager.EnqueueMessage(s.message, PriorityNormal); err != nil {
-		s.logger.Error("failed to enqueue message", "error", err)
-		return err
-	}
-
-	s.logger.Info("message queued successfully",
-		"id", s.message.id,
-		"priority", PriorityNormal)
 	return nil
 }
 
@@ -862,7 +894,7 @@ func (s *Session) handleMailFrom(line string) {
 	s.writeWithLog("250 2.1.0 Sender ok\r\n")
 }
 
-// handleRcptTo handles the RCPT TO command with proper parsing
+// handleRcptTo handles the RCPT TO command with proper parsing and relay control
 func (s *Session) handleRcptTo(line string) {
 	// Extract the address
 	addr := extractAddress(line)
@@ -878,6 +910,17 @@ func (s *Session) handleRcptTo(line string) {
 	if len(s.message.to) >= 100 {
 		s.logger.Warn("too many recipients", "count", len(s.message.to))
 		s.writeWithLog("452 4.5.3 Too many recipients\r\n")
+		return
+	}
+
+	// Check relay permissions for this recipient
+	if !s.isRelayAllowed(addr) {
+		s.logger.Warn("relay denied",
+			"recipient", addr,
+			"client_ip", s.conn.RemoteAddr().String(),
+			"authenticated", s.authenticated,
+			"is_internal", IsInternalConnection(s.conn))
+		s.writeWithLog("554 5.7.1 Relay access denied\r\n")
 		return
 	}
 
@@ -1166,4 +1209,110 @@ func (s *Session) validateMessageHeaders() bool {
 	// For now, we'll accept messages even with missing headers
 	// A production system might be stricter or add the headers
 	return true
+}
+
+// isLocalDomain checks if a domain is configured as local
+func (s *Session) isLocalDomain(domain string) bool {
+	if s.config.LocalDomains == nil {
+		return false
+	}
+
+	domain = strings.ToLower(domain)
+	for _, localDomain := range s.config.LocalDomains {
+		if strings.ToLower(localDomain) == domain {
+			return true
+		}
+	}
+	return false
+}
+
+// isRelayAllowed determines if this session is allowed to relay to the given recipient
+func (s *Session) isRelayAllowed(recipient string) bool {
+	// Extract domain from recipient
+	parts := strings.Split(recipient, "@")
+	if len(parts) != 2 {
+		return false
+	}
+	domain := parts[1]
+
+	// Always allow delivery to local domains
+	if s.isLocalDomain(domain) {
+		s.logger.Debug("allowing local domain delivery", "domain", domain)
+		return true
+	}
+
+	// For external domains (relay), check permissions
+	clientIP := GetClientIP(s.conn)
+	if clientIP == nil {
+		s.logger.Warn("could not determine client IP")
+		return false
+	}
+
+	// Internal networks can relay without authentication
+	if IsPrivateNetwork(clientIP) {
+		s.logger.Debug("allowing internal network relay",
+			"client_ip", clientIP.String(),
+			"domain", domain)
+		return true
+	}
+
+	// External connections require authentication for relay
+	if !s.authenticated {
+		s.logger.Debug("external connection requires authentication for relay",
+			"client_ip", clientIP.String(),
+			"domain", domain,
+			"authenticated", s.authenticated)
+		return false
+	}
+
+	// Authenticated external connections can relay
+	s.logger.Debug("allowing authenticated relay",
+		"client_ip", clientIP.String(),
+		"domain", domain,
+		"username", s.username)
+	return true
+}
+
+// addHeaderToMessage adds a header to the message data by finding the last existing header
+func addHeaderToMessage(data []byte, name, value string) []byte {
+	dataStr := string(data)
+
+	// Parse the message to find where to insert the header
+	lines := strings.Split(dataStr, "\n")
+	insertIndex := -1
+
+	// Find the last header line (non-empty line before body or end)
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			// Empty line - this is the header/body separator
+			insertIndex = i
+			break
+		}
+		// Check if this looks like a header (contains ':')
+		if strings.Contains(line, ":") {
+			insertIndex = i + 1
+		}
+	}
+
+	if insertIndex == -1 {
+		// No good place found, append at end
+		header := fmt.Sprintf("\n%s: %s", name, value)
+		return append(data, []byte(header)...)
+	}
+
+	// Insert the header at the found position
+	header := fmt.Sprintf("%s: %s", name, value)
+	newLines := make([]string, 0, len(lines)+1)
+
+	// Add lines before insertion point
+	newLines = append(newLines, lines[:insertIndex]...)
+
+	// Add our new header
+	newLines = append(newLines, header)
+
+	// Add remaining lines
+	newLines = append(newLines, lines[insertIndex:]...)
+
+	return []byte(strings.Join(newLines, "\n"))
 }
