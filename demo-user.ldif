@@ -1,0 +1,15 @@
+dn: uid=demo,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: demo
+cn: Demo User
+sn: User
+givenName: Demo
+mail: demo@example.com
+userPassword: demo123
+uidNumber: 5001
+gidNumber: 5001
+homeDirectory: /var/mail/demo@example.com
+loginShell: /bin/bash
+description: role|demo-filter|require ["fileinto"]; if header :contains "subject" ["test", "demo"] { fileinto "Demo"; } elsif header :contains "from" ["noreply"] { fileinto "Automated"; } else { keep; } 

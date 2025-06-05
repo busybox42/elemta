@@ -1,0 +1,349 @@
+# Elemta Demo LDAP Data
+# Complete test environment with users, groups, and mail features
+
+# Base organizational structure
+dn: dc=example,dc=com
+objectClass: top
+objectClass: dcObject
+objectClass: organization
+o: Example Organization
+dc: example
+
+dn: ou=people,dc=example,dc=com
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=example,dc=com
+objectClass: organizationalUnit
+ou: groups
+
+dn: ou=mailgroups,dc=example,dc=com
+objectClass: organizationalUnit
+ou: mailgroups
+
+dn: ou=domains,dc=example,dc=com
+objectClass: organizationalUnit
+ou: domains
+
+# Domain entry
+dn: dc=example,ou=domains,dc=example,dc=com
+objectClass: dNSDomain
+objectClass: mailDomain
+dc: example
+mailDomain: example.com
+
+# Users - 10 comprehensive test users
+# 1. Demo User (main test account)
+dn: uid=demo,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: demo
+cn: Demo User
+sn: User
+givenName: Demo
+mail: demo@example.com
+userPassword: demo123
+uidNumber: 5001
+gidNumber: 5001
+homeDirectory: /var/mail/demo@example.com
+loginShell: /bin/bash
+title: Test Account
+departmentNumber: testing
+employeeType: test
+telephoneNumber: +1-555-0001
+description: role|demo-filter|require ["fileinto"]; if header :contains "subject" ["test", "demo"] { fileinto "Demo"; } elsif header :contains "from" ["noreply"] { fileinto "Automated"; } else { keep; }
+
+# 2. CEO (forwards to assistant)
+dn: uid=john.smith,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: john.smith
+cn: John Smith
+sn: Smith
+givenName: John
+mail: john.smith@example.com
+mailForwardingAddress: alice.wilson@example.com
+userPassword: password123
+uidNumber: 5002
+gidNumber: 5002
+homeDirectory: /var/mail/john.smith@example.com
+loginShell: /bin/bash
+title: Chief Executive Officer
+departmentNumber: executive
+employeeType: management
+telephoneNumber: +1-555-0002
+description: role|urgent-priority|require ["fileinto", "imap4flags"]; if header :contains "subject" ["urgent", "important"] { setflag "\\Flagged"; fileinto "Priority"; } else { keep; }
+
+# 3. CTO (technical lead)
+dn: uid=sarah.johnson,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: sarah.johnson
+cn: Sarah Johnson
+sn: Johnson
+givenName: Sarah
+mail: sarah.johnson@example.com
+userPassword: password123
+uidNumber: 5003
+gidNumber: 5003
+homeDirectory: /var/mail/sarah.johnson@example.com
+loginShell: /bin/bash
+title: Chief Technology Officer
+departmentNumber: engineering
+employeeType: management
+telephoneNumber: +1-555-0003
+description: role|development-alerts|require ["fileinto"]; if header :contains "from" ["github", "gitlab", "jenkins"] { fileinto "Development"; } elsif header :contains "subject" ["build", "deploy"] { fileinto "CI-CD"; } else { keep; }
+
+# 4. Sales Manager
+dn: uid=mike.davis,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: mike.davis
+cn: Mike Davis
+sn: Davis
+givenName: Mike
+mail: mike.davis@example.com
+userPassword: password123
+uidNumber: 5004
+gidNumber: 5004
+homeDirectory: /var/mail/mike.davis@example.com
+loginShell: /bin/bash
+title: Sales Manager
+departmentNumber: sales
+employeeType: staff
+telephoneNumber: +1-555-0004
+description: role|sales-leads|require ["fileinto"]; if header :contains "subject" ["lead", "prospect", "quote"] { fileinto "Leads"; } elsif header :contains "from" ["crm", "salesforce"] { fileinto "CRM"; } else { keep; }
+
+# 5. Executive Assistant (receives CEO forwards)
+dn: uid=alice.wilson,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: alice.wilson
+cn: Alice Wilson
+sn: Wilson
+givenName: Alice
+mail: alice.wilson@example.com
+userPassword: password123
+uidNumber: 5005
+gidNumber: 5005
+homeDirectory: /var/mail/alice.wilson@example.com
+loginShell: /bin/bash
+title: Executive Assistant
+departmentNumber: executive
+employeeType: staff
+telephoneNumber: +1-555-0005
+description: role|executive-filter|require ["fileinto"]; if header :contains "from" ["john.smith"] { fileinto "CEO"; } elsif header :contains "subject" ["meeting", "calendar"] { fileinto "Schedule"; } else { keep; }
+
+# 6. Developer
+dn: uid=tom.anderson,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: tom.anderson
+cn: Tom Anderson
+sn: Anderson
+givenName: Tom
+mail: tom.anderson@example.com
+userPassword: password123
+uidNumber: 5006
+gidNumber: 5006
+homeDirectory: /var/mail/tom.anderson@example.com
+loginShell: /bin/bash
+title: Senior Developer
+departmentNumber: engineering
+employeeType: developer
+telephoneNumber: +1-555-0006
+description: role|dev-notifications|require ["fileinto"]; if header :contains "from" ["github.com"] { fileinto "GitHub"; } elsif header :contains "subject" ["bug", "issue"] { fileinto "Issues"; } else { keep; }
+
+# 7. Marketing Manager (forwards to team)
+dn: uid=lisa.chen,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: lisa.chen
+cn: Lisa Chen
+sn: Chen
+givenName: Lisa
+mail: lisa.chen@example.com
+mailForwardingAddress: marketing-team@example.com
+userPassword: password123
+uidNumber: 5007
+gidNumber: 5007
+homeDirectory: /var/mail/lisa.chen@example.com
+loginShell: /bin/bash
+title: Marketing Manager
+departmentNumber: marketing
+employeeType: management
+telephoneNumber: +1-555-0007
+description: role|marketing-filter|require ["fileinto"]; if header :contains "subject" ["campaign", "newsletter"] { fileinto "Campaigns"; } elsif header :contains "from" ["analytics", "mailchimp"] { fileinto "Analytics"; } else { keep; }
+
+# 8. Support Engineer
+dn: uid=robert.kim,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: robert.kim
+cn: Robert Kim
+sn: Kim
+givenName: Robert
+mail: robert.kim@example.com
+userPassword: password123
+uidNumber: 5008
+gidNumber: 5008
+homeDirectory: /var/mail/robert.kim@example.com
+loginShell: /bin/bash
+title: Support Engineer
+departmentNumber: support
+employeeType: staff
+telephoneNumber: +1-555-0008
+description: role|support-tickets|require ["fileinto"]; if header :contains "subject" ["ticket", "support"] { fileinto "Tickets"; } elsif header :contains "from" ["helpdesk"] { fileinto "System"; } else { keep; }
+
+# 9. QA Engineer
+dn: uid=emily.brown,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: emily.brown
+cn: Emily Brown
+sn: Brown
+givenName: Emily
+mail: emily.brown@example.com
+userPassword: password123
+uidNumber: 5009
+gidNumber: 5009
+homeDirectory: /var/mail/emily.brown@example.com
+loginShell: /bin/bash
+title: QA Engineer
+departmentNumber: engineering
+employeeType: qa
+telephoneNumber: +1-555-0009
+description: role|qa-reports|require ["fileinto"]; if header :contains "subject" ["test", "bug"] { fileinto "Testing"; } elsif header :contains "from" ["jenkins", "ci"] { fileinto "Automation"; } else { keep; }
+
+# 10. HR Manager
+dn: uid=david.martinez,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: david.martinez
+cn: David Martinez
+sn: Martinez
+givenName: David
+mail: david.martinez@example.com
+userPassword: password123
+uidNumber: 5010
+gidNumber: 5010
+homeDirectory: /var/mail/david.martinez@example.com
+loginShell: /bin/bash
+title: HR Manager
+departmentNumber: hr
+employeeType: management
+telephoneNumber: +1-555-0010
+description: role|hr-filter|require ["fileinto"]; if header :contains "subject" ["application", "resume"] { fileinto "Recruitment"; } elsif header :contains "from" ["linkedin", "indeed"] { fileinto "Candidates"; } else { keep; }
+
+# Distribution Lists
+# 1. All company
+dn: cn=all,ou=mailgroups,dc=example,dc=com
+objectClass: groupOfNames
+objectClass: mailGroup
+cn: all
+mail: all@example.com
+member: uid=demo,ou=people,dc=example,dc=com
+member: uid=john.smith,ou=people,dc=example,dc=com
+member: uid=sarah.johnson,ou=people,dc=example,dc=com
+member: uid=mike.davis,ou=people,dc=example,dc=com
+member: uid=alice.wilson,ou=people,dc=example,dc=com
+member: uid=tom.anderson,ou=people,dc=example,dc=com
+member: uid=lisa.chen,ou=people,dc=example,dc=com
+member: uid=robert.kim,ou=people,dc=example,dc=com
+member: uid=emily.brown,ou=people,dc=example,dc=com
+member: uid=david.martinez,ou=people,dc=example,dc=com
+
+# 2. Management team
+dn: cn=management,ou=mailgroups,dc=example,dc=com
+objectClass: groupOfNames
+objectClass: mailGroup
+cn: management
+mail: management@example.com
+member: uid=john.smith,ou=people,dc=example,dc=com
+member: uid=sarah.johnson,ou=people,dc=example,dc=com
+member: uid=mike.davis,ou=people,dc=example,dc=com
+member: uid=lisa.chen,ou=people,dc=example,dc=com
+member: uid=david.martinez,ou=people,dc=example,dc=com
+
+# 3. Engineering team
+dn: cn=engineering,ou=mailgroups,dc=example,dc=com
+objectClass: groupOfNames
+objectClass: mailGroup
+cn: engineering
+mail: engineering@example.com
+member: uid=sarah.johnson,ou=people,dc=example,dc=com
+member: uid=tom.anderson,ou=people,dc=example,dc=com
+member: uid=emily.brown,ou=people,dc=example,dc=com
+
+# 4. Sales and Marketing
+dn: cn=revenue,ou=mailgroups,dc=example,dc=com
+objectClass: groupOfNames
+objectClass: mailGroup
+cn: revenue
+mail: revenue@example.com
+member: uid=mike.davis,ou=people,dc=example,dc=com
+member: uid=lisa.chen,ou=people,dc=example,dc=com
+
+# 5. Support team (virtual - forwards to multiple users)
+dn: cn=support,ou=mailgroups,dc=example,dc=com
+objectClass: groupOfNames
+objectClass: mailGroup
+cn: support
+mail: support@example.com
+member: uid=robert.kim,ou=people,dc=example,dc=com
+member: uid=tom.anderson,ou=people,dc=example,dc=com
+
+# 6. Marketing team (used for forwarding)
+dn: cn=marketing-team,ou=mailgroups,dc=example,dc=com
+objectClass: groupOfNames
+objectClass: mailGroup
+cn: marketing-team
+mail: marketing-team@example.com
+member: uid=lisa.chen,ou=people,dc=example,dc=com
+member: uid=alice.wilson,ou=people,dc=example,dc=com
+
+# POSIX Groups for system access
+dn: cn=users,ou=groups,dc=example,dc=com
+objectClass: posixGroup
+cn: users
+gidNumber: 5001
+
+dn: cn=management,ou=groups,dc=example,dc=com
+objectClass: posixGroup
+cn: management
+gidNumber: 5002
+memberUid: john.smith
+memberUid: sarah.johnson
+memberUid: mike.davis
+memberUid: lisa.chen
+memberUid: david.martinez
+
+dn: cn=engineering,ou=groups,dc=example,dc=com
+objectClass: posixGroup
+cn: engineering
+gidNumber: 5003
+memberUid: sarah.johnson
+memberUid: tom.anderson
+memberUid: emily.brown
+
+dn: cn=sales,ou=groups,dc=example,dc=com
+objectClass: posixGroup
+cn: sales
+gidNumber: 5004
+memberUid: mike.davis
+
+dn: cn=support,ou=groups,dc=example,dc=com
+objectClass: posixGroup
+cn: support
+gidNumber: 5005
+memberUid: robert.kim 

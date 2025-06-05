@@ -146,7 +146,7 @@ services:
       - "1389:389"     # LDAP port
       - "1636:636"     # LDAPS port  
     environment:
-      - LDAP_ORGANISATION=Elemta
+      - LDAP_ORGANISATION=Example Corp
       - LDAP_DOMAIN=example.com
       - LDAP_ADMIN_PASSWORD=admin
       - LDAP_BASE_DN=dc=example,dc=com
@@ -173,22 +173,27 @@ services:
     ports:
       - "14143:14143"  # IMAP port
       - "2424:2424"    # LMTP port
+      - "4190:4190"    # ManageSieve port
     command: >
-      sh -c "apk add --no-cache dovecot dovecot-lmtpd dovecot-ldap netcat-openbsd &&
+      sh -c "apk add --no-cache dovecot dovecot-lmtpd dovecot-ldap dovecot-pigeonhole-plugin netcat-openbsd &&
              adduser -D -h /var/mail -u 5000 vmail 2>/dev/null || echo 'User vmail already exists' &&
              mkdir -p /var/mail &&
-             mkdir -p /var/mail/recipient@example.com/new &&
-             mkdir -p /var/mail/recipient@example.com/cur &&
-             mkdir -p /var/mail/recipient@example.com/tmp &&
-             mkdir -p /var/mail/sender@example.com/new &&
-             mkdir -p /var/mail/sender@example.com/cur &&
-             mkdir -p /var/mail/sender@example.com/tmp &&
+             mkdir -p /var/mail/john.smith@example.com/{new,cur,tmp} &&
+             mkdir -p /var/mail/sarah.johnson@example.com/{new,cur,tmp} &&
+             mkdir -p /var/mail/mike.davis@example.com/{new,cur,tmp} &&
+             mkdir -p /var/mail/lisa.wilson@example.com/{new,cur,tmp} &&
+             mkdir -p /var/mail/tom.anderson@example.com/{new,cur,tmp} &&
+             mkdir -p /var/mail/emily.brown@example.com/{new,cur,tmp} &&
+             mkdir -p /var/mail/robert.chen@example.com/{new,cur,tmp} &&
+             mkdir -p /var/mail/jennifer.lee@example.com/{new,cur,tmp} &&
+             mkdir -p /var/mail/david.kim@example.com/{new,cur,tmp} &&
+             mkdir -p /var/mail/amanda.rodriguez@example.com/{new,cur,tmp} &&
              chown -R vmail:vmail /var/mail &&
              chmod -R 700 /var/mail &&
              mkdir -p /etc/dovecot /var/log &&
              touch /var/log/dovecot.log &&
              chown vmail:vmail /var/log/dovecot.log &&
-             echo 'protocols = imap lmtp' > /etc/dovecot/dovecot.conf &&
+             echo 'protocols = imap lmtp sieve' > /etc/dovecot/dovecot.conf &&
              echo 'listen = *' >> /etc/dovecot/dovecot.conf &&
              echo 'ssl = no' >> /etc/dovecot/dovecot.conf &&
              echo 'mail_debug = yes' >> /etc/dovecot/dovecot.conf && 
@@ -248,6 +253,8 @@ services:
              echo 'debug_log_path = /var/log/dovecot.log' >> /etc/dovecot/dovecot.conf &&
              echo 'disable_plaintext_auth = no' >> /etc/dovecot/dovecot.conf &&
              echo 'Creating test message for testing...' &&
+             mkdir -p /var/mail/recipient@example.com/{new,cur,tmp} &&
+             chown vmail:vmail /var/mail/recipient@example.com/{new,cur,tmp} &&
              echo 'From: sender@example.com' > /var/mail/recipient@example.com/cur/test-message:2,S &&
              echo 'To: recipient@example.com' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
              echo 'Subject: Test Message' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
@@ -381,7 +388,7 @@ services:
       - ROUNDCUBEMAIL_ASPELL_ENABLE=true
     volumes:
       - roundcube_data:/var/roundcube
-      - ./docker/roundcube/config:/var/roundcube/config:ro
+      - ./docker/roundcube/config/config-enhanced.inc.php:/var/roundcube/config/config.inc.php:ro
     networks:
       - elemta_network
     restart: unless-stopped
