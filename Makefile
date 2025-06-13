@@ -63,8 +63,8 @@ cli-install: cli-build
 
 cli-test:
 	@echo "Testing elemta-cli..."
-	docker exec -it elemta_node0 /app/elemta-cli --api-url http://elemta_api:8081 status
-	docker exec -it elemta_node0 /app/elemta-cli --api-url http://elemta_api:8081 queue stats
+	docker exec -it elemta-node0 /app/elemta-cli --api-url http://elemta-api:8081 status
+	docker exec -it elemta-node0 /app/elemta-cli --api-url http://elemta-api:8081 queue stats
 
 cli-docker:
 	@echo "Building Docker image for CLI..."

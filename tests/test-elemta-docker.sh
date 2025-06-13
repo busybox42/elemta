@@ -63,7 +63,7 @@ test_container_status() {
     docker ps --format "{{.Names}}: {{.Status}}" > container_status.log
     
     # Check if all required containers are running
-    for container in elemta_node0 elemta-rspamd elemta-clamav elemta_api elemta_metrics elemta_prometheus elemta_grafana elemta_alertmanager; do
+    for container in elemta-node0 elemta-rspamd elemta-clamav elemta-api elemta-metrics elemta-prometheus elemta-grafana elemta-alertmanager; do
         grep "$container" container_status.log | grep "Up" > /dev/null 2>&1
         check_result $? "$container is running"
     done
@@ -97,34 +97,34 @@ test_network_connectivity() {
     
     # Test DNS resolution within elemta_network
     echo "Testing network connectivity between containers..."
-    docker exec elemta_node0 ping -c 2 elemta-clamav > /dev/null 2>&1 || echo "Warning: ping not available or host unreachable"
+    docker exec elemta-node0 ping -c 2 elemta-clamav > /dev/null 2>&1 || echo "Warning: ping not available or host unreachable"
     check_result 0 "Connectivity check completed"
     
     # Check if the elemta container can reach other containers using netcat instead of ping
     echo "Testing connections using netcat..."
-    docker exec elemta_node0 nc -z -v elemta-clamav 3310 > /dev/null 2>&1
+    docker exec elemta-node0 nc -z -v elemta-clamav 3310 > /dev/null 2>&1
     clamav_result=$?
     
-    docker exec elemta_node0 nc -z -v elemta-rspamd 11334 > /dev/null 2>&1
+    docker exec elemta-node0 nc -z -v elemta-rspamd 11334 > /dev/null 2>&1
     rspamd_result=$?
     
     # If initial connection fails, retry with a short delay
     if [ $clamav_result -ne 0 ]; then
         echo "Retrying ClamAV connection in 5 seconds..."
         sleep 5
-        docker exec elemta_node0 nc -z -v elemta-clamav 3310 > /dev/null 2>&1
+        docker exec elemta-node0 nc -z -v elemta-clamav 3310 > /dev/null 2>&1
         clamav_result=$?
     fi
     
     if [ $rspamd_result -ne 0 ]; then
         echo "Retrying Rspamd connection in 5 seconds..."
         sleep 5
-        docker exec elemta_node0 nc -z -v elemta-rspamd 11334 > /dev/null 2>&1
+        docker exec elemta-node0 nc -z -v elemta-rspamd 11334 > /dev/null 2>&1
         rspamd_result=$?
     fi
     
-    check_result $clamav_result "elemta_node0 can reach ClamAV service"
-    check_result $rspamd_result "elemta_node0 can reach Rspamd service"
+    check_result $clamav_result "elemta-node0 can reach ClamAV service"
+    check_result $rspamd_result "elemta-node0 can reach Rspamd service"
 }
 
 # Test SMTP service
@@ -138,29 +138,50 @@ test_smtp_service() {
     
     # Test SMTP connection with proper protocol format and termination
     echo "Testing SMTP capabilities..."
-    cat > smtp_commands.txt << EOF
-EHLO test.example.com
-QUIT
-EOF
     
-    cat smtp_commands.txt | perl -pe 's/\n/\r\n/g' | timeout $TIMEOUT nc $SMTP_HOST $SMTP_PORT > smtp_capabilities.log 2>&1
+    # Test from inside the container first (this should always work)
+    echo "Testing SMTP from inside container..."
+    docker exec elemta-node0 sh -c 'printf "EHLO test.local\r\nQUIT\r\n" | timeout 10 nc localhost 2525' > smtp_internal.log 2>&1
+    
+    if grep -q "220.*ESMTP" smtp_internal.log && grep -q "250.*greets" smtp_internal.log; then
+        check_result 0 "SMTP server responds internally"
+        echo "Internal SMTP test successful:"
+        cat smtp_internal.log | head -5
+    else
+        check_result 1 "SMTP server responds internally"
+        echo "Internal SMTP test failed:"
+        cat smtp_internal.log
+    fi
+    
+    # Test external connection with longer timeout and better error handling
+    echo "Testing SMTP from external host..."
+    (
+        sleep 1
+        printf "EHLO test.example.com\r\n"
+        sleep 1
+        printf "QUIT\r\n"
+        sleep 1
+    ) | timeout 15 nc $SMTP_HOST $SMTP_PORT > smtp_capabilities.log 2>&1
     
     # Display the SMTP response
-    echo "SMTP response:"
+    echo "External SMTP response:"
     cat smtp_capabilities.log
     
     # Check if we got any response at all
     if [ -s smtp_capabilities.log ]; then
-        # Check if the response contains "250" (successful response)
-        grep "250" smtp_capabilities.log > /dev/null 2>&1
-        check_result $? "SMTP server responds to EHLO"
+        # Check if the response contains "220" (greeting) and "250" (successful response)
+        if grep -q "220.*ESMTP" smtp_capabilities.log && grep -q "250" smtp_capabilities.log; then
+            check_result 0 "SMTP server responds to EHLO"
+        else
+            check_result 1 "SMTP server responds to EHLO"
+        fi
     else
         echo "No response received from SMTP server"
         check_result 1 "SMTP server responds to EHLO"
     fi
     
     # Clean up
-    rm -f smtp_commands.txt
+    rm -f smtp_internal.log smtp_capabilities.log
 }
 
 # Test email sending
@@ -191,26 +212,30 @@ EOF
     else
         # Fallback to simplified netcat approach when swaks isn't available
         echo "Swaks not found, falling back to netcat with proper CRLF line endings..."
-        cat > email_commands.txt << EOF
-EHLO test.example.com
-MAIL FROM:<sender@example.com>
-RCPT TO:<recipient@example.com>
-DATA
-From: sender@example.com
-To: recipient@example.com
-Subject: Test email from Elemta Docker test
-
-This is a test email sent by the automated test script.
-.
-QUIT
-EOF
         
-        cat email_commands.txt | perl -pe 's/\n/\r\n/g' | timeout $((TIMEOUT * 2)) nc $SMTP_HOST $SMTP_PORT > email_response.log 2>&1
+        # Use a more robust approach with delays between commands
+        (
+            sleep 1
+            printf "EHLO test.example.com\r\n"
+            sleep 2
+            printf "MAIL FROM:<sender@example.com>\r\n"
+            sleep 1
+            printf "RCPT TO:<recipient@example.com>\r\n"
+            sleep 1
+            printf "DATA\r\n"
+            sleep 1
+            printf "From: sender@example.com\r\n"
+            printf "To: recipient@example.com\r\n"
+            printf "Subject: Test email from Elemta Docker test\r\n"
+            printf "\r\n"
+            printf "This is a test email sent by the automated test script.\r\n"
+            printf ".\r\n"
+            sleep 1
+            printf "QUIT\r\n"
+            sleep 1
+        ) | timeout 30 nc $SMTP_HOST $SMTP_PORT > email_response.log 2>&1
         
         email_result=$?
-        
-        # Clean up
-        rm -f email_commands.txt
     fi
     
     # Check for error conditions
@@ -235,7 +260,7 @@ EOF
     
     # Try to check if email was processed by examining the queue
     echo "Checking if email was processed..."
-    docker exec elemta_node0 ls -la /app/queue > queue_status.log 2>&1
+    docker exec elemta-node0 ls -la /app/queue > queue_status.log 2>&1
     cat queue_status.log
     
     # Success criteria - check if queue directories exist
@@ -250,27 +275,30 @@ test_email_delivery() {
     # First send a test email
     echo "Sending test email for delivery verification..."
     
-    cat > delivery_commands.txt << EOF
-EHLO test.example.com
-MAIL FROM:<sender@example.com>
-RCPT TO:<recipient@example.com>
-DATA
-From: sender@example.com
-To: recipient@example.com
-Subject: Delivery Test Email
-X-Virus-Scanned: Clean (ClamAV)
-X-Spam-Scanned: Yes
-X-Spam-Status: No, score=0.0/5.0
-
-This is a test email to verify delivery to the mailbox.
-.
-QUIT
-EOF
-    
-    cat delivery_commands.txt | perl -pe 's/\n/\r\n/g' | timeout $((TIMEOUT * 2)) nc $SMTP_HOST $SMTP_PORT > delivery_test.log 2>&1
-    
-    # Clean up
-    rm -f delivery_commands.txt
+    # Use a more robust approach with delays between commands
+    (
+        sleep 1
+        printf "EHLO test.example.com\r\n"
+        sleep 2
+        printf "MAIL FROM:<sender@example.com>\r\n"
+        sleep 1
+        printf "RCPT TO:<recipient@example.com>\r\n"
+        sleep 1
+        printf "DATA\r\n"
+        sleep 1
+        printf "From: sender@example.com\r\n"
+        printf "To: recipient@example.com\r\n"
+        printf "Subject: Delivery Test Email\r\n"
+        printf "X-Virus-Scanned: Clean (ClamAV)\r\n"
+        printf "X-Spam-Scanned: Yes\r\n"
+        printf "X-Spam-Status: No, score=0.0/5.0\r\n"
+        printf "\r\n"
+        printf "This is a test email to verify delivery to the mailbox.\r\n"
+        printf ".\r\n"
+        sleep 1
+        printf "QUIT\r\n"
+        sleep 1
+    ) | timeout 30 nc $SMTP_HOST $SMTP_PORT > delivery_test.log 2>&1
     
     # Check if the email was accepted
     grep -q "250 " delivery_test.log
@@ -385,8 +413,8 @@ test_clamav_service() {
     check_result $? "ClamAV daemon is running inside container"
     
     # Check if ClamAV port is accessible from elemta container
-    docker exec elemta_node0 nc -z elemta-clamav 3310 > /dev/null 2>&1
-    check_result $? "elemta_node0 can reach ClamAV on port 3310"
+    docker exec elemta-node0 nc -z elemta-clamav 3310 > /dev/null 2>&1
+    check_result $? "elemta-node0 can reach ClamAV on port 3310"
 }
 
 # Test Rspamd service

@@ -19,7 +19,7 @@ fi
 
 # Check if monitoring containers are running
 echo "Checking if monitoring containers are running..."
-GRAFANA_RUNNING=$(docker ps -q -f name=elemta_grafana)
+GRAFANA_RUNNING=$(docker ps -q -f name=elemta-grafana)
 PROMETHEUS_RUNNING=$(docker ps -q -f name=prometheus)
 ALERTMANAGER_RUNNING=$(docker ps -q -f name=alertmanager)
 

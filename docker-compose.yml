@@ -6,7 +6,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: elemta_node0
+    container_name: elemta-node0
     restart: unless-stopped
     ports:
       - "2525:2525"
@@ -49,7 +49,7 @@ services:
 
   elemta-api:
     image: python:3.9-slim
-    container_name: elemta_api
+    container_name: elemta-api
     restart: unless-stopped
     ports:
       - "8081:8081"
@@ -72,7 +72,7 @@ services:
 
   elemta-web:
     image: elemta_node:latest
-    container_name: elemta_web
+    container_name: elemta-web
     restart: unless-stopped
     ports:
       - "8025:8025"  # Web UI port
@@ -160,7 +160,7 @@ services:
     networks:
       - elemta_network
     healthcheck:
-      test: ["CMD", "ldapsearch", "-x", "-b", "dc=example,dc=com", "-s", "base", "-LLL"]
+      test: ["CMD", "ldapsearch", "-x", "-D", "cn=admin,dc=example,dc=com", "-w", "admin", "-b", "dc=example,dc=com", "-s", "base", "-LLL"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -281,7 +281,7 @@ services:
   # Monitoring services
   elemta-metrics:
     image: python:3.9-slim
-    container_name: elemta_metrics
+    container_name: elemta-metrics
     ports:
       - "8080:8080"
     volumes:
@@ -301,7 +301,7 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: elemta_prometheus
+    container_name: elemta-prometheus
     ports:
       - "9090:9090"
     volumes:
@@ -325,7 +325,7 @@ services:
 
   grafana:
     image: grafana/grafana:latest
-    container_name: elemta_grafana
+    container_name: elemta-grafana
     ports:
       - "3000:3000"
     volumes:
@@ -350,7 +350,7 @@ services:
 
   alertmanager:
     image: prom/alertmanager:latest
-    container_name: elemta_alertmanager
+    container_name: elemta-alertmanager
     ports:
       - "9093:9093"
     volumes:
@@ -374,7 +374,7 @@ services:
   # Webmail Interface
   elemta-roundcube:
     image: roundcube/roundcubemail:latest
-    container_name: elemta_roundcube
+    container_name: elemta-roundcube
     ports:
       - "8026:80"
     environment:

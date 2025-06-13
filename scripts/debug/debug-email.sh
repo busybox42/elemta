@@ -70,7 +70,7 @@ docker-compose ps --services
 
 # Check logs from the main Elemta container
 echo -e "${YELLOW}Checking Elemta logs:${NC}"
-docker-compose logs --tail=30 elemta_node0 2>/dev/null || \
+docker-compose logs --tail=30 elemta-node0 2>/dev/null || \
 docker-compose logs --tail=30 elemta 2>/dev/null || \
 docker-compose logs --tail=30 $(docker-compose ps --services | grep elemta | head -1) 2>/dev/null || \
 echo "Could not find Elemta container logs"
