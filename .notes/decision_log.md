@@ -1,0 +1,203 @@
+# Elemta Decision Log
+
+## Current Architectural Decisions
+
+### ADR-001: Go as Primary Language
+**Date**: [Original project start]  
+**Status**: ✅ ACCEPTED  
+**Context**: Need high-performance, concurrent SMTP server  
+**Decision**: Use Go 1.23+ as primary implementation language  
+**Rationale**: 
+- Excellent concurrency primitives (goroutines, channels)
+- Strong standard library for network programming
+- Good performance characteristics for I/O intensive workloads
+- Rich ecosystem for email, authentication, and monitoring
+
+**Consequences**: 
+- ✅ High performance and concurrency
+- ✅ Strong typing and compile-time error detection
+- ⚠️ Learning curve for developers unfamiliar with Go
+- ⚠️ Plugin system requires Go build constraints
+
+---
+
+### ADR-002: Modular Plugin Architecture
+**Date**: [Early development]  
+**Status**: ✅ ACCEPTED  
+**Context**: Need extensible security and filtering system  
+**Decision**: Implement plugin-based architecture with hot-loading  
+**Rationale**:
+- Allows third-party extensions without core modifications
+- Enables security features to be optional
+- Supports different deployment configurations
+- Plugin isolation prevents one component from crashing server
+
+**Consequences**:
+- ✅ Highly extensible and configurable
+- ✅ Security features can be updated independently
+- ⚠️ Increased complexity in plugin loading and management
+- ⚠️ Performance overhead for plugin interface calls
+
+---
+
+### ADR-003: Multi-Queue Message System
+**Date**: [Queue system implementation]  
+**Status**: ✅ ACCEPTED  
+**Context**: Need robust message handling with retry capabilities  
+**Decision**: Implement separate queues (active, deferred, hold, failed)  
+**Rationale**:
+- Clear separation of message states
+- Enables different processing strategies per queue
+- Supports manual intervention (hold queue)
+- Facilitates monitoring and metrics
+
+**Consequences**:
+- ✅ Clear message lifecycle management
+- ✅ Robust retry and failure handling
+- ⚠️ More complex queue management logic
+- ⚠️ Multiple queue directories to maintain
+
+---
+
+## Pending Decisions
+
+### PD-001: Configuration Format Standardization
+**Date**: [Current]  
+**Status**: 🔄 IN PROGRESS  
+**Context**: Currently supports YAML, TOML, and JSON with inconsistent parsing  
+**Decision**: [PENDING]  
+**Options**:
+1. **TOML Only**: Simple, readable, good Go support
+2. **YAML Only**: More common, flexible, hierarchical
+3. **JSON Only**: Ubiquitous, programmatic generation
+
+**Recommendation**: Choose TOML for simplicity and Go ecosystem alignment  
+**Impact**: Requires migration of existing configurations  
+**Timeline**: Must decide by end of Week 1
+
+---
+
+### PD-002: Main Entry Point Structure
+**Date**: [Current]  
+**Status**: 🔄 IN PROGRESS  
+**Context**: Missing `cmd/elemta/main.go` prevents building main server  
+**Decision**: [PENDING]  
+**Options**:
+1. **Single Binary**: All commands in one binary with subcommands
+2. **Multiple Binaries**: Separate server, CLI, and queue binaries
+3. **Hybrid Approach**: Main server binary + separate utilities
+
+**Recommendation**: Single binary with subcommands (following Go best practices)  
+**Impact**: Changes build system and deployment scripts  
+**Timeline**: Must implement in Week 1
+
+---
+
+### PD-003: Authentication Production Strategy
+**Date**: [Current]  
+**Status**: 🔄 IN PROGRESS  
+**Context**: Current production code uses mock datasources  
+**Decision**: [PENDING]  
+**Options**:
+1. **LDAP Primary**: Focus on enterprise LDAP integration
+2. **Database Primary**: SQL databases as primary auth source
+3. **Multi-Source**: Support multiple authentication backends
+
+**Recommendation**: Multi-source with LDAP and database support  
+**Impact**: Requires refactoring authentication initialization  
+**Timeline**: Must resolve in Week 1
+
+---
+
+## Rejected Decisions
+
+### RD-001: Python Implementation
+**Date**: [Early evaluation]  
+**Status**: ❌ REJECTED  
+**Context**: Considered Python for rapid development  
+**Decision**: Rejected in favor of Go  
+**Rationale**: 
+- Performance requirements favor compiled language
+- Concurrency needs better served by Go
+- Email protocols benefit from strong typing
+
+---
+
+### RD-002: Single Queue System
+**Date**: [Queue design phase]  
+**Status**: ❌ REJECTED  
+**Context**: Considered single queue with message states  
+**Decision**: Rejected in favor of multi-queue approach  
+**Rationale**:
+- Multi-queue provides clearer separation
+- Easier to implement different processing strategies
+- Better monitoring and operational visibility
+
+---
+
+## Technical Standards Decisions
+
+### TD-001: Error Handling Pattern
+**Status**: ✅ ACCEPTED  
+**Standard**: Use `fmt.Errorf("operation failed: %w", err)` for error wrapping  
+**Rationale**: Enables error unwrapping and stack traces  
+
+### TD-002: Context Usage
+**Status**: ✅ ACCEPTED  
+**Standard**: Pass `context.Context` as first parameter for all operations  
+**Rationale**: Enables timeout, cancellation, and request tracing  
+
+### TD-003: Logging Standard
+**Status**: ✅ ACCEPTED  
+**Standard**: Use structured logging with `slog` package  
+**Rationale**: Better queryability and integration with monitoring systems  
+
+### TD-004: Testing Approach
+**Status**: ✅ ACCEPTED  
+**Standard**: Table-driven tests with 80%+ coverage requirement  
+**Rationale**: Consistent test patterns and adequate coverage assurance  
+
+---
+
+## Impact Assessment
+
+### High Impact Decisions
+- **Configuration Standardization**: Affects all deployments and documentation
+- **Main Entry Point**: Blocks all current development and testing
+- **Authentication Strategy**: Critical for production security
+
+### Medium Impact Decisions
+- **Plugin Architecture**: Affects extensibility but core works without
+- **Queue System**: Performance impact but alternatives exist
+- **Build System**: Affects deployment but can be worked around
+
+### Low Impact Decisions
+- **Logging Format**: Operational convenience but not blocking
+- **Error Handling**: Code quality improvement but not functional
+- **Testing Standards**: Quality assurance but not blocking development
+
+---
+
+## Decision Review Process
+
+### Weekly Decision Review
+- Every Monday: Review pending decisions
+- Wednesday: Gather stakeholder input
+- Friday: Make decisions or escalate
+
+### Decision Criteria
+1. **Technical Merit**: Does it solve the problem effectively?
+2. **Maintenance Burden**: Can we support it long-term?
+3. **Performance Impact**: Does it meet performance requirements?
+4. **Security Implications**: Are there security risks?
+5. **Migration Cost**: How difficult is it to implement?
+
+### Escalation Path
+1. **Technical Lead**: Day-to-day technical decisions
+2. **Project Manager**: Timeline and resource decisions  
+3. **Architecture Board**: Major architectural changes
+
+---
+
+**Last Updated**: [Current Date]  
+**Next Review**: [Next Monday] 

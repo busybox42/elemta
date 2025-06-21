@@ -23,6 +23,7 @@ scripts/*_ai_*.sh
 latest_email.txt
 test-message*.txt
 fixme.txt
+NEXT-STEPS.md
 
 # Logs
 *.log
