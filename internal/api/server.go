@@ -154,16 +154,13 @@ func (s *Server) Start() error {
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
 
-	// Apply authentication middleware to API routes if enabled
-	if s.authMiddleware != nil {
-		// Queue view operations require queue:view permission
-		api.Use(s.authMiddleware.RequirePermission(auth.PermissionQueueView))
-	}
-
-	// Queue management routes - more specific routes first
+	// Read-only queue operations (no authentication required for web interface)
 	api.HandleFunc("/queue/stats", s.handleGetQueueStats).Methods("GET")
+	api.HandleFunc("/queue/message/{id}", s.handleGetMessage).Methods("GET")
+	api.HandleFunc("/queue/{type}", s.handleGetQueue).Methods("GET")
+	api.HandleFunc("/queue", s.handleGetAllQueues).Methods("GET")
 
-	// Message operations that require higher permissions
+	// Destructive operations require authentication
 	if s.authMiddleware != nil {
 		// Message deletion requires queue:delete permission
 		deleteHandler := s.authMiddleware.RequirePermission(auth.PermissionQueueDelete)(http.HandlerFunc(s.handleDeleteMessage))
@@ -175,10 +172,6 @@ func (s *Server) Start() error {
 		api.HandleFunc("/queue/message/{id}", s.handleDeleteMessage).Methods("DELETE")
 		api.HandleFunc("/queue/{type}/flush", s.handleFlushQueue).Methods("POST")
 	}
-
-	api.HandleFunc("/queue/message/{id}", s.handleGetMessage).Methods("GET")
-	api.HandleFunc("/queue/{type}", s.handleGetQueue).Methods("GET")
-	api.HandleFunc("/queue", s.handleGetAllQueues).Methods("GET")
 
 	// Create HTTP server
 	s.httpServer = &http.Server{
