@@ -3,10 +3,14 @@
 [server]
 hostname = "localhost"
 listen = ":2525"
-tls = false
-cert_file = ""
-key_file = ""
 max_size = 26214400  # 25MB
+
+# TLS Configuration - Enable STARTTLS
+[tls]
+enabled = true
+enable_starttls = true
+cert_file = "/app/certs/test.crt"
+key_file = "/app/certs/test.key"
 
 [queue]
 dir = "/app/queue"
