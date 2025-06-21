@@ -155,7 +155,7 @@ func (m *Manager) UpdateStats() error {
 	for _, qType := range queueTypes {
 		messages, err := m.ListMessages(qType)
 		if err != nil {
-			return fmt.Errorf("failed to list %s queue: %v", qType, err)
+			return fmt.Errorf("failed to list %s queue: %w", qType, err)
 		}
 
 		// Update count based on queue type
@@ -205,7 +205,7 @@ func (m *Manager) ListMessages(queueType QueueType) ([]Message, error) {
 	// Get all files in the queue directory
 	files, err := os.ReadDir(queuePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read queue directory: %v", err)
+		return nil, fmt.Errorf("failed to read queue directory: %w", err)
 	}
 
 	var messages []Message
@@ -244,12 +244,12 @@ func (m *Manager) ListMessages(queueType QueueType) ([]Message, error) {
 func (m *Manager) readMessageMetadata(filePath, msgID string, queueType QueueType) (Message, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return Message{}, fmt.Errorf("failed to read message file: %v", err)
+		return Message{}, fmt.Errorf("failed to read message file: %w", err)
 	}
 
 	var msg Message
 	if err := json.Unmarshal(data, &msg); err != nil {
-		return Message{}, fmt.Errorf("failed to unmarshal message data: %v", err)
+		return Message{}, fmt.Errorf("failed to unmarshal message data: %w", err)
 	}
 
 	return msg, nil
@@ -295,6 +295,13 @@ func (m *Manager) EnqueueMessage(from string, to []string, subject string, data 
 	// Generate a unique ID for the message
 	id := generateUniqueID()
 
+	m.logger.Info("enqueueing message",
+		"message_id", id,
+		"from", from,
+		"to_count", len(to),
+		"size", len(data),
+		"priority", priority)
+
 	// Create message metadata
 	msg := Message{
 		ID:          id,
@@ -314,7 +321,7 @@ func (m *Manager) EnqueueMessage(from string, to []string, subject string, data 
 	// Save message data to disk
 	dataPath := filepath.Join(m.QueueDir, "data", id)
 	if err := os.WriteFile(dataPath, data, 0644); err != nil {
-		return "", fmt.Errorf("failed to write message data: %v", err)
+		return "", fmt.Errorf("failed to write message data: %w", err)
 	}
 
 	// Set file path in message metadata
@@ -325,7 +332,7 @@ func (m *Manager) EnqueueMessage(from string, to []string, subject string, data 
 	if err := m.saveMessageMetadata(msg, metadataPath); err != nil {
 		// Try to clean up data file on error
 		os.Remove(dataPath)
-		return "", fmt.Errorf("failed to save message metadata: %v", err)
+		return "", fmt.Errorf("failed to save message metadata: %w", err)
 	}
 
 	// Update stats atomically
@@ -335,6 +342,11 @@ func (m *Manager) EnqueueMessage(from string, to []string, subject string, data 
 	m.queueStats.TotalSize += msg.Size
 	m.statsLock.Unlock()
 
+	m.logger.Debug("message enqueued successfully",
+		"message_id", id,
+		"queue_type", Active,
+		"active_count", m.queueStats.ActiveCount)
+
 	return id, nil
 }
 
@@ -343,12 +355,12 @@ func (m *Manager) saveMessageMetadata(msg Message, path string) error {
 	// Serialize message to JSON
 	data, err := json.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("failed to marshal message metadata: %v", err)
+		return fmt.Errorf("failed to marshal message metadata: %w", err)
 	}
 
 	// Ensure parent directory exists before locking
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %v", err)
+		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
 	// Write to disk with a lock to ensure thread safety, but keep the lock scope small
@@ -358,12 +370,12 @@ func (m *Manager) saveMessageMetadata(msg Message, path string) error {
 	// Write atomically using a temporary file
 	tempPath := path + ".tmp"
 	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write temporary file: %v", err)
+		return fmt.Errorf("failed to write temporary file: %w", err)
 	}
 
 	if err := os.Rename(tempPath, path); err != nil {
 		os.Remove(tempPath) // Clean up temp file on error
-		return fmt.Errorf("failed to rename temporary file: %v", err)
+		return fmt.Errorf("failed to rename temporary file: %w", err)
 	}
 
 	return nil
@@ -381,7 +393,7 @@ func (m *Manager) GetMessageContent(id string) ([]byte, error) {
 	if msg.FilePath != "" {
 		data, err := os.ReadFile(msg.FilePath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read message data from FilePath: %v", err)
+			return nil, fmt.Errorf("failed to read message data from FilePath: %w", err)
 		}
 		return data, nil
 	}
@@ -390,7 +402,7 @@ func (m *Manager) GetMessageContent(id string) ([]byte, error) {
 	dataPath := filepath.Join(m.QueueDir, "data", id)
 	data, err := os.ReadFile(dataPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read message data: %v", err)
+		return nil, fmt.Errorf("failed to read message data: %w", err)
 	}
 
 	return data, nil
@@ -410,7 +422,7 @@ func (m *Manager) DeleteMessage(id string) error {
 	// Delete the metadata file
 	metadataPath := filepath.Join(m.QueueDir, string(msg.QueueType), fmt.Sprintf("%s.json", id))
 	if err := os.Remove(metadataPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to delete message metadata: %v", err)
+		return fmt.Errorf("failed to delete message metadata: %w", err)
 	}
 
 	// Delete the message data
@@ -448,8 +460,18 @@ func (m *Manager) MoveMessage(id string, targetQueue QueueType, reason string) e
 
 	// Skip if already in the target queue
 	if msg.QueueType == targetQueue {
+		m.logger.Debug("message already in target queue",
+			"message_id", id,
+			"queue_type", targetQueue)
 		return nil
 	}
+
+	m.logger.Info("moving message between queues",
+		"message_id", id,
+		"from_queue", msg.QueueType,
+		"to_queue", targetQueue,
+		"reason", reason,
+		"retry_count", msg.RetryCount)
 
 	// Record the old queue type for stats update
 	oldQueue := msg.QueueType
@@ -481,7 +503,7 @@ func (m *Manager) MoveMessage(id string, targetQueue QueueType, reason string) e
 	// The saveMessageMetadata method already has its own locking, so we don't need to lock here
 	// First save to the new path
 	if err := m.saveMessageMetadata(msg, newPath); err != nil {
-		return fmt.Errorf("failed to save to new queue: %v", err)
+		return fmt.Errorf("failed to save to new queue: %w", err)
 	}
 
 	// Then delete from the old path
@@ -558,7 +580,7 @@ func (m *Manager) FlushQueue(queueType QueueType) error {
 	// Get messages to capture IDs before deletion
 	messages, err := m.ListMessages(queueType)
 	if err != nil {
-		return fmt.Errorf("failed to list messages: %v", err)
+		return fmt.Errorf("failed to list messages: %w", err)
 	}
 
 	m.mutex.Lock()
@@ -567,7 +589,7 @@ func (m *Manager) FlushQueue(queueType QueueType) error {
 	// Get all files in the queue directory
 	files, err := os.ReadDir(queuePath)
 	if err != nil {
-		return fmt.Errorf("failed to read queue directory: %v", err)
+		return fmt.Errorf("failed to read queue directory: %w", err)
 	}
 
 	// Delete all message metadata files

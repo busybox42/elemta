@@ -160,7 +160,7 @@ func (s *Server) Start() error {
 	api.HandleFunc("/queue/{type}", s.handleGetQueue).Methods("GET")
 	api.HandleFunc("/queue", s.handleGetAllQueues).Methods("GET")
 
-	// Destructive operations require authentication
+	// Destructive operations require authentication (only if auth is enabled)
 	if s.authMiddleware != nil {
 		// Message deletion requires queue:delete permission
 		deleteHandler := s.authMiddleware.RequirePermission(auth.PermissionQueueDelete)(http.HandlerFunc(s.handleDeleteMessage))
@@ -169,6 +169,7 @@ func (s *Server) Start() error {
 		flushHandler := s.authMiddleware.RequirePermission(auth.PermissionQueueFlush)(http.HandlerFunc(s.handleFlushQueue))
 		api.Handle("/queue/{type}/flush", flushHandler).Methods("POST")
 	} else {
+		// If auth is disabled, allow destructive operations without authentication
 		api.HandleFunc("/queue/message/{id}", s.handleDeleteMessage).Methods("DELETE")
 		api.HandleFunc("/queue/{type}/flush", s.handleFlushQueue).Methods("POST")
 	}

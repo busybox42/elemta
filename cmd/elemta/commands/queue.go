@@ -157,8 +157,8 @@ func init() {
 }
 
 func getQueueDir() string {
-	if cfg != nil && cfg.QueueDir != "" {
-		return cfg.QueueDir
+	if cfg != nil && cfg.Queue.Dir != "" {
+		return cfg.Queue.Dir
 	}
 
 	// Default queue directory

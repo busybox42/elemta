@@ -61,8 +61,8 @@ func startServer() {
 		cfg.Server.TLS = false // Disable TLS in dev mode
 
 		// Set other dev mode settings here if needed
-		if cfg.QueueDir == "" {
-			cfg.QueueDir = "./queue" // Use local queue directory in dev mode
+		if cfg.Queue.Dir == "" {
+			cfg.Queue.Dir = "./queue" // Use local queue directory in dev mode
 		}
 
 		// Change to non-privileged port in dev mode if using default port 25
@@ -112,7 +112,7 @@ func startServer() {
 	smtpConfig := &smtp.Config{
 		Hostname:   cfg.Server.Hostname,
 		ListenAddr: cfg.Server.Listen,
-		QueueDir:   cfg.QueueDir,
+		QueueDir:   cfg.Queue.Dir,
 		MaxSize:    10 * 1024 * 1024, // Use 10MB default if not specified
 		TLS:        cfg.TLS,
 		DevMode:    devMode, // Pass dev mode flag to SMTP server
@@ -178,7 +178,7 @@ func startServer() {
 	fmt.Printf("Server configuration details:\n")
 	fmt.Printf("  Server hostname: %s\n", cfg.Server.Hostname)
 	fmt.Printf("  Server listening on: %s\n", cfg.Server.Listen)
-	fmt.Printf("  Queue directory: %s\n", cfg.QueueDir)
+	fmt.Printf("  Queue directory: %s\n", cfg.Queue.Dir)
 	fmt.Printf("  Max message size: %d bytes\n", smtpConfig.MaxSize)
 	fmt.Printf("  Queue processor: %v\n", smtpConfig.QueueProcessorEnabled)
 	if cfg.Server.TLS {

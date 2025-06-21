@@ -486,7 +486,7 @@ func (dm *DeliveryManager) deliverViaLMTP(recipient, from string, data []byte) e
 	// Read server greeting
 	resp, err := reader.ReadString('\n')
 	if err != nil {
-		return fmt.Errorf("failed to read server greeting: %v", err)
+		return fmt.Errorf("failed to read server greeting: %w", err)
 	}
 	dm.logger.Debug("LMTP server greeting", "response", resp)
 	if !strings.HasPrefix(resp, "220 ") {
@@ -497,7 +497,7 @@ func (dm *DeliveryManager) deliverViaLMTP(recipient, from string, data []byte) e
 	cmd := fmt.Sprintf("LHLO %s\r\n", dm.config.Hostname)
 	_, err = writer.WriteString(cmd)
 	if err != nil {
-		return fmt.Errorf("failed to send LHLO: %v", err)
+		return fmt.Errorf("failed to send LHLO: %w", err)
 	}
 	writer.Flush()
 
@@ -505,7 +505,7 @@ func (dm *DeliveryManager) deliverViaLMTP(recipient, from string, data []byte) e
 	for {
 		resp, err = reader.ReadString('\n')
 		if err != nil {
-			return fmt.Errorf("failed to read LHLO response: %v", err)
+			return fmt.Errorf("failed to read LHLO response: %w", err)
 		}
 
 		// End of multi-line response
@@ -523,14 +523,14 @@ func (dm *DeliveryManager) deliverViaLMTP(recipient, from string, data []byte) e
 	cmd = fmt.Sprintf("MAIL FROM:<%s>\r\n", from)
 	_, err = writer.WriteString(cmd)
 	if err != nil {
-		return fmt.Errorf("failed to send MAIL FROM: %v", err)
+		return fmt.Errorf("failed to send MAIL FROM: %w", err)
 	}
 	writer.Flush()
 
 	// Read MAIL FROM response
 	resp, err = reader.ReadString('\n')
 	if err != nil {
-		return fmt.Errorf("failed to read MAIL FROM response: %v", err)
+		return fmt.Errorf("failed to read MAIL FROM response: %w", err)
 	}
 	if !strings.HasPrefix(resp, "250 ") {
 		return fmt.Errorf("server rejected sender: %s", resp)
@@ -540,14 +540,14 @@ func (dm *DeliveryManager) deliverViaLMTP(recipient, from string, data []byte) e
 	cmd = fmt.Sprintf("RCPT TO:<%s>\r\n", recipient)
 	_, err = writer.WriteString(cmd)
 	if err != nil {
-		return fmt.Errorf("failed to send RCPT TO: %v", err)
+		return fmt.Errorf("failed to send RCPT TO: %w", err)
 	}
 	writer.Flush()
 
 	// Read RCPT TO response
 	resp, err = reader.ReadString('\n')
 	if err != nil {
-		return fmt.Errorf("failed to read RCPT TO response: %v", err)
+		return fmt.Errorf("failed to read RCPT TO response: %w", err)
 	}
 	if !strings.HasPrefix(resp, "250 ") {
 		return fmt.Errorf("server rejected recipient: %s", resp)
@@ -556,14 +556,14 @@ func (dm *DeliveryManager) deliverViaLMTP(recipient, from string, data []byte) e
 	// Send DATA
 	_, err = writer.WriteString("DATA\r\n")
 	if err != nil {
-		return fmt.Errorf("failed to send DATA: %v", err)
+		return fmt.Errorf("failed to send DATA: %w", err)
 	}
 	writer.Flush()
 
 	// Read DATA response
 	resp, err = reader.ReadString('\n')
 	if err != nil {
-		return fmt.Errorf("failed to read DATA response: %v", err)
+		return fmt.Errorf("failed to read DATA response: %w", err)
 	}
 	if !strings.HasPrefix(resp, "354 ") {
 		return fmt.Errorf("server rejected DATA command: %s", resp)
@@ -572,20 +572,20 @@ func (dm *DeliveryManager) deliverViaLMTP(recipient, from string, data []byte) e
 	// Send the message data
 	_, err = writer.Write(data)
 	if err != nil {
-		return fmt.Errorf("failed to send message data: %v", err)
+		return fmt.Errorf("failed to send message data: %w", err)
 	}
 
 	// Send the end-of-data marker
 	_, err = writer.WriteString("\r\n.\r\n")
 	if err != nil {
-		return fmt.Errorf("failed to send end-of-data: %v", err)
+		return fmt.Errorf("failed to send end-of-data: %w", err)
 	}
 	writer.Flush()
 
 	// Read the final response
 	resp, err = reader.ReadString('\n')
 	if err != nil {
-		return fmt.Errorf("failed to read final response: %v", err)
+		return fmt.Errorf("failed to read final response: %w", err)
 	}
 	if !strings.HasPrefix(resp, "250 ") {
 		return fmt.Errorf("server rejected message: %s", resp)
@@ -594,7 +594,7 @@ func (dm *DeliveryManager) deliverViaLMTP(recipient, from string, data []byte) e
 	// Send QUIT
 	_, err = writer.WriteString("QUIT\r\n")
 	if err != nil {
-		return fmt.Errorf("failed to send QUIT: %v", err)
+		return fmt.Errorf("failed to send QUIT: %w", err)
 	}
 	writer.Flush()
 
@@ -659,7 +659,7 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 			"code", code,
 			"message", msg,
 			"error", err)
-		return fmt.Errorf("server greeting failed: %v", err)
+		return fmt.Errorf("server greeting failed: %w", err)
 	}
 	dm.logger.Info("server greeting",
 		"server", addr,
@@ -669,7 +669,7 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 	// Send EHLO
 	cmdId, err := textConn.Cmd("EHLO %s", dm.config.Hostname)
 	if err != nil {
-		return fmt.Errorf("EHLO command failed: %v", err)
+		return fmt.Errorf("EHLO command failed: %w", err)
 	}
 	textConn.StartResponse(cmdId)
 	code, msg, err = textConn.ReadResponse(250)
@@ -680,7 +680,7 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 			"code", code,
 			"message", msg,
 			"error", err)
-		return fmt.Errorf("EHLO failed: %v", err)
+		return fmt.Errorf("EHLO failed: %w", err)
 	}
 
 	// If using TLS, upgrade the connection
@@ -688,7 +688,7 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 		// Start TLS
 		cmdId, err := textConn.Cmd("STARTTLS")
 		if err != nil {
-			return fmt.Errorf("STARTTLS command failed: %v", err)
+			return fmt.Errorf("STARTTLS command failed: %w", err)
 		}
 		textConn.StartResponse(cmdId)
 		code, msg, err = textConn.ReadResponse(220)
@@ -699,7 +699,7 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 				"code", code,
 				"message", msg,
 				"error", err)
-			return fmt.Errorf("STARTTLS failed: %v", err)
+			return fmt.Errorf("STARTTLS failed: %w", err)
 		}
 
 		// Upgrade to TLS
@@ -709,7 +709,7 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 				"server", addr,
 				"error", err)
 			metrics.TLSHandshakeFailures.Inc()
-			return fmt.Errorf("TLS handshake failed: %v", err)
+			return fmt.Errorf("TLS handshake failed: %w", err)
 		}
 
 		// Update TLS metrics
@@ -722,7 +722,7 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 		// Send EHLO again after TLS upgrade
 		cmdId, err = textConn.Cmd("EHLO %s", dm.config.Hostname)
 		if err != nil {
-			return fmt.Errorf("EHLO after TLS command failed: %v", err)
+			return fmt.Errorf("EHLO after TLS command failed: %w", err)
 		}
 		textConn.StartResponse(cmdId)
 		code, msg, err = textConn.ReadResponse(250)
@@ -733,14 +733,14 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 				"code", code,
 				"message", msg,
 				"error", err)
-			return fmt.Errorf("EHLO after TLS failed: %v", err)
+			return fmt.Errorf("EHLO after TLS failed: %w", err)
 		}
 	}
 
 	// Send MAIL FROM
 	cmdId, err = textConn.Cmd("MAIL FROM:<%s>", from)
 	if err != nil {
-		return fmt.Errorf("MAIL FROM command failed: %v", err)
+		return fmt.Errorf("MAIL FROM command failed: %w", err)
 	}
 	textConn.StartResponse(cmdId)
 	code, msg, err = textConn.ReadResponse(250)
@@ -751,13 +751,13 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 			"code", code,
 			"message", msg,
 			"error", err)
-		return fmt.Errorf("MAIL FROM failed: %v", err)
+		return fmt.Errorf("MAIL FROM failed: %w", err)
 	}
 
 	// Send RCPT TO
 	cmdId, err = textConn.Cmd("RCPT TO:<%s>", recipient)
 	if err != nil {
-		return fmt.Errorf("RCPT TO command failed: %v", err)
+		return fmt.Errorf("RCPT TO command failed: %w", err)
 	}
 	textConn.StartResponse(cmdId)
 	code, msg, err = textConn.ReadResponse(250)
@@ -768,13 +768,13 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 			"code", code,
 			"message", msg,
 			"error", err)
-		return fmt.Errorf("RCPT TO failed: %v", err)
+		return fmt.Errorf("RCPT TO failed: %w", err)
 	}
 
 	// Send DATA
 	cmdId, err = textConn.Cmd("DATA")
 	if err != nil {
-		return fmt.Errorf("DATA command failed: %v", err)
+		return fmt.Errorf("DATA command failed: %w", err)
 	}
 	textConn.StartResponse(cmdId)
 	code, msg, err = textConn.ReadResponse(354)
@@ -785,7 +785,7 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 			"code", code,
 			"message", msg,
 			"error", err)
-		return fmt.Errorf("DATA failed: %v", err)
+		return fmt.Errorf("DATA failed: %w", err)
 	}
 
 	// Send the message
@@ -795,14 +795,14 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 		dm.logger.Error("message write error",
 			"server", addr,
 			"error", err)
-		return fmt.Errorf("message write failed: %v", err)
+		return fmt.Errorf("message write failed: %w", err)
 	}
 	err = dw.Close()
 	if err != nil {
 		dm.logger.Error("message close error",
 			"server", addr,
 			"error", err)
-		return fmt.Errorf("message close failed: %v", err)
+		return fmt.Errorf("message close failed: %w", err)
 	}
 
 	// Read DATA response
@@ -813,13 +813,13 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 			"code", code,
 			"message", msg,
 			"error", err)
-		return fmt.Errorf("DATA response failed: %v", err)
+		return fmt.Errorf("DATA response failed: %w", err)
 	}
 
 	// Send QUIT
 	cmdId, err = textConn.Cmd("QUIT")
 	if err != nil {
-		return fmt.Errorf("QUIT command failed: %v", err)
+		return fmt.Errorf("QUIT command failed: %w", err)
 	}
 	textConn.StartResponse(cmdId)
 	_, _, _ = textConn.ReadResponse(221) // We don't care about errors on QUIT

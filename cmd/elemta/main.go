@@ -125,7 +125,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	smtpConfig := &smtp.Config{
 		Hostname:   cfg.Server.Hostname,
 		ListenAddr: cfg.Server.Listen,
-		QueueDir:   cfg.QueueDir,
+		QueueDir:   cfg.Queue.Dir,
 		TLS:        cfg.TLS,
 		Auth:       cfg.Auth,
 		Delivery:   cfg.Delivery,
@@ -160,7 +160,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 			AuthEnabled: true,
 		}
 
-		apiServer, err = api.NewServer(apiConfig, cfg.QueueDir)
+		apiServer, err = api.NewServer(apiConfig, cfg.Queue.Dir)
 		if err != nil {
 			log.Printf("Warning: failed to create API server: %v", err)
 		} else {
@@ -175,7 +175,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	// Start queue processor if enabled
 	if cfg.QueueProcessor.Enabled {
-		queueMgr := queue.NewManager(cfg.QueueDir)
+		queueMgr := queue.NewManager(cfg.Queue.Dir)
 		deliveryHandler := queue.NewSMTPDeliveryHandler()
 		processorConfig := queue.ProcessorConfig{
 			Enabled:       cfg.QueueProcessor.Enabled,
@@ -303,25 +303,77 @@ func validateConfig(cmd *cobra.Command, args []string) error {
 		configFile = args[0]
 	}
 
+	// Load configuration
 	cfg, err := config.LoadConfig(configFile)
 	if err != nil {
-		return fmt.Errorf("configuration validation failed: %w", err)
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	fmt.Printf("Configuration is valid\n")
-	fmt.Printf("Server: %s:%s\n", cfg.Server.Hostname, cfg.Server.Listen)
-	fmt.Printf("Queue Directory: %s\n", cfg.QueueDir)
+	// Perform comprehensive validation
+	result := cfg.Validate()
+
+	// Print validation results
+	fmt.Printf("=== Configuration Validation Report ===\n\n")
 	
-	if cfg.TLS != nil && cfg.TLS.Enabled {
-		fmt.Printf("TLS: Enabled\n")
+	if result.Valid {
+		fmt.Printf("✅ Configuration is VALID\n\n")
 	} else {
-		fmt.Printf("TLS: Disabled\n")
+		fmt.Printf("❌ Configuration has ERRORS\n\n")
 	}
 
-	if cfg.Auth != nil && cfg.Auth.Enabled {
-		fmt.Printf("Authentication: Enabled (%s)\n", cfg.Auth.DataSourceType)
-	} else {
-		fmt.Printf("Authentication: Disabled\n")
+	// Print errors
+	if len(result.Errors) > 0 {
+		fmt.Printf("🚨 ERRORS (%d):\n", len(result.Errors))
+		for i, err := range result.Errors {
+			fmt.Printf("  %d. %s\n", i+1, err.Error())
+		}
+		fmt.Println()
+	}
+
+	// Print warnings
+	if len(result.Warnings) > 0 {
+		fmt.Printf("⚠️  WARNINGS (%d):\n", len(result.Warnings))
+		for i, warning := range result.Warnings {
+			fmt.Printf("  %d. %s\n", i+1, warning.Error())
+		}
+		fmt.Println()
+	}
+
+	// Print configuration summary if valid
+	if result.Valid {
+		fmt.Printf("📋 Configuration Summary:\n")
+		fmt.Printf("  Server: %s:%s\n", cfg.Server.Hostname, cfg.Server.Listen)
+		fmt.Printf("  Queue Directory: %s\n", cfg.Queue.Dir)
+		
+		if cfg.TLS != nil && cfg.TLS.Enabled {
+			fmt.Printf("  TLS: Enabled")
+			if cfg.TLS.LetsEncrypt != nil && cfg.TLS.LetsEncrypt.Enabled {
+				fmt.Printf(" (Let's Encrypt)")
+			}
+			fmt.Println()
+		} else {
+			fmt.Printf("  TLS: Disabled\n")
+		}
+
+		if cfg.Auth != nil && cfg.Auth.Enabled {
+			fmt.Printf("  Authentication: Enabled (%s)\n", cfg.Auth.DataSourceType)
+		} else {
+			fmt.Printf("  Authentication: Disabled\n")
+		}
+
+		fmt.Printf("  Queue Processor: %d workers, %ds interval\n", 
+			cfg.QueueProcessor.Workers, cfg.QueueProcessor.Interval)
+		
+		if len(cfg.Plugins.Enabled) > 0 {
+			fmt.Printf("  Plugins: %d enabled\n", len(cfg.Plugins.Enabled))
+		} else {
+			fmt.Printf("  Plugins: None enabled\n")
+		}
+	}
+
+	// Return error if validation failed
+	if !result.Valid {
+		return fmt.Errorf("configuration validation failed with %d errors", len(result.Errors))
 	}
 
 	return nil

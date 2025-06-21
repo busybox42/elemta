@@ -218,7 +218,7 @@ func loadConfig() (*smtp.Config, error) {
 		smtpConfig := &smtp.Config{
 			Hostname:   cfg.Server.Hostname,
 			ListenAddr: cfg.Server.Listen,
-			QueueDir:   cfg.QueueDir,
+			QueueDir:   cfg.Queue.Dir,
 			MaxSize:    10 * 1024 * 1024, // Use 10MB default if not specified
 		}
 

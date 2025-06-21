@@ -7,9 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -67,11 +69,13 @@ var mockHandleSTARTTLS func(s *Session) error
 
 func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Session {
 	remoteAddr := conn.RemoteAddr().String()
+	sessionID := uuid.New().String()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	})).With(
+		"component", "smtp-session",
 		"remote_addr", remoteAddr,
-		"session_id", uuid.New().String(),
+		"session_id", sessionID,
 	)
 
 	// Initialize plugin system
@@ -140,12 +144,26 @@ func (s *Session) writeWithLog(msg string) {
 }
 
 func (s *Session) Handle() error {
-	s.logger.Info("starting new session")
+	// Add defer for panic recovery and connection cleanup
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("session panic recovered",
+				"panic", r,
+				"stack", string(debug.Stack()))
+		}
+		s.logger.Info("session ended")
+	}()
+
+	s.logger.Info("starting new session",
+		"hostname", s.config.Hostname,
+		"max_size", s.config.MaxSize)
 
 	// 220 <domain> <greeting> <ESMTP> <server-info>
 	if err := s.write(fmt.Sprintf("220 %s ESMTP Elemta MTA ready\r\n", s.config.Hostname)); err != nil {
-		s.logger.Error("failed to send greeting", "error", err)
-		return err
+		s.logger.Error("failed to send greeting",
+			"error", err,
+			"hostname", s.config.Hostname)
+		return fmt.Errorf("failed to send greeting: %w", err)
 	}
 
 	// Set reasonable session timeout default if not configured
@@ -191,16 +209,27 @@ func (s *Session) Handle() error {
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				s.logger.Warn("session timeout, closing connection",
-					"timeout_seconds", timeout.Seconds())
+					"timeout_seconds", timeout.Seconds(),
+					"command_count", commandCount)
 				s.writeWithLog("421 4.4.2 Connection timed out\r\n")
-				return fmt.Errorf("session timeout after %v", timeout)
+				return fmt.Errorf("session timeout after %v: %w", timeout, err)
 			}
-			s.logger.Error("read error", "error", err)
-			return err
+			// Handle different types of network errors
+			if errors.Is(err, io.EOF) {
+				s.logger.Info("client disconnected")
+				return nil // Normal disconnection
+			}
+			s.logger.Error("read error",
+				"error", err,
+				"command_count", commandCount)
+			return fmt.Errorf("failed to read command: %w", err)
 		}
 
 		line = strings.TrimSpace(line)
-		s.logger.Debug("received command", "command", line)
+		s.logger.Debug("received command",
+			"command", line,
+			"state", stateToString(s.state),
+			"authenticated", s.authenticated)
 
 		// Parse the command verb (first word) and arguments separately
 		parts := strings.Fields(line)
@@ -354,10 +383,22 @@ func (s *Session) Handle() error {
 			if err != nil {
 				// Handle different error types with appropriate responses
 				if strings.Contains(err.Error(), "message too large") {
-					s.logger.Error("message size exceeded", "error", err)
+					s.logger.Error("message size exceeded",
+						"error", err,
+						"max_size", s.config.MaxSize,
+						"from", s.message.from)
 					s.writeWithLog("552 5.3.4 Message size exceeds fixed maximum message size\r\n")
+				} else if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "connection") {
+					s.logger.Error("connection error during data read",
+						"error", err,
+						"from", s.message.from,
+						"to_count", len(s.message.to))
+					return fmt.Errorf("connection lost during data transfer: %w", err)
 				} else {
-					s.logger.Error("data read error", "error", err)
+					s.logger.Error("data read error",
+						"error", err,
+						"from", s.message.from,
+						"to_count", len(s.message.to))
 					s.writeWithLog("451 4.3.0 Error processing message data\r\n")
 				}
 				continue
