@@ -11,56 +11,55 @@ import (
 
 	"github.com/busybox42/elemta/internal/smtp"
 
-	"github.com/pelletier/go-toml/v2"
-	"gopkg.in/yaml.v3"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 // Config represents the application configuration
 type Config struct {
 	// Server configuration
 	Server struct {
-		Hostname string `yaml:"hostname" toml:"hostname"`
-		Listen   string `yaml:"listen" toml:"listen"`
-		MaxSize  int64  `yaml:"max_size" toml:"max_size"`
-		TLS      bool   `yaml:"tls" toml:"tls"`
-		CertFile string `yaml:"cert_file" toml:"cert_file"`
-		KeyFile  string `yaml:"key_file" toml:"key_file"`
-	} `yaml:"server" toml:"server"`
+		Hostname string `toml:"hostname"`
+		Listen   string `toml:"listen"`
+		MaxSize  int64  `toml:"max_size"`
+		TLS      bool   `toml:"tls"`
+		CertFile string `toml:"cert_file"`
+		KeyFile  string `toml:"key_file"`
+	} `toml:"server"`
 
 	// Enhanced TLS configuration
-	TLS *smtp.TLSConfig `yaml:"tls" toml:"tls"`
+	TLS *smtp.TLSConfig `toml:"tls"`
 
 	// Queue configuration
 	Queue struct {
-		Dir string `yaml:"dir" toml:"dir"`
-	} `yaml:"queue" toml:"queue"`
+		Dir string `toml:"dir"`
+	} `toml:"queue"`
 
 	// Logging configuration
 	Logging struct {
-		Level  string `yaml:"level" toml:"level"`
-		Format string `yaml:"format" toml:"format"`
-		File   string `yaml:"file" toml:"file"`
-	} `yaml:"logging" toml:"logging"`
+		Level  string `toml:"level"`
+		Format string `toml:"format"`
+		File   string `toml:"file"`
+	} `toml:"logging"`
 
 	// Plugins configuration
 	Plugins struct {
-		Directory string   `yaml:"directory" toml:"directory"`
-		Enabled   []string `yaml:"enabled" toml:"enabled"`
-	} `yaml:"plugins" toml:"plugins"`
+		Directory string   `toml:"directory"`
+		Enabled   []string `toml:"enabled"`
+	} `toml:"plugins"`
 
 	// Modern SMTP authentication config for Go SMTP server
-	Auth *smtp.AuthConfig `yaml:"auth" toml:"auth"`
+	Auth *smtp.AuthConfig `toml:"auth"`
 
 	// Queue processor configuration
 	QueueProcessor struct {
-		Enabled  bool `yaml:"enabled" toml:"enabled"`
-		Interval int  `yaml:"interval" toml:"interval"`
-		Workers  int  `yaml:"workers" toml:"workers"`
-		Debug    bool `yaml:"debug" toml:"debug"`
-	} `yaml:"queue_processor" toml:"queue_processor"`
+		Enabled  bool `toml:"enabled"`
+		Interval int  `toml:"interval"`
+		Workers  int  `toml:"workers"`
+		Debug    bool `toml:"debug"`
+	} `toml:"queue_processor"`
 
 	// Delivery configuration
-	Delivery *smtp.DeliveryConfig `yaml:"delivery" toml:"delivery"`
+	Delivery *smtp.DeliveryConfig `toml:"delivery"`
 }
 
 // DefaultConfig returns the default configuration
@@ -145,24 +144,13 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Pre-initialize TLS pointer for TOML mapping
 	cfg.TLS = &smtp.TLSConfig{}
 
-	// Try to parse the file as TOML first (preferred format)
-	tomlErr := toml.Unmarshal(data, cfg)
-	if tomlErr == nil {
-		fmt.Println("Configuration loaded successfully (TOML format)")
-	} else {
-		// If TOML parsing fails, try YAML for backward compatibility
-		yamlErr := yaml.Unmarshal(data, cfg)
-		if yamlErr == nil {
-			fmt.Println("Configuration loaded successfully (YAML format - consider migrating to TOML)")
-		} else {
-			// For better debugging, print the exact errors
-			fmt.Printf("TOML error: %v\n", tomlErr)
-			fmt.Printf("YAML error: %v\n", yamlErr)
-
-			// Include both errors in the returned error
-			return nil, fmt.Errorf("error loading configuration: error parsing config (tried TOML and YAML): %v", tomlErr)
-		}
+	// Parse TOML configuration only
+	err = toml.Unmarshal(data, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing TOML configuration: %w", err)
 	}
+
+	fmt.Println("Configuration loaded successfully (TOML format)")
 
 	// Make sure queue directory is set
 	if cfg.Queue.Dir == "" {

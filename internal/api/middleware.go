@@ -109,7 +109,7 @@ func (am *AuthMiddleware) authenticate(r *http.Request) (*AuthContext, error) {
 		if apiKey, err := auth.ExtractKeyFromHeader(authHeader); err == nil {
 			return am.authenticateAPIKey(apiKey)
 		}
-		
+
 		// Try HTTP Basic Authentication
 		if username, password, ok := r.BasicAuth(); ok {
 			return am.authenticateBasicAuth(username, password)

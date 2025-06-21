@@ -73,10 +73,10 @@ func main() {
 
 	log.Printf("Starting Elemta SMTP server on %s", smtpConfig.ListenAddr)
 	log.Printf("Queue directory: %s", smtpConfig.QueueDir)
-	
+
 	// Log delivery configuration
 	if cfg.Delivery != nil {
-		log.Printf("Delivery configuration: mode=%s, host=%s, port=%d", 
+		log.Printf("Delivery configuration: mode=%s, host=%s, port=%d",
 			cfg.Delivery.Mode, cfg.Delivery.Host, cfg.Delivery.Port)
 	} else {
 		log.Printf("No delivery configuration found - using SMTP delivery")
@@ -121,7 +121,7 @@ func startWebServer() {
 	var listenAddr string = "0.0.0.0:8025"
 	var queueDir string = "/app/queue"
 	var webRoot string = "/app/web/static"
-	
+
 	// Parse flags
 	for i, arg := range os.Args {
 		if arg == "--listen" && i+1 < len(os.Args) {
@@ -141,14 +141,14 @@ func startWebServer() {
 
 	// Create HTTP server
 	mux := http.NewServeMux()
-	
+
 	// Serve static files
 	fs := http.FileServer(http.Dir(webRoot))
 	mux.Handle("/", fs)
-	
+
 	// Create queue manager for reading queue data
 	queueManager := queue.NewManager(queueDir)
-	
+
 	// API endpoints
 	mux.HandleFunc("/api/queue/stats", func(w http.ResponseWriter, r *http.Request) {
 		stats := queueManager.GetStats()
@@ -159,26 +159,26 @@ func startWebServer() {
 			"hold_count":     stats.HoldCount,
 			"status":         "running",
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	})
-	
+
 	mux.HandleFunc("/api/queue/", func(w http.ResponseWriter, r *http.Request) {
 		// Handle queue requests like /api/queue/active, /api/queue/failed, etc.
 		path := strings.TrimPrefix(r.URL.Path, "/api/queue/")
 		queueType := strings.Split(path, "/")[0]
-		
+
 		messages, err := getQueueMessages(queueDir, queueType)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to load %s queue: %v", queueType, err), http.StatusInternalServerError)
 			return
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(messages)
 	})
-	
+
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -198,15 +198,15 @@ func startWebServer() {
 
 func getQueueMessages(queueDir, queueType string) ([]map[string]interface{}, error) {
 	queuePath := filepath.Join(queueDir, queueType)
-	
+
 	// Always return empty slice instead of nil
 	messages := []map[string]interface{}{}
-	
+
 	// Check if directory exists
 	if _, err := os.Stat(queuePath); os.IsNotExist(err) {
 		return messages, nil
 	}
-	
+
 	// Read directory contents
 	files, err := ioutil.ReadDir(queuePath)
 	if err != nil {
@@ -216,7 +216,7 @@ func getQueueMessages(queueDir, queueType string) ([]map[string]interface{}, err
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".json") {
 			continue
 		}
-		
+
 		// Read message metadata
 		messagePath := filepath.Join(queuePath, file.Name())
 		data, err := ioutil.ReadFile(messagePath)
@@ -224,20 +224,20 @@ func getQueueMessages(queueDir, queueType string) ([]map[string]interface{}, err
 			log.Printf("Failed to read message file %s: %v", messagePath, err)
 			continue
 		}
-		
+
 		var message map[string]interface{}
 		if err := json.Unmarshal(data, &message); err != nil {
 			log.Printf("Failed to parse message file %s: %v", messagePath, err)
 			continue
 		}
-		
+
 		// Add file info
 		message["id"] = strings.TrimSuffix(file.Name(), ".json")
 		message["created_at"] = file.ModTime().Format("2006-01-02T15:04:05Z")
 		message["size"] = file.Size()
-		
+
 		messages = append(messages, message)
 	}
-	
+
 	return messages, nil
 }

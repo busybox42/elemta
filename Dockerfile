@@ -48,7 +48,8 @@ COPY --from=builder /build/plugins/clamav.so /app/plugins/clamav.so
 COPY --from=builder /build/plugins/rspamd.so /app/plugins/rspamd.so
 
 # Copy configuration files
-COPY config/elemta.conf /app/config/elemta.conf
+COPY config/elemta.toml /app/config/elemta.toml
+COPY config/dev.toml /app/config/dev.toml
 COPY config/users.txt /app/config/users.txt
 
 # Copy SQLite database

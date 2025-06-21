@@ -26,7 +26,7 @@ func main() {
 	// Show queue stats
 	log.Printf("Queue directory: %s", cfg.Queue.Dir)
 	stats := queueManager.GetStats()
-	log.Printf("Queue stats: Active=%d, Deferred=%d, Failed=%d, Hold=%d", 
+	log.Printf("Queue stats: Active=%d, Deferred=%d, Failed=%d, Hold=%d",
 		stats.ActiveCount, stats.DeferredCount, stats.FailedCount, stats.HoldCount)
 
 	log.Println("Queue status check completed")

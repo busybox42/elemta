@@ -152,7 +152,7 @@ func (s *Session) Handle() error {
 		s.config.MaxSize = 25 * 1024 * 1024 // 25MB
 		s.logger.Info("DEBUG: Applied MaxSize hotfix", "new_max_size", s.config.MaxSize)
 	}
-	
+
 	s.logger.Info("starting new session",
 		"hostname", s.config.Hostname,
 		"max_size", s.config.MaxSize)

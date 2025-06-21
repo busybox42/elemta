@@ -114,11 +114,11 @@ func (f *FileDataSource) GetUser(ctx context.Context, username string) (User, er
 	if !ok {
 		return User{}, ErrNotFound
 	}
-	
+
 	// Assign default roles based on username
 	var groups []string
 	var isAdmin bool
-	
+
 	// Admin users get admin role
 	if username == "admin" || strings.Contains(username, "admin") {
 		groups = []string{"admin"}
@@ -128,10 +128,10 @@ func (f *FileDataSource) GetUser(ctx context.Context, username string) (User, er
 		groups = []string{"user"}
 		isAdmin = false
 	}
-	
+
 	return User{
-		Username: username, 
-		Password: pw, 
+		Username: username,
+		Password: pw,
 		IsActive: true,
 		IsAdmin:  isAdmin,
 		Groups:   groups,
