@@ -1,0 +1,58 @@
+# Elemta Development Configuration
+# Uses non-privileged ports for internal development/testing
+
+[server]
+hostname = "localhost"
+listen = ":2525"       # Non-privileged SMTP port
+max_size = 10485760    # 10MB
+tls = false
+cert_file = ""
+key_file = ""
+
+[tls]
+enabled = false
+enable_starttls = true
+listen_addr = ":2465"  # Non-privileged SMTPS port
+cert_file = ""
+key_file = ""
+min_version = "tls1.2"
+
+[queue]
+dir = "./queue"
+
+[logging]
+level = "debug"
+format = "json"
+file = ""  # Empty means stdout
+
+[plugins]
+directory = "./plugins"
+enabled = []
+
+[auth]
+enabled = false
+required = false
+datasource_type = "file"
+datasource_path = "./config/users.txt"
+
+[queue_processor]
+enabled = true
+interval = 30
+workers = 3
+debug = true
+
+[delivery]
+timeout = 30
+workers = 3
+
+# API Server (for development/testing)
+[api]
+enabled = true
+listen_addr = "127.0.0.1:8025"  # Non-privileged web interface port
+auth_enabled = false
+web_root = "./web/static"
+
+# Metrics configuration  
+[metrics]
+enabled = true
+listen_addr = "127.0.0.1:9090"  # Prometheus metrics port 
