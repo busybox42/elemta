@@ -296,25 +296,28 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
+	// Get message metadata first
+	msg, err := s.queueMgr.GetMessage(id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Message not found: %v", err), http.StatusNotFound)
+		return
+	}
+
 	content, err := s.queueMgr.GetMessageContent(id)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Error: %v", err), http.StatusNotFound)
+		// Log the error and return a more specific message to the user
+		log.Printf("Error getting content for message %s: %v", id, err)
+		http.Error(w, fmt.Sprintf("Message metadata loaded, but content is missing or corrupt: %v", err), http.StatusNotFound)
 		return
 	}
 
 	// If format=raw is specified, return raw message
 	if r.URL.Query().Get("format") == "raw" {
 		w.Header().Set("Content-Type", "text/plain")
-		n, err := w.Write(content)
-		if err != nil || n != len(content) {
-			http.Error(w, fmt.Sprintf("Error writing response: %v", err), http.StatusInternalServerError)
+		if _, err := w.Write(content); err != nil {
+			log.Printf("Error writing raw response for message %s: %v", id, err)
+			http.Error(w, "Failed to write response", http.StatusInternalServerError)
 		}
-		return
-	}
-
-	msg, err := s.queueMgr.GetMessage(id)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error: %v", err), http.StatusNotFound)
 		return
 	}
 

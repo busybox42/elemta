@@ -5,6 +5,74 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Elemta MTA Dashboard</title>
     <style>
+        :root {
+            /* Light theme colors */
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f1f5f9;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --text-tertiary: #475569;
+            --border-primary: #e2e8f0;
+            --border-secondary: #cbd5e1;
+            --shadow-light: rgba(0, 0, 0, 0.1);
+            --shadow-medium: rgba(0, 0, 0, 0.15);
+            --accent-blue: #3b82f6;
+            --accent-blue-hover: #2563eb;
+            --accent-red: #ef4444;
+            --accent-red-hover: #dc2626;
+            --accent-green: #10b981;
+            --accent-green-hover: #059669;
+            --error-bg: #fef2f2;
+            --error-border: #fecaca;
+            --error-text: #991b1b;
+            --success-bg: #f0fdf4;
+            --success-border: #bbf7d0;
+            --success-text: #166534;
+            --priority-critical-bg: #fef2f2;
+            --priority-critical-text: #991b1b;
+            --priority-high-bg: #fef7f3;
+            --priority-high-text: #c2410c;
+            --priority-normal-bg: #f0fdf4;
+            --priority-normal-text: #166534;
+            --priority-low-bg: #f8fafc;
+            --priority-low-text: #475569;
+        }
+
+        [data-theme="dark"] {
+            /* Dark theme colors */
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-tertiary: #94a3b8;
+            --border-primary: #475569;
+            --border-secondary: #64748b;
+            --shadow-light: rgba(0, 0, 0, 0.3);
+            --shadow-medium: rgba(0, 0, 0, 0.4);
+            --accent-blue: #3b82f6;
+            --accent-blue-hover: #60a5fa;
+            --accent-red: #ef4444;
+            --accent-red-hover: #f87171;
+            --accent-green: #10b981;
+            --accent-green-hover: #34d399;
+            --error-bg: #7f1d1d;
+            --error-border: #991b1b;
+            --error-text: #fecaca;
+            --success-bg: #14532d;
+            --success-border: #166534;
+            --success-text: #bbf7d0;
+            --priority-critical-bg: #7f1d1d;
+            --priority-critical-text: #fecaca;
+            --priority-high-bg: #9a3412;
+            --priority-high-text: #fed7aa;
+            --priority-normal-bg: #14532d;
+            --priority-normal-text: #bbf7d0;
+            --priority-low-bg: #334155;
+            --priority-low-text: #cbd5e1;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,9 +81,10 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #f8fafc;
-            color: #1e293b;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             line-height: 1.6;
+            transition: background-color 0.3s ease, color 0.3s ease;
         }
 
         .container {
@@ -31,7 +100,8 @@
             margin-bottom: 2rem;
             border-radius: 12px;
             text-align: center;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 6px -1px var(--shadow-light);
+            position: relative;
         }
 
         .header h1 {
@@ -45,6 +115,26 @@
             opacity: 0.9;
         }
 
+        .theme-toggle {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+            backdrop-filter: blur(10px);
+        }
+
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -53,53 +143,56 @@
         }
 
         .stat-card {
-            background: white;
+            background: var(--bg-secondary);
             padding: 1.5rem;
             border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            border-left: 4px solid #3b82f6;
-            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 1px 3px var(--shadow-light);
+            border-left: 4px solid var(--accent-blue);
+            transition: transform 0.2s, box-shadow 0.2s, background-color 0.3s ease;
         }
 
         .stat-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 4px 12px var(--shadow-medium);
         }
 
         .stat-card h3 {
             font-size: 0.875rem;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            color: #64748b;
+            color: var(--text-secondary);
             margin-bottom: 0.5rem;
         }
 
         .stat-card .value {
             font-size: 2rem;
             font-weight: bold;
-            color: #1e293b;
+            color: var(--text-primary);
         }
 
         .queue-section {
-            background: white;
+            background: var(--bg-secondary);
             border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 1px 3px var(--shadow-light);
             margin-bottom: 2rem;
             overflow: hidden;
+            transition: background-color 0.3s ease;
         }
 
         .queue-header {
-            background: #f1f5f9;
+            background: var(--bg-tertiary);
             padding: 1.5rem;
-            border-bottom: 1px solid #e2e8f0;
+            border-bottom: 1px solid var(--border-primary);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            transition: background-color 0.3s ease;
         }
 
         .queue-header h2 {
             font-size: 1.25rem;
             font-weight: 600;
+            color: var(--text-primary);
         }
 
         .queue-tabs {
@@ -109,21 +202,22 @@
 
         .queue-tab {
             padding: 0.5rem 1rem;
-            background: #e2e8f0;
+            background: var(--border-secondary);
             border: none;
             border-radius: 6px;
             cursor: pointer;
             font-size: 0.875rem;
             transition: all 0.2s;
+            color: var(--text-primary);
         }
 
         .queue-tab.active {
-            background: #3b82f6;
+            background: var(--accent-blue);
             color: white;
         }
 
         .queue-tab:hover:not(.active) {
-            background: #cbd5e1;
+            background: var(--border-primary);
         }
 
         .queue-content {
@@ -137,19 +231,20 @@
 
         .message-item {
             padding: 1rem;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--border-primary);
             border-radius: 8px;
             transition: all 0.2s;
+            background: var(--bg-secondary);
         }
 
         .message-item:hover {
-            border-color: #3b82f6;
-            background: #f8fafc;
+            border-color: var(--accent-blue);
+            background: var(--bg-tertiary);
         }
 
         .message-header {
             display: flex;
-            justify-content: between;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: 0.5rem;
         }
@@ -157,10 +252,10 @@
         .message-id {
             font-family: 'Courier New', monospace;
             font-size: 0.875rem;
-            background: #f1f5f9;
+            background: var(--bg-tertiary);
             padding: 0.25rem 0.5rem;
             border-radius: 4px;
-            color: #475569;
+            color: var(--text-tertiary);
         }
 
         .message-actions {
@@ -181,51 +276,51 @@
         }
 
         .btn-primary {
-            background: #3b82f6;
+            background: var(--accent-blue);
             color: white;
         }
 
         .btn-primary:hover {
-            background: #2563eb;
+            background: var(--accent-blue-hover);
         }
 
         .btn-danger {
-            background: #ef4444;
+            background: var(--accent-red);
             color: white;
         }
 
         .btn-danger:hover {
-            background: #dc2626;
+            background: var(--accent-red-hover);
         }
 
         .btn-success {
-            background: #10b981;
+            background: var(--accent-green);
             color: white;
         }
 
         .btn-success:hover {
-            background: #059669;
+            background: var(--accent-green-hover);
         }
 
         .loading {
             text-align: center;
             padding: 2rem;
-            color: #64748b;
+            color: var(--text-secondary);
         }
 
         .error {
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            color: #991b1b;
+            background: var(--error-bg);
+            border: 1px solid var(--error-border);
+            color: var(--error-text);
             padding: 1rem;
             border-radius: 8px;
             margin-bottom: 1rem;
         }
 
         .success {
-            background: #f0fdf4;
-            border: 1px solid #bbf7d0;
-            color: #166534;
+            background: var(--success-bg);
+            border: 1px solid var(--success-border);
+            color: var(--success-text);
             padding: 1rem;
             border-radius: 8px;
             margin-bottom: 1rem;
@@ -235,8 +330,8 @@
             display: inline-block;
             width: 12px;
             height: 12px;
-            border: 2px solid #e2e8f0;
-            border-top: 2px solid #3b82f6;
+            border: 2px solid var(--border-primary);
+            border-top: 2px solid var(--accent-blue);
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin-left: 0.5rem;
@@ -256,15 +351,47 @@
             text-transform: uppercase;
         }
 
-        .priority-critical { background: #fef2f2; color: #991b1b; }
-        .priority-high { background: #fef7f3; color: #c2410c; }
-        .priority-normal { background: #f0fdf4; color: #166534; }
-        .priority-low { background: #f8fafc; color: #475569; }
+        .priority-critical { 
+            background: var(--priority-critical-bg); 
+            color: var(--priority-critical-text); 
+        }
+        .priority-high { 
+            background: var(--priority-high-bg); 
+            color: var(--priority-high-text); 
+        }
+        .priority-normal { 
+            background: var(--priority-normal-bg); 
+            color: var(--priority-normal-text); 
+        }
+        .priority-low { 
+            background: var(--priority-low-bg); 
+            color: var(--priority-low-text); 
+        }
+
+        /* Dark mode specific adjustments */
+        [data-theme="dark"] .header {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+        }
+
+        [data-theme="dark"] .stat-card {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+
+        [data-theme="dark"] .stat-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        [data-theme="dark"] .queue-section {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
+            <button class="theme-toggle" onclick="toggleTheme()">
+                <span id="theme-icon">🌙</span> <span id="theme-text">Dark Mode</span>
+            </button>
             <h1>Elemta MTA Dashboard</h1>
             <p>Mail Transfer Agent Management & Monitoring</p>
         </div>
@@ -321,8 +448,37 @@
         // API endpoints
         const API_BASE = '/api';
 
+        // Theme management
+        function initializeTheme() {
+            const savedTheme = localStorage.getItem('elemta-theme') || 'dark';
+            setTheme(savedTheme);
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            setTheme(newTheme);
+        }
+
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('elemta-theme', theme);
+            
+            const themeIcon = document.getElementById('theme-icon');
+            const themeText = document.getElementById('theme-text');
+            
+            if (theme === 'dark') {
+                themeIcon.textContent = '☀️';
+                themeText.textContent = 'Light Mode';
+            } else {
+                themeIcon.textContent = '🌙';
+                themeText.textContent = 'Dark Mode';
+            }
+        }
+
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
+            initializeTheme();
             initializeEventListeners();
             loadQueueStats();
             loadQueue(currentQueue);
