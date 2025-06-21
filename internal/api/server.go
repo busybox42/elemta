@@ -129,6 +129,9 @@ func (s *Server) Start() error {
 	// Serve the main dashboard at root (no auth required for now)
 	r.HandleFunc("/", s.handleDashboard).Methods("GET")
 	r.HandleFunc("/dashboard", s.handleDashboard).Methods("GET")
+	
+	// Debug routes (no auth required for debugging)
+	r.HandleFunc("/debug/auth", s.handleDebugAuth).Methods("GET")
 
 	// Authentication routes (if auth is enabled)
 	if s.authMiddleware != nil {
@@ -617,6 +620,42 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, map[string]string{"status": "success", "message": "API key revoked"})
+}
+
+// Debug handlers
+
+// handleDebugAuth provides authentication debugging information
+func (s *Server) handleDebugAuth(w http.ResponseWriter, r *http.Request) {
+	debug := map[string]interface{}{
+		"auth_enabled": s.authSystem != nil,
+		"rbac_enabled": s.rbac != nil,
+		"middleware_enabled": s.authMiddleware != nil,
+	}
+
+	if s.authSystem != nil {
+		debug["auth_type"] = "available"
+		
+		// Test authentication with query parameters if provided
+		username := r.URL.Query().Get("user")
+		password := r.URL.Query().Get("pass")
+		
+		if username != "" && password != "" {
+			ctx := context.Background()
+			authenticated, err := s.authSystem.Authenticate(ctx, username, password)
+			debug["test_auth"] = map[string]interface{}{
+				"username": username,
+				"authenticated": authenticated,
+				"error": err,
+			}
+			
+			if authenticated && s.rbac != nil {
+				permissions, _ := s.rbac.GetUserPermissions(ctx, username)
+				debug["test_permissions"] = permissions
+			}
+		}
+	}
+
+	writeJSON(w, debug)
 }
 
 // Helper functions

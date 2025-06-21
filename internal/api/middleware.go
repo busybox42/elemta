@@ -102,12 +102,17 @@ func (am *AuthMiddleware) OptionalAuth(next http.Handler) http.Handler {
 	})
 }
 
-// authenticate performs authentication using API key or session
+// authenticate performs authentication using API key, HTTP Basic Auth, or session
 func (am *AuthMiddleware) authenticate(r *http.Request) (*AuthContext, error) {
 	// Try API key authentication first
 	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
 		if apiKey, err := auth.ExtractKeyFromHeader(authHeader); err == nil {
 			return am.authenticateAPIKey(apiKey)
+		}
+		
+		// Try HTTP Basic Authentication
+		if username, password, ok := r.BasicAuth(); ok {
+			return am.authenticateBasicAuth(username, password)
 		}
 	}
 
@@ -136,6 +141,29 @@ func (am *AuthMiddleware) authenticateAPIKey(keyString string) (*AuthContext, er
 		Username:    apiKey.Username,
 		IsAPIKey:    true,
 		Permissions: apiKey.Permissions,
+	}, nil
+}
+
+// authenticateBasicAuth authenticates using HTTP Basic Auth
+func (am *AuthMiddleware) authenticateBasicAuth(username, password string) (*AuthContext, error) {
+	if am.rbac == nil {
+		return nil, auth.ErrInvalidCredentials
+	}
+
+	// Authenticate user with the auth system
+	ctx := context.Background()
+	authenticated, err := am.rbac.Authenticate(ctx, username, password)
+	if err != nil || !authenticated {
+		return nil, auth.ErrInvalidCredentials
+	}
+
+	// Get user permissions from RBAC
+	permissions, _ := am.rbac.GetUserPermissions(ctx, username)
+
+	return &AuthContext{
+		Username:    username,
+		IsAPIKey:    false,
+		Permissions: permissions,
 	}, nil
 }
 

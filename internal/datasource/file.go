@@ -114,7 +114,28 @@ func (f *FileDataSource) GetUser(ctx context.Context, username string) (User, er
 	if !ok {
 		return User{}, ErrNotFound
 	}
-	return User{Username: username, Password: pw, IsActive: true}, nil
+	
+	// Assign default roles based on username
+	var groups []string
+	var isAdmin bool
+	
+	// Admin users get admin role
+	if username == "admin" || strings.Contains(username, "admin") {
+		groups = []string{"admin"}
+		isAdmin = true
+	} else {
+		// Regular users get user role which includes queue:view permission
+		groups = []string{"user"}
+		isAdmin = false
+	}
+	
+	return User{
+		Username: username, 
+		Password: pw, 
+		IsActive: true,
+		IsAdmin:  isAdmin,
+		Groups:   groups,
+	}, nil
 }
 
 func (f *FileDataSource) ListUsers(ctx context.Context, filter map[string]interface{}, limit, offset int) ([]User, error) {

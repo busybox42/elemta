@@ -190,6 +190,11 @@ func (r *RBAC) CheckPermission(ctx context.Context, username string, permission 
 	return nil
 }
 
+// Authenticate authenticates a user with username and password
+func (r *RBAC) Authenticate(ctx context.Context, username, password string) (bool, error) {
+	return r.auth.Authenticate(ctx, username, password)
+}
+
 // AddUserToRole adds a user to a role/group
 func (r *RBAC) AddUserToRole(ctx context.Context, username, roleName string) error {
 	r.mu.RLock()
