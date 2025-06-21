@@ -26,9 +26,9 @@ $config['imap_conn_options'] = null;
 // SMTP Configuration - Connect to Elemta MTA
 $config['smtp_server'] = 'elemta';
 $config['smtp_port'] = 2525;
-$config['smtp_user'] = '%u';
-$config['smtp_pass'] = '%p';
-$config['smtp_auth_type'] = 'PLAIN';
+$config['smtp_user'] = '';
+$config['smtp_pass'] = '';
+$config['smtp_auth_type'] = null;
 $config['smtp_timeout'] = 120;
 $config['smtp_conn_options'] = null;
 
@@ -59,7 +59,7 @@ $config['time_format'] = 'H:i';
 
 // Message Composition
 $config['draft_autosave'] = 60;
-$config['max_message_size'] = '25M';
+$config['max_message_size'] = '1M';
 $config['mdn_requests'] = 0;
 
 // Address Book Configuration (LDAP Integration)

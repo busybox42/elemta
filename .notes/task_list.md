@@ -57,19 +57,25 @@
 ## High Priority (P1) - Week 2
 
 ### Web Interface Queue Loading Fix
-**Status**: 🔄 **Priority**: P1 **Deadline**: Week 2  
+**Status**: ✅ **Priority**: P1 **Deadline**: Week 2 **Completed**: 2024-12-21
 **Problem**: Web interface shows "Failed to load queue" errors due to authentication issues
 
 **Progress**:
-- [x] **Root cause identified**: Web interface expects unauthenticated API access
-- [x] **HTTP Basic Auth support added**: Complete middleware implementation
-- [x] **File datasource enhanced**: Proper role assignment (admin/user roles)  
-- [x] **Authentication system working**: File-based auth loading correctly
-- [x] **API restructured**: Read-only operations moved outside auth middleware
-- [ ] **Final testing**: Verify web interface queue loading works
-- [ ] **Destructive operations**: Test authenticated delete/flush operations
+- [x] **Root cause identified**: Web interface expects unauthenticated API access ✅
+- [x] **HTTP Basic Auth support added**: Complete middleware implementation ✅
+- [x] **File datasource enhanced**: Proper role assignment (admin/user roles) ✅ 
+- [x] **Authentication system working**: File-based auth loading correctly ✅
+- [x] **API restructured**: Read-only operations moved outside auth middleware ✅
+- [x] **Final testing**: Verify web interface queue loading works ✅
+- [x] **Destructive operations**: Test authenticated delete/flush operations ✅
 
 **Solution**: Web interface designed for unauthenticated read access, auth only for destructive operations
+
+**Test Results**:
+- ✅ Read operations (`/api/queue/stats`) work WITHOUT authentication
+- ✅ Destructive operations (`DELETE /api/queue/message/{id}`) REQUIRE authentication  
+- ✅ Authenticated destructive operations work with admin:password credentials
+- ✅ Web interface can load queue data without authentication errors
 
 **Files**: `internal/api/middleware.go`, `internal/api/server.go`, `internal/datasource/file.go`, `internal/auth/rbac.go`
 
@@ -90,30 +96,65 @@
 **Files**: `Makefile`, `Dockerfile`, `docker-compose.yml`, `k8s/*.yaml`
 
 ### Configuration Validation
-**Status**: ❌ **Priority**: P1 **Deadline**: Week 2
+**Status**: ✅ **Priority**: P1 **Deadline**: Week 2 **Completed**: 2024-12-21
 **Problem**: Config loading has complex fallback logic with potential failures
 
 **Tasks**:
-- [ ] Add comprehensive config validation
-- [ ] Provide clear error messages for misconfigurations
-- [ ] Add config file generation command
-- [ ] Test all configuration examples
-- [ ] Document required vs optional settings
+- [x] Add comprehensive config validation ✅
+- [x] Provide clear error messages for misconfigurations ✅
+- [x] Add config file generation command ✅ (already existed)
+- [x] Test all configuration examples ✅
+- [x] Document required vs optional settings ✅
 
-**Files**: `internal/config/config.go`
+**Solution**: Implemented comprehensive validation system with detailed error reporting
+
+**Key Features**:
+- ✅ **Comprehensive validation**: Server, TLS, queue, logging, plugins, auth, queue processor
+- ✅ **Clear error messages**: Field-specific errors with current values and explanations
+- ✅ **Warnings vs Errors**: Distinguishes between blocking errors and advisory warnings
+- ✅ **File system validation**: Checks directory permissions and writability
+- ✅ **Format validation**: Validates hostnames, email addresses, ports, file paths
+- ✅ **Enhanced CLI**: `elemta config validate` command with detailed reporting
+- ✅ **TOML parsing fix**: Fixed root-level field parsing by restructuring config to use sections
+
+**Test Results**:
+- ✅ Valid configurations pass with clear summary
+- ✅ Invalid configurations show detailed error reports (8 different error types tested)
+- ✅ Warnings for non-critical issues (missing auth, missing plugins)
+- ✅ Exit codes: 0 for valid, 1 for invalid configurations
+
+**Files**: `internal/config/config.go`, `cmd/elemta/main.go`
 
 ### Error Handling & Logging
-**Status**: ❌ **Priority**: P1 **Deadline**: Week 2
+**Status**: ✅ **Priority**: P1 **Deadline**: Week 2 **Completed**: 2025-06-21
 **Problem**: Inconsistent error handling patterns across codebase
 
 **Tasks**:
-- [ ] Standardize error wrapping with `fmt.Errorf("%w", err)`
-- [ ] Add structured logging throughout
-- [ ] Implement proper error recovery in SMTP sessions
-- [ ] Add request tracing for debugging
-- [ ] Test error scenarios
+- [x] Standardize error wrapping with `fmt.Errorf("%w", err)` ✅
+- [x] Add structured logging throughout ✅
+- [x] Implement proper error recovery in SMTP sessions ✅
+- [x] Add request tracing for debugging ✅
+- [x] Test error scenarios ✅
 
-**Files**: Throughout codebase, especially `internal/smtp/`, `internal/queue/`
+**Solution**: Comprehensive error handling and structured logging improvements
+
+**Key Improvements**:
+- ✅ **Error Wrapping**: Fixed all `fmt.Errorf("%v", err)` to `fmt.Errorf("%w", err)` across config, queue, and SMTP modules
+- ✅ **Structured Logging**: Enhanced SMTP session logging with session IDs, state tracking, and command counts
+- ✅ **Panic Recovery**: Added defer statements for panic recovery and connection cleanup in SMTP sessions
+- ✅ **Queue Logging**: Improved queue manager logging with message IDs and operation context
+- ✅ **Component Logging**: Added structured logging with component names and rich context
+- ✅ **Network Error Handling**: Better handling for network errors, timeouts, and connection issues
+- ✅ **Request Tracing**: Implemented unique session IDs for debugging and tracing requests
+
+**Test Results**:
+- ✅ All tests passing with enhanced logging output
+- ✅ Error wrapping working correctly for proper error chains
+- ✅ SMTP sessions showing detailed structured logs with context
+- ✅ Queue operations logging with message IDs and operation details
+- ✅ Panic recovery tested and working in session handling
+
+**Files**: Throughout codebase, especially `internal/smtp/`, `internal/queue/`, `internal/config/`
 
 ## Technical Debt (P2) - Week 3
 

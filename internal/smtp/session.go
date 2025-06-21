@@ -85,24 +85,16 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Ses
 	var enabledPlugins []string
 	pluginConfig := make(map[string]map[string]interface{})
 
-	// Always enable ClamAV and Rspamd for our tests
-	enabledPlugins = []string{"clamav", "rspamd"}
-	logger.Info("Enabling plugins for testing", "plugins", enabledPlugins)
-
-	// Add ClamAV config
-	if pluginConfig["clamav"] == nil {
-		pluginConfig["clamav"] = make(map[string]interface{})
+	// Use plugins from config instead of hardcoded test plugins
+	if config.Plugins != nil && config.Plugins.Enabled {
+		enabledPlugins = config.Plugins.Plugins
+		logger.Info("Enabling configured plugins", "plugins", enabledPlugins)
+	} else {
+		logger.Info("No plugins enabled")
 	}
-	pluginConfig["clamav"]["host"] = "elemta-clamav"
-	pluginConfig["clamav"]["port"] = 3310
 
-	// Add Rspamd config
-	if pluginConfig["rspamd"] == nil {
-		pluginConfig["rspamd"] = make(map[string]interface{})
-	}
-	pluginConfig["rspamd"]["host"] = "elemta-rspamd"
-	pluginConfig["rspamd"]["port"] = 11334
-	pluginConfig["rspamd"]["threshold"] = 5.0
+	// Use plugin configuration from config file if available
+	// Plugin configs should be loaded from the main configuration
 
 	// Initialize plugins
 	err := builtinPlugins.InitBuiltinPlugins(enabledPlugins, pluginConfig)
@@ -154,6 +146,13 @@ func (s *Session) Handle() error {
 		s.logger.Info("session ended")
 	}()
 
+	// HOTFIX: Ensure MaxSize is never 0
+	s.logger.Info("DEBUG: MaxSize before hotfix", "max_size", s.config.MaxSize)
+	if s.config.MaxSize == 0 {
+		s.config.MaxSize = 25 * 1024 * 1024 // 25MB
+		s.logger.Info("DEBUG: Applied MaxSize hotfix", "new_max_size", s.config.MaxSize)
+	}
+	
 	s.logger.Info("starting new session",
 		"hostname", s.config.Hostname,
 		"max_size", s.config.MaxSize)
@@ -267,7 +266,11 @@ func (s *Session) Handle() error {
 				s.writeWithLog("250-" + s.config.Hostname + " greets " + clientIdentity + "\r\n")
 
 				// RFC 1870 SIZE extension
-				s.writeWithLog("250-SIZE " + strconv.FormatInt(s.config.MaxSize, 10) + "\r\n")
+				maxSize := s.config.MaxSize
+				if maxSize == 0 {
+					maxSize = 25 * 1024 * 1024 // 25MB hardcoded fallback
+				}
+				s.writeWithLog("250-SIZE " + strconv.FormatInt(maxSize, 10) + "\r\n")
 
 				// RFC 6152 8BITMIME extension
 				s.writeWithLog("250-8BITMIME\r\n")

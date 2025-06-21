@@ -21,6 +21,7 @@ type Config struct {
 	Server struct {
 		Hostname string `yaml:"hostname" toml:"hostname"`
 		Listen   string `yaml:"listen" toml:"listen"`
+		MaxSize  int64  `yaml:"max_size" toml:"max_size"`
 		TLS      bool   `yaml:"tls" toml:"tls"`
 		CertFile string `yaml:"cert_file" toml:"cert_file"`
 		KeyFile  string `yaml:"key_file" toml:"key_file"`
@@ -69,6 +70,7 @@ func DefaultConfig() *Config {
 	// Set default server configuration
 	cfg.Server.Hostname = "localhost"
 	cfg.Server.Listen = ":2525"
+	cfg.Server.MaxSize = 25 * 1024 * 1024 // 25MB default
 	cfg.Server.TLS = false
 
 	// Set default queue directory

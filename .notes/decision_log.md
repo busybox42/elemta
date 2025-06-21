@@ -138,9 +138,10 @@
 ## Technical Standards Decisions
 
 ### TD-001: Error Handling Pattern
-**Status**: ✅ ACCEPTED  
+**Status**: ✅ ACCEPTED **Implemented**: 2025-06-21  
 **Standard**: Use `fmt.Errorf("operation failed: %w", err)` for error wrapping  
 **Rationale**: Enables error unwrapping and stack traces  
+**Implementation**: Standardized across all modules with comprehensive error wrapping
 
 ### TD-002: Context Usage
 **Status**: ✅ ACCEPTED  
@@ -148,9 +149,17 @@
 **Rationale**: Enables timeout, cancellation, and request tracing  
 
 ### TD-003: Logging Standard
-**Status**: ✅ ACCEPTED  
+**Status**: ✅ ACCEPTED **Enhanced**: 2025-06-21  
 **Standard**: Use structured logging with `slog` package  
 **Rationale**: Better queryability and integration with monitoring systems  
+**Enhancement**: Added session IDs, request tracing, and comprehensive context logging
+
+### TD-005: SMTP Session Error Recovery
+**Date**: 2025-06-21  
+**Status**: ✅ ACCEPTED  
+**Standard**: Implement panic recovery and graceful error handling in SMTP sessions  
+**Rationale**: Prevents single session failures from crashing the entire server  
+**Implementation**: Added defer-based panic recovery with structured logging  
 
 ### TD-004: Testing Approach
 **Status**: ✅ ACCEPTED  

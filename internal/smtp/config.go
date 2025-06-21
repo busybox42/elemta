@@ -297,7 +297,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		config.QueueDir = "./queue"
 	}
 	if config.MaxSize == 0 {
-		config.MaxSize = 25 * 1024 * 1024
+		config.MaxSize = 50 * 1024 * 1024 // 50MB - increased default
 	}
 	if config.MaxWorkers == 0 {
 		config.MaxWorkers = 10
@@ -433,7 +433,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		ListenAddr:            ":2525",
 		Hostname:              "localhost",
-		MaxSize:               10 * 1024 * 1024, // 10MB
+		MaxSize:               50 * 1024 * 1024, // 50MB
 		QueueDir:              "./queue",
 		QueueProcessorEnabled: true,
 		QueueProcessInterval:  30, // 30 seconds

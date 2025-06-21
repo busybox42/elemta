@@ -6,11 +6,13 @@ listen = ":2525"
 tls = false
 cert_file = ""
 key_file = ""
+max_size = 26214400  # 25MB
 
-queue_dir = "/app/queue"
+[queue]
+dir = "/app/queue"
 
 [logging]
-level = "info"
+level = "debug"
 format = "text"
 file = ""
 
@@ -24,18 +26,14 @@ interval = 10
 workers = 5
 debug = false
 
-# TLS Configuration (uncomment and configure as needed)
-# [tls]
-# enabled = false
-# enable_starttls = true
+[auth] 
+enabled = false
+required = false
+datasource_type = "file"
+datasource_path = "/app/config/users.txt"
 
-# Authentication Configuration (uncomment and configure as needed)
-# [auth] 
-# enabled = false
-# required = false
-# datasource_type = "file"
-
-# Delivery Configuration (uncomment and configure as needed)
-# [delivery]
-# mode = "smtp"
-# timeout = 30
+[delivery]
+mode = "lmtp"
+host = "elemta-dovecot"
+port = 2424
+timeout = 30

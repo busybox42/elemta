@@ -18,6 +18,8 @@ services:
       - elemta_logs:/app/logs
       - ./plugins:/app/plugins:ro
       - ./config/elemta.toml:/app/config/elemta.toml:ro
+      - ./config/elemta.conf:/app/config/elemta.conf:ro
+      - ./config/users.txt:/app/config/users.txt:ro
       - ./config/elemta.db:/app/config/elemta.db:rw
       - ./scripts/api_server.py:/app/api_server.py
     environment:
