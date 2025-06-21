@@ -388,7 +388,7 @@ services:
       - ROUNDCUBEMAIL_ASPELL_ENABLE=true
     volumes:
       - roundcube_data:/var/roundcube
-      - ./docker/roundcube/config/config-enhanced.inc.php:/var/roundcube/config/config.inc.php:ro
+      - ./docker/roundcube/config/config.inc.php:/var/roundcube/config/config.inc.php:ro
     networks:
       - elemta_network
     restart: unless-stopped

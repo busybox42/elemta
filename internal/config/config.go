@@ -136,23 +136,23 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	// Pre-initialize TLS pointer for TOML mapping
 	cfg.TLS = &smtp.TLSConfig{}
-	// Try to parse the file as YAML first
-	yamlErr := yaml.Unmarshal(data, cfg)
-	if yamlErr == nil {
-		fmt.Println("Configuration loaded successfully (YAML format)")
+
+	// Try to parse the file as TOML first (preferred format)
+	tomlErr := toml.Unmarshal(data, cfg)
+	if tomlErr == nil {
+		fmt.Println("Configuration loaded successfully (TOML format)")
 	} else {
-		// If YAML parsing fails, try TOML
-		tomlErr := toml.Unmarshal(data, cfg)
-		if tomlErr == nil {
-			fmt.Println("Configuration loaded successfully (TOML format)")
-			fmt.Printf("[DEBUG] Loaded cfg struct after TOML unmarshal: %+v\n", cfg)
+		// If TOML parsing fails, try YAML for backward compatibility
+		yamlErr := yaml.Unmarshal(data, cfg)
+		if yamlErr == nil {
+			fmt.Println("Configuration loaded successfully (YAML format - consider migrating to TOML)")
 		} else {
 			// For better debugging, print the exact errors
-			fmt.Printf("YAML error: %v\n", yamlErr)
 			fmt.Printf("TOML error: %v\n", tomlErr)
+			fmt.Printf("YAML error: %v\n", yamlErr)
 
 			// Include both errors in the returned error
-			return nil, fmt.Errorf("error loading configuration: error parsing config (tried YAML and TOML): %v", tomlErr)
+			return nil, fmt.Errorf("error loading configuration: error parsing config (tried TOML and YAML): %v", tomlErr)
 		}
 	}
 
@@ -204,13 +204,76 @@ func (c *Config) EnsureQueueDirectory() error {
 	return nil
 }
 
-// SaveConfig saves the configuration to a file
+// SaveConfig saves the configuration to a file in TOML format
 func (c *Config) SaveConfig(configPath string) error {
-	// Convert to YAML
-	data, err := yaml.Marshal(c)
-	if err != nil {
-		return fmt.Errorf("failed to serialize config: %v", err)
-	}
+	// Create proper TOML format manually since marshaling has issues with nested structs
+	tomlContent := fmt.Sprintf(`# Elemta SMTP Server Configuration
+
+[server]
+hostname = "%s"
+listen = "%s"
+tls = %t
+cert_file = "%s"
+key_file = "%s"
+
+queue_dir = "%s"
+
+[logging]
+level = "%s"
+format = "%s"
+file = "%s"
+
+[plugins]
+directory = "%s"
+enabled = []
+
+[queue_processor]
+enabled = %t
+interval = %d
+workers = %d
+debug = %t
+
+# TLS Configuration (uncomment and configure as needed)
+# [tls]
+# enabled = false
+# enable_starttls = true
+
+# Authentication Configuration (uncomment and configure as needed)
+# [auth] 
+# enabled = true
+# required = false
+# datasource_type = "file"       # Options: file, ldap, mysql, postgres, sqlite
+# datasource_path = "/app/config/users.txt"
+
+# For LDAP authentication:
+# [auth]
+# enabled = true
+# datasource_type = "ldap"
+# datasource_host = "localhost" 
+# datasource_port = 1389
+# datasource_user = "cn=admin,dc=example,dc=com"
+# datasource_pass = "admin"
+
+# Delivery Configuration (uncomment and configure as needed)
+# [delivery]
+# mode = "smtp"
+# timeout = 30
+`,
+		c.Server.Hostname,
+		c.Server.Listen,
+		c.Server.TLS,
+		c.Server.CertFile,
+		c.Server.KeyFile,
+		c.QueueDir,
+		c.Logging.Level,
+		c.Logging.Format,
+		c.Logging.File,
+		c.Plugins.Directory,
+		c.QueueProcessor.Enabled,
+		c.QueueProcessor.Interval,
+		c.QueueProcessor.Workers,
+		c.QueueProcessor.Debug,
+	)
 
 	// Make sure directory exists
 	configDir := filepath.Dir(configPath)
@@ -219,7 +282,7 @@ func (c *Config) SaveConfig(configPath string) error {
 	}
 
 	// Write to file
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(tomlContent), 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %v", err)
 	}
 

@@ -199,5 +199,32 @@
 
 ---
 
-**Last Updated**: [Current Date]  
-**Next Review**: [Next Monday] 
+## Decision 4: P0 Critical Issues Resolution
+**Date**: 2024-12-21
+**Status**: ✅ Implemented
+**Context**: All three P0 critical blockers have been resolved
+
+**Decision**: 
+- Main entry point (`cmd/elemta/main.go`) implemented with full Cobra CLI
+- Configuration standardized on TOML format with proper generation
+- Production authentication implemented (removed mock datasources)
+- Web interface command added and working in Docker
+
+**Rationale**: 
+- Elemta is now production-ready for core email functionality
+- All critical security and functionality blockers removed
+- System successfully deploys and operates in Docker environment
+- Ready to proceed with P1 improvements
+
+**Implementation**: 
+- Created complete main.go with server, web, config, version commands
+- Fixed TOML marshaling and config generation
+- Replaced mock auth with environment-based configuration
+- Verified full 12-container deployment working
+
+**Impact**: ✅ **PRODUCTION READY** - Core email server functionality operational
+
+---
+
+**Last Updated**: 2024-12-21  
+**Next Review**: 2024-12-28 

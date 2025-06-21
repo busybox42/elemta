@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/busybox42/elemta/internal/auth"
-	"github.com/busybox42/elemta/internal/datasource"
 	"github.com/busybox42/elemta/internal/queue"
 	"github.com/gorilla/mux"
 )
@@ -72,42 +71,18 @@ func NewServer(config *Config, queueDir string) (*Server, error) {
 
 // initializeAuth initializes the authentication system
 func (s *Server) initializeAuth() error {
-	// Create a mock datasource for demonstration
-	// In production, you'd configure this based on your needs
-	mockDS := datasource.NewMockDataSource("api-auth")
-	if err := mockDS.Connect(); err != nil {
-		return fmt.Errorf("failed to connect to datasource: %w", err)
-	}
-
-	// Create default admin user
-	adminUser := datasource.User{
-		Username: "admin",
-		Password: "$2a$10$Pl9NFlwcWTYXix7cAVhKX.A1KMJLAu0/tuHWcHXfip/p/RY90hIwS", // "password"
-		Email:    "admin@elemta.local",
-		FullName: "System Administrator",
-		IsActive: true,
-		IsAdmin:  true,
-		Groups:   []string{"admin"},
-	}
-	mockDS.AddMockUser(adminUser)
-
-	// Create test user
-	testUser := datasource.User{
-		Username: "user",
-		Password: "$2a$10$Pl9NFlwcWTYXix7cAVhKX.A1KMJLAu0/tuHWcHXfip/p/RY90hIwS", // "password"
-		Email:    "user@elemta.local",
-		FullName: "Test User",
-		IsActive: true,
-		IsAdmin:  false,
-		Groups:   []string{"user"},
-	}
-	mockDS.AddMockUser(testUser)
-
-	// Initialize auth system
-	authConfig := auth.Config{DataSource: mockDS}
-	authSystem, err := auth.New(authConfig)
+	// Use production datasource from environment variables or default to file-based auth
+	authSystem, err := auth.NewFromEnv()
 	if err != nil {
-		return fmt.Errorf("failed to create auth system: %w", err)
+		// Fallback to file-based authentication with users.txt
+		log.Printf("Warning: Failed to initialize auth from environment (%v), falling back to file-based auth", err)
+		authSystem, err = auth.NewWithFile("/app/config/users.txt")
+		if err != nil {
+			return fmt.Errorf("failed to initialize file-based authentication: %w", err)
+		}
+		log.Printf("Authentication initialized using file-based datasource: /app/config/users.txt")
+	} else {
+		log.Printf("Authentication initialized from environment configuration")
 	}
 
 	// Initialize RBAC

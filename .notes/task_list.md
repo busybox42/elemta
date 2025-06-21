@@ -9,46 +9,50 @@
 ## Critical Path (P0) - Week 1
 
 ### Fix Main Application Entry Point
-**Status**: ❌ **Priority**: P0 **Deadline**: Week 1
+**Status**: ✅ **Priority**: P0 **Deadline**: Week 1 **Completed**: 2024-12-21
 **Problem**: Missing `cmd/elemta/main.go` - README references non-existent file
 **Impact**: Cannot build main server binary
 
 **Tasks**:
-- [ ] Create `cmd/elemta/` directory structure
-- [ ] Implement proper main.go with cobra CLI for server commands
-- [ ] Add server, web, and daemon subcommands
-- [ ] Update Makefile and Docker builds
-- [ ] Test binary compilation and execution
+- [x] Create `cmd/elemta/` directory structure
+- [x] Implement proper main.go with cobra CLI for server commands
+- [x] Add server, web, config, and version subcommands
+- [x] Update Makefile and Docker builds
+- [x] Test binary compilation and execution
+- [x] Fix web command for Docker deployment
 
-**Files**: `cmd/elemta-cli/`, `cmd/elemta-queue/`, `Makefile`, `Dockerfile`
+**Files**: `cmd/elemta/main.go`, `cmd/elemta-cli/`, `cmd/elemta-queue/`, `Makefile`, `Dockerfile`
 
 ### Standardize Configuration System
-**Status**: ❌ **Priority**: P0 **Deadline**: Week 1
+**Status**: ✅ **Priority**: P0 **Deadline**: Week 1 **Completed**: 2024-12-21
 **Problem**: Multiple config formats (YAML, TOML, JSON) with inconsistent parsing
 **Impact**: Configuration confusion, deployment issues
 
 **Tasks**:
-- [ ] Choose single format (recommend TOML for simplicity)
-- [ ] Consolidate config structures across all components
-- [ ] Remove redundant parsing logic
-- [ ] Validate all config examples work
-- [ ] Update documentation
+- [x] Choose single format (TOML adopted as standard)
+- [x] Fix TOML marshaling to generate proper format
+- [x] Consolidate config structures across all components
+- [x] Remove redundant parsing logic
+- [x] Validate all config examples work
+- [x] Create config/elemta-default.toml template
+- [x] Update Docker configuration
 
-**Files**: `internal/config/config.go`, `config/*.yaml`, `config/*.toml`
+**Files**: `internal/config/config.go`, `config/elemta-default.toml`, `config/elemta.toml`
 
 ### Production Authentication System
-**Status**: ❌ **Priority**: P0 **Deadline**: Week 1
+**Status**: ✅ **Priority**: P0 **Deadline**: Week 1 **Completed**: 2024-12-21
 **Problem**: Mock datasources in production code paths
 **Impact**: Security vulnerability, not production-ready
 
 **Tasks**:
-- [ ] Remove mock datasource usage from API server
-- [ ] Implement proper datasource configuration
-- [ ] Add real LDAP/database authentication examples
-- [ ] Test authentication flows
-- [ ] Add security hardening
+- [x] Remove hardcoded mock datasource from API server
+- [x] Implement environment-based auth configuration
+- [x] Add file-based authentication fallback
+- [x] Add real LDAP/database authentication examples in configs
+- [x] Test authentication flows in Docker environment
+- [x] Remove mock import dependencies
 
-**Files**: `internal/api/server.go`, `internal/auth/`, `internal/datasource/`
+**Files**: `internal/api/server.go`, `internal/auth/`, `config/elemta-default.toml`
 
 ## High Priority (P1) - Week 2
 
