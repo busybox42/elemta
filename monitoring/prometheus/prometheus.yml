@@ -6,16 +6,17 @@ scrape_configs:
   - job_name: 'elemta'
     scrape_interval: 5s
     static_configs:
-      - targets: ['elemta:8080']
+      - targets: ['elemta-metrics:8080']
         labels:
           instance: 'elemta-server'
 
-  - job_name: 'rspamd'
-    scrape_interval: 5s
-    static_configs:
-      - targets: ['rspamd:11334']
-        labels:
-          instance: 'rspamd-server'
+  # RSpamd metrics temporarily disabled - requires authentication
+  # - job_name: 'rspamd'
+  #   scrape_interval: 5s
+  #   static_configs:
+  #     - targets: ['elemta-rspamd:11334']
+  #       labels:
+  #         instance: 'rspamd-server'
 
   - job_name: 'prometheus'
     scrape_interval: 10s
