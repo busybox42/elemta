@@ -22,14 +22,26 @@ internal/
 │   ├── session.go     # SMTP session handling
 │   ├── auth.go        # SMTP authentication
 │   ├── tls.go         # TLS/SSL handling
+│   ├── tls_security.go # TLS security hardening (4-level configuration)
+│   ├── tls_monitoring.go # TLS monitoring and alerting
+│   ├── tls_security_test.go # TLS security tests
+│   ├── tls_monitoring_test.go # TLS monitoring tests
 │   └── queue.go       # SMTP queue integration
 ├── queue/             # Message queue system
+│   ├── interfaces.go  # Unified queue interfaces
+│   ├── storage.go     # Pluggable storage backend
+│   ├── constructors.go # Modular delivery/processing managers
 │   ├── manager.go     # Queue manager (multi-queue)
 │   ├── processor.go   # Queue processing logic
-│   └── delivery_handler.go # Delivery handling
+│   ├── delivery_handler.go # Delivery handling
+│   └── unified_test.go # Comprehensive queue system tests
 ├── plugin/            # Plugin system architecture
 │   ├── manager.go     # Plugin loading and management
 │   ├── types.go       # Plugin interfaces and types
+│   ├── validator.go   # Plugin validation and security checks
+│   ├── sandbox.go     # Plugin sandboxing and resource limits
+│   ├── hotreload.go   # Hot-reload capabilities
+│   ├── validator_test.go # Plugin validation tests
 │   ├── antivirus.go   # Antivirus plugin interface
 │   ├── antispam.go    # Antispam plugin interface
 │   ├── dkim.go        # DKIM plugin interface

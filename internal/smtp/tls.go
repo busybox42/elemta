@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -28,6 +29,10 @@ type TLSManager struct {
 	logger            *log.Logger
 	httpServer        *http.Server
 	notificationsSent map[string]time.Time // Track when notifications were last sent
+	// New security components
+	security *TLSSecurity
+	monitor  *TLSMonitor
+	slogger  *slog.Logger
 }
 
 // CertificateInfo holds information about the current certificate
@@ -42,11 +47,17 @@ type CertificateInfo struct {
 
 // NewTLSManager creates a new TLS manager
 func NewTLSManager(config *Config) (*TLSManager, error) {
+	// Create structured logger
+	slogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
 	manager := &TLSManager{
 		config:            config,
 		stopChan:          make(chan struct{}),
 		logger:            log.New(os.Stdout, "[TLS] ", log.LstdFlags),
 		notificationsSent: make(map[string]time.Time),
+		slogger:           slogger,
 	}
 
 	// If TLS is not enabled, return early
@@ -54,9 +65,13 @@ func NewTLSManager(config *Config) (*TLSManager, error) {
 		return manager, nil
 	}
 
-	// Set up TLS configuration
+	// Initialize security hardening and monitoring components
+	manager.security = NewTLSSecurity(config.TLS, slogger)
+	manager.monitor = NewTLSMonitor(slogger)
+
+	// Set up TLS configuration with security hardening
 	var err error
-	manager.tlsConfig, err = manager.setupTLSConfig()
+	manager.tlsConfig, err = manager.setupSecureTLSConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to set up TLS config: %w", err)
 	}
@@ -66,10 +81,110 @@ func NewTLSManager(config *Config) (*TLSManager, error) {
 		go manager.startCertificateRenewalService()
 	}
 
+	// Start TLS monitoring
+	manager.monitor.Enable()
+
 	return manager, nil
 }
 
-// setupTLSConfig sets up the TLS configuration
+// setupSecureTLSConfig sets up the TLS configuration with security hardening
+func (m *TLSManager) setupSecureTLSConfig() (*tls.Config, error) {
+	// Get security-hardened TLS configuration
+	tlsConfig := m.security.GetSecureTLSConfig()
+
+	return m.configureCertificates(tlsConfig)
+}
+
+// configureCertificates handles Let's Encrypt or manual certificate configuration
+func (m *TLSManager) configureCertificates(tlsConfig *tls.Config) (*tls.Config, error) {
+	// Apply custom configuration overrides if available
+	if m.config.TLS.MinVersion != "" {
+		minVersion, err := parseTLSVersion(m.config.TLS.MinVersion)
+		if err != nil {
+			m.logger.Printf("Warning: Invalid TLS min version '%s', using security default: %v",
+				m.config.TLS.MinVersion, err)
+		} else {
+			tlsConfig.MinVersion = minVersion
+		}
+	}
+
+	if m.config.TLS.MaxVersion != "" {
+		maxVersion, err := parseTLSVersion(m.config.TLS.MaxVersion)
+		if err != nil {
+			m.logger.Printf("Warning: Invalid TLS max version '%s', using security default: %v",
+				m.config.TLS.MaxVersion, err)
+		} else {
+			tlsConfig.MaxVersion = maxVersion
+		}
+	}
+
+	if m.config.TLS.ClientAuth != "" {
+		clientAuth, err := parseClientAuth(m.config.TLS.ClientAuth)
+		if err != nil {
+			m.logger.Printf("Warning: Invalid client auth '%s', using security default: %v",
+				m.config.TLS.ClientAuth, err)
+		} else {
+			tlsConfig.ClientAuth = clientAuth
+		}
+	}
+
+	// Check if Let's Encrypt is enabled
+	if m.config.TLS.LetsEncrypt != nil && m.config.TLS.LetsEncrypt.Enabled {
+		leTLSConfig, err := m.setupLetsEncrypt()
+		if err != nil {
+			return nil, err
+		}
+
+		// Merge Let's Encrypt config with security hardened config
+		leTLSConfig.MinVersion = tlsConfig.MinVersion
+		leTLSConfig.MaxVersion = tlsConfig.MaxVersion
+		leTLSConfig.CipherSuites = tlsConfig.CipherSuites
+		leTLSConfig.ClientAuth = tlsConfig.ClientAuth
+		leTLSConfig.PreferServerCipherSuites = tlsConfig.PreferServerCipherSuites
+		leTLSConfig.CurvePreferences = tlsConfig.CurvePreferences
+		leTLSConfig.SessionTicketsDisabled = tlsConfig.SessionTicketsDisabled
+		leTLSConfig.Renegotiation = tlsConfig.Renegotiation
+
+		return leTLSConfig, nil
+	}
+
+	// Use provided certificate files
+	if m.config.TLS.CertFile != "" && m.config.TLS.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(m.config.TLS.CertFile, m.config.TLS.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load TLS certificate: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+
+		// Validate certificate with security module
+		if len(cert.Certificate) > 0 {
+			x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
+			if err != nil {
+				m.logger.Printf("Warning: Failed to parse certificate for validation: %v", err)
+			} else {
+				// Use Let's Encrypt domain or empty string for validation
+				domain := ""
+				if m.config.TLS.LetsEncrypt != nil {
+					domain = m.config.TLS.LetsEncrypt.Domain
+				}
+				if err := m.security.ValidateCertificate(x509Cert, domain); err != nil {
+					m.logger.Printf("Warning: Certificate validation failed: %v", err)
+				}
+			}
+		}
+
+		// Update certificate info
+		if err := m.updateCertificateInfo(cert); err != nil {
+			m.logger.Printf("Warning: Failed to update certificate info: %v", err)
+		}
+	} else {
+		return nil, fmt.Errorf("TLS enabled but no certificate files provided")
+	}
+
+	return tlsConfig, nil
+}
+
+// setupTLSConfig sets up the TLS configuration (legacy method for backward compatibility)
 func (m *TLSManager) setupTLSConfig() (*tls.Config, error) {
 	// Start with default secure settings
 	tlsConfig := &tls.Config{
@@ -601,14 +716,26 @@ func (m *TLSManager) WrapConnection(conn net.Conn) (net.Conn, error) {
 		return nil, fmt.Errorf("failed to set deadline for TLS handshake: %w", err)
 	}
 
+	remoteAddr := conn.RemoteAddr().String()
+
 	// Perform handshake
 	if err := tlsConn.Handshake(); err != nil {
+		// Record handshake failure for monitoring
+		if m.monitor != nil {
+			m.monitor.RecordTLSHandshakeFailure(remoteAddr, err)
+		}
 		return nil, fmt.Errorf("TLS handshake failed: %w", err)
 	}
 
 	// Reset deadline
 	if err := tlsConn.SetDeadline(time.Time{}); err != nil {
 		return nil, fmt.Errorf("failed to reset deadline after TLS handshake: %w", err)
+	}
+
+	// Record successful TLS connection for monitoring
+	if m.monitor != nil {
+		connState := tlsConn.ConnectionState()
+		m.monitor.RecordTLSConnection(remoteAddr, &connState)
 	}
 
 	return tlsConn, nil
@@ -723,9 +850,119 @@ func (m *TLSManager) GetCertificateInfo() (map[string]interface{}, error) {
 	return info, nil
 }
 
+// SetSecurityLevel sets the TLS security level for hardening
+func (m *TLSManager) SetSecurityLevel(level SecurityLevel) {
+	if m.security != nil {
+		m.security.SetSecurityLevel(level)
+		// Regenerate TLS config with new security level
+		if newConfig, err := m.setupSecureTLSConfig(); err == nil {
+			m.tlsConfig = newConfig
+			m.slogger.Info("TLS security level updated and configuration regenerated", "level", level)
+		} else {
+			m.slogger.Error("Failed to regenerate TLS config after security level change", "error", err)
+		}
+	}
+}
+
+// GetTLSMonitor returns the TLS monitor for external access to metrics and events
+func (m *TLSManager) GetTLSMonitor() *TLSMonitor {
+	return m.monitor
+}
+
+// GetTLSSecurity returns the TLS security module for external access
+func (m *TLSManager) GetTLSSecurity() *TLSSecurity {
+	return m.security
+}
+
+// GetSecurityReport generates a comprehensive TLS security report
+func (m *TLSManager) GetSecurityReport(ctx context.Context, duration time.Duration) map[string]interface{} {
+	report := make(map[string]interface{})
+
+	// Add TLS manager info
+	report["tls_enabled"] = m.config.TLS != nil && m.config.TLS.Enabled
+
+	if certInfo, err := m.GetCertificateInfo(); err == nil {
+		report["certificate_info"] = certInfo
+	}
+
+	// Add security configuration
+	if m.security != nil && m.tlsConfig != nil {
+		securityReport := m.security.GetSecurityReport(m.tlsConfig)
+		report["security_config"] = securityReport
+	}
+
+	// Add monitoring data
+	if m.monitor != nil {
+		monitoringReport := m.monitor.GenerateSecurityReport(ctx, duration)
+		report["monitoring"] = monitoringReport
+
+		// Check for active alerts
+		alerts := m.monitor.CheckAlertThresholds()
+		if len(alerts) > 0 {
+			report["active_alerts"] = alerts
+		}
+	}
+
+	return report
+}
+
+// CheckTLSHealth performs a comprehensive TLS health check
+func (m *TLSManager) CheckTLSHealth() map[string]interface{} {
+	health := make(map[string]interface{})
+	health["healthy"] = true
+	issues := make([]string, 0)
+
+	// Check TLS configuration
+	if m.tlsConfig == nil {
+		health["healthy"] = false
+		issues = append(issues, "TLS configuration not initialized")
+	}
+
+	// Check certificate expiry
+	if m.certInfo != nil && !m.certInfo.NotAfter.IsZero() {
+		daysUntilExpiry := time.Until(m.certInfo.NotAfter).Hours() / 24
+		health["days_until_expiry"] = int(daysUntilExpiry)
+
+		if daysUntilExpiry < 30 {
+			health["healthy"] = false
+			issues = append(issues, fmt.Sprintf("Certificate expires in %.0f days", daysUntilExpiry))
+		}
+	}
+
+	// Check monitoring status
+	if m.monitor != nil {
+		metrics := m.monitor.GetMetrics()
+		health["total_connections"] = metrics.TotalConnections
+		health["tls_connections"] = metrics.TLSConnections
+		health["failed_handshakes"] = metrics.FailedHandshakes
+
+		// Check failure rate
+		if metrics.TLSConnections > 0 {
+			failureRate := float64(metrics.FailedHandshakes) / float64(metrics.TLSConnections) * 100
+			health["failure_rate_percent"] = failureRate
+
+			if failureRate > 10 { // More than 10% failure rate is concerning
+				health["healthy"] = false
+				issues = append(issues, fmt.Sprintf("High TLS failure rate: %.1f%%", failureRate))
+			}
+		}
+	}
+
+	if len(issues) > 0 {
+		health["issues"] = issues
+	}
+
+	return health
+}
+
 // Stop stops the TLS manager and any running services
 func (m *TLSManager) Stop() error {
 	m.logger.Printf("Stopping TLS manager")
+
+	// Stop TLS monitoring
+	if m.monitor != nil {
+		m.monitor.Disable()
+	}
 
 	// Stop certificate renewal service
 	if m.stopChan != nil {

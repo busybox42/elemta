@@ -1,27 +1,28 @@
 package queue
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math/rand"
-	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 )
 
-// Manager handles queue operations
+// Manager handles queue operations and implements the QueueManager interface
 type Manager struct {
-	QueueDir   string
-	mutex      sync.RWMutex
-	logger     *slog.Logger
-	queueStats QueueStats
-	statsLock  sync.RWMutex
-	stopCh     chan struct{}
+	queueDir       string
+	mutex          sync.RWMutex
+	logger         *slog.Logger
+	queueStats     QueueStats
+	statsLock      sync.RWMutex
+	stopCh         chan struct{}
+	storageBackend StorageBackend
 }
+
+// Ensure Manager implements QueueManager interface
+var _ QueueManager = (*Manager)(nil)
 
 // QueueType represents the type of queue
 type QueueType string
@@ -88,17 +89,26 @@ type Attempt struct {
 	Error  string    `json:"error,omitempty"`
 }
 
-// NewManager creates a new queue manager
+// NewManager creates a new queue manager using file storage
 func NewManager(queueDir string) *Manager {
+	storage := NewFileStorageBackend(queueDir)
+	return NewManagerWithStorage(storage)
+}
+
+// NewManagerWithStorage creates a new queue manager with a custom storage backend
+func NewManagerWithStorage(storage StorageBackend) *Manager {
 	m := &Manager{
-		QueueDir:   queueDir,
-		logger:     slog.Default().With("component", "queue"),
-		queueStats: QueueStats{LastUpdated: time.Now()},
-		stopCh:     make(chan struct{}),
+		queueDir:       extractQueueDir(storage),
+		logger:         slog.Default().With("component", "queue"),
+		queueStats:     QueueStats{LastUpdated: time.Now()},
+		stopCh:         make(chan struct{}),
+		storageBackend: storage,
 	}
 
-	// Ensure queue directories exist
-	m.ensureQueueDirectories()
+	// Ensure directories exist if using file storage
+	if fileStorage, ok := storage.(*FileStorageBackend); ok {
+		fileStorage.EnsureDirectories()
+	}
 
 	// Start background stats updater
 	go m.updateStatsLoop()
@@ -106,22 +116,12 @@ func NewManager(queueDir string) *Manager {
 	return m
 }
 
-// ensureQueueDirectories creates necessary queue directories if they don't exist
-func (m *Manager) ensureQueueDirectories() {
-	queueTypes := []QueueType{Active, Deferred, Hold, Failed}
-
-	for _, qType := range queueTypes {
-		qDir := filepath.Join(m.QueueDir, string(qType))
-		if err := os.MkdirAll(qDir, 0755); err != nil {
-			m.logger.Error("Failed to create queue directory", "path", qDir, "error", err)
-		}
+// extractQueueDir tries to extract queue directory from storage backend
+func extractQueueDir(storage StorageBackend) string {
+	if fileStorage, ok := storage.(*FileStorageBackend); ok {
+		return fileStorage.queueDir
 	}
-
-	// Create data directory for message contents
-	dataDir := filepath.Join(m.QueueDir, "data")
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		m.logger.Error("Failed to create data directory", "path", dataDir, "error", err)
-	}
+	return "" // Unknown storage type
 }
 
 // updateStatsLoop periodically updates queue statistics
@@ -195,38 +195,9 @@ func (m *Manager) GetStats() QueueStats {
 
 // ListMessages lists all messages in the specified queue
 func (m *Manager) ListMessages(queueType QueueType) ([]Message, error) {
-	queuePath := filepath.Join(m.QueueDir, string(queueType))
-
-	// Check if the directory exists
-	if _, err := os.Stat(queuePath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("queue directory %s does not exist", queuePath)
-	}
-
-	// Get all files in the queue directory
-	files, err := os.ReadDir(queuePath)
+	messages, err := m.storageBackend.List(queueType)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read queue directory: %w", err)
-	}
-
-	var messages []Message
-	for _, file := range files {
-		// Skip directories and non-.json files
-		if file.IsDir() || !strings.HasSuffix(file.Name(), ".json") {
-			continue
-		}
-
-		// Get the message ID from the filename
-		msgID := strings.TrimSuffix(file.Name(), ".json")
-
-		// Read the message file
-		filePath := filepath.Join(queuePath, file.Name())
-		msg, err := m.readMessageMetadata(filePath, msgID, queueType)
-		if err != nil {
-			m.logger.Warn("Failed to read message", "path", filePath, "error", err)
-			continue
-		}
-
-		messages = append(messages, msg)
+		return nil, fmt.Errorf("failed to list messages: %w", err)
 	}
 
 	// Sort messages by priority (higher priority first) and then by creation time
@@ -238,21 +209,6 @@ func (m *Manager) ListMessages(queueType QueueType) ([]Message, error) {
 	})
 
 	return messages, nil
-}
-
-// readMessageMetadata reads a message metadata from disk
-func (m *Manager) readMessageMetadata(filePath, msgID string, queueType QueueType) (Message, error) {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return Message{}, fmt.Errorf("failed to read message file: %w", err)
-	}
-
-	var msg Message
-	if err := json.Unmarshal(data, &msg); err != nil {
-		return Message{}, fmt.Errorf("failed to unmarshal message data: %w", err)
-	}
-
-	return msg, nil
 }
 
 // GetAllMessages lists all messages across all queue types
@@ -275,19 +231,7 @@ func (m *Manager) GetAllMessages() ([]Message, error) {
 
 // GetMessage gets a single message by ID
 func (m *Manager) GetMessage(id string) (Message, error) {
-	// Check all queue types
-	queueTypes := []QueueType{Active, Deferred, Hold, Failed}
-	for _, qType := range queueTypes {
-		queuePath := filepath.Join(m.QueueDir, string(qType))
-		filePath := filepath.Join(queuePath, fmt.Sprintf("%s.json", id))
-
-		if _, err := os.Stat(filePath); err == nil {
-			// File exists, read it
-			return m.readMessageMetadata(filePath, id, qType)
-		}
-	}
-
-	return Message{}, fmt.Errorf("message %s not found in any queue", id)
+	return m.storageBackend.Retrieve(id)
 }
 
 // EnqueueMessage adds a new message to the queue
@@ -318,21 +262,19 @@ func (m *Manager) EnqueueMessage(from string, to []string, subject string, data 
 		Attempts:    make([]Attempt, 0),
 	}
 
-	// Save message data to disk
-	dataPath := filepath.Join(m.QueueDir, "data", id)
-	if err := os.WriteFile(dataPath, data, 0644); err != nil {
-		return "", fmt.Errorf("failed to write message data: %w", err)
+	// Store message content
+	if err := m.storageBackend.StoreContent(id, data); err != nil {
+		return "", fmt.Errorf("failed to store message content: %w", err)
 	}
 
 	// Set file path in message metadata
-	msg.FilePath = dataPath
+	msg.FilePath = filepath.Join(m.queueDir, "data", id)
 
-	// Save message metadata
-	metadataPath := filepath.Join(m.QueueDir, string(Active), fmt.Sprintf("%s.json", id))
-	if err := m.saveMessageMetadata(msg, metadataPath); err != nil {
-		// Try to clean up data file on error
-		os.Remove(dataPath)
-		return "", fmt.Errorf("failed to save message metadata: %w", err)
+	// Store message metadata
+	if err := m.storageBackend.Store(msg); err != nil {
+		// Try to clean up content on error
+		m.storageBackend.DeleteContent(id)
+		return "", fmt.Errorf("failed to store message metadata: %w", err)
 	}
 
 	// Update stats atomically
@@ -350,85 +292,30 @@ func (m *Manager) EnqueueMessage(from string, to []string, subject string, data 
 	return id, nil
 }
 
-// saveMessageMetadata saves message metadata to disk
-func (m *Manager) saveMessageMetadata(msg Message, path string) error {
-	// Serialize message to JSON
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("failed to marshal message metadata: %w", err)
-	}
-
-	// Ensure parent directory exists before locking
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
-	}
-
-	// Write to disk with a lock to ensure thread safety, but keep the lock scope small
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	// Write atomically using a temporary file
-	tempPath := path + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write temporary file: %w", err)
-	}
-
-	if err := os.Rename(tempPath, path); err != nil {
-		os.Remove(tempPath) // Clean up temp file on error
-		return fmt.Errorf("failed to rename temporary file: %w", err)
-	}
-
-	return nil
-}
-
-// GetMessageContent returns the full content of a message
+// GetMessageContent retrieves the content data for a message
 func (m *Manager) GetMessageContent(id string) ([]byte, error) {
-	// Find the message in any queue
-	msg, err := m.GetMessage(id)
-	if err != nil {
-		return nil, err
-	}
-
-	// Read the full message content from the file path stored in metadata
-	if msg.FilePath != "" {
-		data, err := os.ReadFile(msg.FilePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read message data from FilePath: %w", err)
-		}
-		return data, nil
-	}
-
-	// Fallback to the default data location
-	dataPath := filepath.Join(m.QueueDir, "data", id)
-	data, err := os.ReadFile(dataPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read message data: %w", err)
-	}
-
-	return data, nil
+	return m.storageBackend.RetrieveContent(id)
 }
 
 // DeleteMessage removes a message from the queue
 func (m *Manager) DeleteMessage(id string) error {
-	// Find the message in any queue
-	msg, err := m.GetMessage(id)
-	if err != nil {
-		return err
-	}
-
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	// Delete the metadata file
-	metadataPath := filepath.Join(m.QueueDir, string(msg.QueueType), fmt.Sprintf("%s.json", id))
-	if err := os.Remove(metadataPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to delete message metadata: %w", err)
+	// Get message first to determine queue type for stats
+	msg, err := m.storageBackend.Retrieve(id)
+	if err != nil {
+		return fmt.Errorf("message not found: %w", err)
 	}
 
-	// Delete the message data
-	dataPath := filepath.Join(m.QueueDir, "data", id)
-	if err := os.Remove(dataPath); err != nil && !os.IsNotExist(err) {
-		m.logger.Warn("Failed to delete message data", "path", dataPath, "error", err)
+	// Delete message metadata
+	if err := m.storageBackend.Delete(id); err != nil {
+		return fmt.Errorf("failed to delete message: %w", err)
+	}
+
+	// Delete message content
+	if err := m.storageBackend.DeleteContent(id); err != nil {
+		m.logger.Warn("Failed to delete message content", "id", id, "error", err)
 	}
 
 	// Update stats
@@ -450,71 +337,47 @@ func (m *Manager) DeleteMessage(id string) error {
 	return nil
 }
 
-// MoveMessage moves a message between queues
+// MoveMessage moves a message to a different queue
 func (m *Manager) MoveMessage(id string, targetQueue QueueType, reason string) error {
-	// Find the message
-	msg, err := m.GetMessage(id)
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	// Get current message
+	msg, err := m.storageBackend.Retrieve(id)
 	if err != nil {
-		return err
+		return fmt.Errorf("message not found: %w", err)
 	}
 
-	// Skip if already in the target queue
-	if msg.QueueType == targetQueue {
-		m.logger.Debug("message already in target queue",
-			"message_id", id,
-			"queue_type", targetQueue)
-		return nil
-	}
+	sourceQueue := msg.QueueType
 
-	m.logger.Info("moving message between queues",
-		"message_id", id,
-		"from_queue", msg.QueueType,
-		"to_queue", targetQueue,
-		"reason", reason,
-		"retry_count", msg.RetryCount)
-
-	// Record the old queue type for stats update
-	oldQueue := msg.QueueType
-
-	// Update message metadata
+	// Update message properties
 	msg.QueueType = targetQueue
 	msg.UpdatedAt = time.Now()
 
-	// Set reason based on target queue
-	switch targetQueue {
-	case Hold:
-		msg.HoldReason = reason
-	case Deferred:
-		msg.NextRetry = calculateNextRetry(msg.RetryCount)
-		msg.RetryCount++
-		if reason != "" {
+	if reason != "" {
+		if targetQueue == Failed {
 			msg.LastError = reason
-		}
-	case Failed:
-		if reason != "" {
+		} else if targetQueue == Hold {
+			msg.HoldReason = reason
+		} else if targetQueue == Deferred {
 			msg.LastError = reason
+			msg.NextRetry = calculateNextRetry(msg.RetryCount)
 		}
 	}
 
-	// Get the paths before locking
-	oldPath := filepath.Join(m.QueueDir, string(oldQueue), fmt.Sprintf("%s.json", id))
-	newPath := filepath.Join(m.QueueDir, string(targetQueue), fmt.Sprintf("%s.json", id))
-
-	// The saveMessageMetadata method already has its own locking, so we don't need to lock here
-	// First save to the new path
-	if err := m.saveMessageMetadata(msg, newPath); err != nil {
-		return fmt.Errorf("failed to save to new queue: %w", err)
+	// Move in storage
+	if err := m.storageBackend.Move(id, sourceQueue, targetQueue); err != nil {
+		return fmt.Errorf("failed to move message: %w", err)
 	}
 
-	// Then delete from the old path
-	if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
-		// Don't fail if remove fails, just log the error
-		m.logger.Warn("Failed to remove old message metadata", "path", oldPath, "error", err)
+	// Update message metadata
+	if err := m.storageBackend.Update(msg); err != nil {
+		return fmt.Errorf("failed to update message metadata: %w", err)
 	}
 
-	// Update stats - this is done outside the lock to prevent deadlocks
+	// Update stats
 	m.statsLock.Lock()
-	switch oldQueue {
+	switch sourceQueue {
 	case Active:
 		m.queueStats.ActiveCount--
 	case Deferred:
@@ -543,8 +406,8 @@ func (m *Manager) MoveMessage(id string, targetQueue QueueType, reason string) e
 
 // AddAttempt adds a delivery attempt record to a message
 func (m *Manager) AddAttempt(id string, result string, errorMsg string) error {
-	// Find the message
-	msg, err := m.GetMessage(id)
+	// Get the message
+	msg, err := m.storageBackend.Retrieve(id)
 	if err != nil {
 		return err
 	}
@@ -563,50 +426,28 @@ func (m *Manager) AddAttempt(id string, result string, errorMsg string) error {
 		msg.LastError = errorMsg
 	}
 
-	// Save the updated message
-	path := filepath.Join(m.QueueDir, string(msg.QueueType), fmt.Sprintf("%s.json", id))
-	return m.saveMessageMetadata(msg, path)
+	// Update the message
+	return m.storageBackend.Update(msg)
 }
 
 // FlushQueue removes all messages from the specified queue
 func (m *Manager) FlushQueue(queueType QueueType) error {
-	queuePath := filepath.Join(m.QueueDir, string(queueType))
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 
-	// Check if the directory exists
-	if _, err := os.Stat(queuePath); os.IsNotExist(err) {
-		return fmt.Errorf("queue directory %s does not exist", queuePath)
-	}
-
-	// Get messages to capture IDs before deletion
-	messages, err := m.ListMessages(queueType)
+	// Get messages to capture count before deletion
+	messages, err := m.storageBackend.List(queueType)
 	if err != nil {
 		return fmt.Errorf("failed to list messages: %w", err)
 	}
 
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	// Get all files in the queue directory
-	files, err := os.ReadDir(queuePath)
-	if err != nil {
-		return fmt.Errorf("failed to read queue directory: %w", err)
-	}
-
-	// Delete all message metadata files
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
-			filePath := filepath.Join(queuePath, file.Name())
-			if err := os.Remove(filePath); err != nil {
-				m.logger.Warn("Failed to delete file", "path", filePath, "error", err)
-			}
-		}
-	}
-
-	// Attempt to delete message data files
+	// Delete all messages and their content
 	for _, msg := range messages {
-		dataPath := filepath.Join(m.QueueDir, "data", msg.ID)
-		if err := os.Remove(dataPath); err != nil && !os.IsNotExist(err) {
-			m.logger.Warn("Failed to delete message data", "path", dataPath, "error", err)
+		if err := m.storageBackend.Delete(msg.ID); err != nil {
+			m.logger.Warn("Failed to delete message", "id", msg.ID, "error", err)
+		}
+		if err := m.storageBackend.DeleteContent(msg.ID); err != nil {
+			m.logger.Warn("Failed to delete message content", "id", msg.ID, "error", err)
 		}
 	}
 
@@ -655,37 +496,9 @@ func (m *Manager) CleanupExpiredMessages(retentionHours int) (int, error) {
 
 	m.logger.Info("Starting queue cleanup", "retention_hours", retentionHours)
 
-	cutoffTime := time.Now().Add(-time.Duration(retentionHours) * time.Hour)
-	var deletedCount int
-
-	// Check all queue types
-	queueTypes := []QueueType{Active, Deferred, Hold, Failed}
-	for _, qType := range queueTypes {
-		messages, err := m.ListMessages(qType)
-		if err != nil {
-			m.logger.Error("Failed to list messages for cleanup", "queue", qType, "error", err)
-			continue
-		}
-
-		for _, msg := range messages {
-			// For active and deferred messages, check creation time
-			// For hold and failed, check update time (we keep these longer)
-			var checkTime time.Time
-			switch qType {
-			case Active, Deferred:
-				checkTime = msg.CreatedAt
-			case Hold, Failed:
-				checkTime = msg.UpdatedAt
-			}
-
-			if checkTime.Before(cutoffTime) {
-				if err := m.DeleteMessage(msg.ID); err != nil {
-					m.logger.Error("Failed to delete expired message", "id", msg.ID, "error", err)
-					continue
-				}
-				deletedCount++
-			}
-		}
+	deletedCount, err := m.storageBackend.Cleanup(retentionHours)
+	if err != nil {
+		return 0, fmt.Errorf("cleanup failed: %w", err)
 	}
 
 	m.logger.Info("Queue cleanup completed", "deleted", deletedCount)
@@ -694,7 +507,7 @@ func (m *Manager) CleanupExpiredMessages(retentionHours int) (int, error) {
 
 // SetAnnotation adds or updates an annotation for a message
 func (m *Manager) SetAnnotation(id string, key, value string) error {
-	msg, err := m.GetMessage(id)
+	msg, err := m.storageBackend.Retrieve(id)
 	if err != nil {
 		return err
 	}
@@ -706,9 +519,7 @@ func (m *Manager) SetAnnotation(id string, key, value string) error {
 	msg.Annotations[key] = value
 	msg.UpdatedAt = time.Now()
 
-	// Save the updated message
-	path := filepath.Join(m.QueueDir, string(msg.QueueType), fmt.Sprintf("%s.json", id))
-	return m.saveMessageMetadata(msg, path)
+	return m.storageBackend.Update(msg)
 }
 
 // Helper functions

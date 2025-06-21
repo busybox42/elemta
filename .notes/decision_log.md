@@ -166,6 +166,26 @@
 **Standard**: Table-driven tests with 80%+ coverage requirement  
 **Rationale**: Consistent test patterns and adequate coverage assurance  
 
+### TD-006: TLS Security Level Configuration
+**Date**: 2025-06-21  
+**Status**: ✅ ACCEPTED  
+**Standard**: 4-level TLS security configuration (Minimum, Recommended, Strict, Maximum)  
+**Rationale**: Provides flexibility for different deployment environments while maintaining security best practices  
+**Implementation**: 
+- **Minimum**: Basic TLS 1.2+, standard cipher suites (development/legacy compatibility)
+- **Recommended**: TLS 1.2+, modern cipher suites, HSTS (production default)
+- **Strict**: TLS 1.3 preferred, strong cipher suites, enhanced security headers
+- **Maximum**: TLS 1.3 only, strongest cipher suites, comprehensive security measures
+**Monitoring**: Real-time TLS connection monitoring with alerting for security events
+
+### TD-007: Queue System Unification
+**Date**: 2025-06-21  
+**Status**: ✅ ACCEPTED  
+**Standard**: Unified queue interfaces with pluggable storage backends  
+**Rationale**: Eliminates duplication between SMTP and queue modules, enables clean architecture  
+**Implementation**: Interface-based design with storage, delivery, and processing separation  
+**Benefits**: Memory optimization, configurable worker pools, atomic operations, hot-swappable backends
+
 ---
 
 ## Impact Assessment
