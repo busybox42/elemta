@@ -120,8 +120,11 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Ses
 }
 
 func (s *Session) write(msg string) error {
-	_, err := s.conn.Write([]byte(msg))
-	return err
+	_, err := s.writer.WriteString(msg)
+	if err != nil {
+		return err
+	}
+	return s.writer.Flush()
 }
 
 // writeWithLog writes a message and logs any errors, but doesn't return error
