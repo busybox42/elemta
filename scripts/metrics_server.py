@@ -7,7 +7,12 @@ This is used for testing the monitoring stack.
 import http.server
 import random
 import time
+import os
+import ssl
 from threading import Thread
+from datetime import datetime, timezone
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 
 # Metrics that will be exposed
 metrics = {
@@ -29,7 +34,12 @@ metrics = {
     "elemta_clamav_detections_total": 0,
     "elemta_rspamd_scans_total": 0,
     "elemta_rspamd_spam_total": 0,
-    "elemta_rspamd_ham_total": 0
+    "elemta_rspamd_ham_total": 0,
+    "elemta_tls_certificate_expiry_seconds": 0,
+    "elemta_tls_certificate_valid": 0,
+    "elemta_letsencrypt_renewal_status": 1,
+    "elemta_letsencrypt_renewal_attempts_total": 0,
+    "elemta_letsencrypt_last_renewal_timestamp": 0
 }
 
 class MetricsHandler(http.server.BaseHTTPRequestHandler):
@@ -55,6 +65,28 @@ class MetricsHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b"<body><h1>Elemta Metrics Server</h1>")
             self.wfile.write(b"<p>Visit <a href='/metrics'>/metrics</a> for Prometheus metrics.</p>")
             self.wfile.write(b"</body></html>")
+
+def check_certificate(cert_path):
+    """Check certificate and return expiry seconds and validity."""
+    try:
+        if os.path.exists(cert_path):
+            with open(cert_path, 'rb') as f:
+                cert_data = f.read()
+            
+            cert = x509.load_pem_x509_certificate(cert_data, default_backend())
+            now = datetime.now(timezone.utc)
+            expiry = cert.not_valid_after.replace(tzinfo=timezone.utc)
+            
+            seconds_until_expiry = (expiry - now).total_seconds()
+            is_valid = 1 if (now >= cert.not_valid_before.replace(tzinfo=timezone.utc) and now <= expiry) else 0
+            
+            return seconds_until_expiry, is_valid
+        else:
+            # If no cert, return a simulated 30-day cert
+            return 30 * 24 * 3600, 1
+    except Exception as e:
+        print(f"Error checking certificate: {e}")
+        return 30 * 24 * 3600, 1
 
 def update_metrics():
     """Update metrics with random values to simulate activity."""
@@ -109,6 +141,18 @@ def update_metrics():
         metrics["elemta_rspamd_scans_total"] += rspamd_scans
         metrics["elemta_rspamd_spam_total"] += random.randint(0, 3)
         metrics["elemta_rspamd_ham_total"] += (rspamd_scans - random.randint(0, 3))
+        
+        # Update certificate metrics
+        cert_path = "/app/certs/fullchain.pem"
+        expiry_seconds, is_valid = check_certificate(cert_path)
+        metrics["elemta_tls_certificate_expiry_seconds"] = expiry_seconds
+        metrics["elemta_tls_certificate_valid"] = is_valid
+        
+        # Simulate Let's Encrypt renewal metrics
+        metrics["elemta_letsencrypt_renewal_status"] = 1  # Success
+        metrics["elemta_letsencrypt_last_renewal_timestamp"] = int(time.time())
+        if random.randint(1, 100) <= 5:  # 5% chance to increment renewal attempts
+            metrics["elemta_letsencrypt_renewal_attempts_total"] += 1
         
         time.sleep(5)
 
