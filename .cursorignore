@@ -1,0 +1,139 @@
+# Build artifacts
+build/
+dist/
+bin/
+*.so
+*.dylib
+*.test
+*.out
+
+# Compiled binaries
+elemta
+elemta-cli
+elemta-queue
+
+# Runtime data
+queue/active/
+queue/deferred/
+queue/failed/
+queue/hold/
+queue/data/
+queue/tmp/
+queue/quarantine/
+logs/
+*.log
+
+# Temporary files
+*.tmp
+.tmp/
+config/elemta.db
+config/test.crt
+config/test.key
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Docker volumes and runtime
+.docker/
+docker/*/data/
+docker/*/logs/
+
+# Certificates and keys
+*.pem
+*.key
+*.crt
+*.p12
+certs/
+
+# Large data files
+*.dump
+*.sql
+*.backup
+
+# Development databases
+*.sqlite
+*.db
+
+# Package files
+*.rpm
+*.deb
+*.tar.gz
+
+# Archive directories
+archive/
+backup/
+k8s/archive/
+
+# Test output
+coverage.out
+test-results/
+
+# Monitoring data
+monitoring/data/
+grafana/data/
+prometheus/data/
+
+# Plugin development
+plugins/*.so
+examples/plugins/*.so
+
+# AI and development tools
+.cursor/
+latest_email.txt
+test-message*.txt
+fixme.txt
+
+# Generated files
+docs/api/
+auto-generated/
+
+# Large example files
+examples/data/
+tests/data/
+
+# Deployment artifacts
+.deploy/
+linux-package-builder/
+
+# Vendor dependencies (if using)
+vendor/
+
+# Go module cache
+go.sum.backup
+
+# Debugging scripts (these change frequently)
+diagnose-*.sh
+direct-deliver*.sh
+fix-*.sh
+process-queue.sh
+test-*.sh
+*-docker.sh
+
+# Local configuration overrides
+*.local.*
+local.*
+elemta.toml
+simple-rspamd.conf
+test-rspamd.conf
+
+# Documentation that's auto-generated or not needed for context
+CHANGELOG.md
+LICENSE
+images/ 

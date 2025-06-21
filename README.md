@@ -50,18 +50,24 @@ go build -o elemta cmd/elemta/main.go
 - **[Installation & Deployment](docs/installation.md)** - Detailed setup instructions
 - **[Configuration Reference](docs/configuration.md)** - Complete configuration options
 - **[Email Authentication](docs/email_authentication.md)** - SPF, DKIM, DMARC, ARC setup
-- **[Plugin Development](docs/plugins.md)** - Creating custom plugins
+- **[Plugin Development](docs/plugin-development.md)** - Creating custom plugins
 
-### Operations & Monitoring
+### Production & Operations
+- **[Production Deployment](docs/production-deployment.md)** - Enterprise deployment guide
+- **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
 - **[Monitoring & Metrics](docs/monitoring/README.md)** - Prometheus/Grafana setup
 - **[Queue Management](docs/queue_management.md)** - Queue operations and troubleshooting
-- **[Testing](docs/testing.md)** - Testing procedures and tools
 - **[CLI Tools](docs/cli.md)** - Command-line utilities
+
+### Development & Testing
+- **[Testing](docs/testing.md)** - Testing procedures and tools
+- **[Docker Deployment](docs/docker_deployment.md)** - Advanced Docker configuration
+- **[Logging](docs/logging.md)** - Log management and analysis
 
 ### Advanced Topics
 - **[Let's Encrypt Integration](docs/letsencrypt-guide.md)** - Automatic TLS certificate management
-- **[Docker Deployment](docs/docker_deployment.md)** - Advanced Docker configuration
-- **[Logging](docs/logging.md)** - Log management and analysis
+- **[Security Hardening](docs/production-deployment.md#security-hardening)** - Production security guide
+- **[Performance Tuning](docs/production-deployment.md#performance-tuning)** - Optimization guide
 
 ## Architecture
 

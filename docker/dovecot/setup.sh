@@ -5,9 +5,9 @@ if ! id -u vmail > /dev/null 2>&1; then
     adduser --system --home /var/mail --no-create-home --uid 5000 --group --disabled-password --gecos "Virtual Mail User" vmail
 fi
 
-# Create mail directories 
-mkdir -p /var/mail/recipient@example.com
-mkdir -p /var/mail/sender@example.com
+# Create mail directories with Maildir structure
+mkdir -p /var/mail/recipient@example.com/{cur,new,tmp}
+mkdir -p /var/mail/sender@example.com/{cur,new,tmp}
 
 # Set permissions
 chown -R vmail:vmail /var/mail

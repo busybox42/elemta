@@ -48,6 +48,9 @@ certs/
 *.dylib
 *.test
 *.out
+coverage.out
+coverage.html
+profile.out
 
 # Python artifacts
 __pycache__/
@@ -61,6 +64,9 @@ venv/
 ENV/
 tests/python/e2e/__pycache__/
 tests/python/e2e/debug_auth.py
+.pytest_cache/
+*.coverage
+htmlcov/
 
 # IDE and editor files
 .idea/
