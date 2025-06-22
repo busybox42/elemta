@@ -1,0 +1,89 @@
+{
+  "version": "8.11.0",
+  "objects": [
+    {
+      "id": "mta-bounce-overview",
+      "type": "dashboard",
+      "attributes": {
+        "title": "MTA Bounce Dashboard",
+        "description": "Bounce monitoring - permanent delivery failures and bounce generation",
+        "panelsJSON": "[{\"version\":\"8.11.0\",\"gridData\":{\"x\":0,\"y\":0,\"w\":24,\"h\":15,\"i\":\"1\"},\"panelIndex\":\"1\",\"embeddableConfig\":{},\"panelRefName\":\"panel_1\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":24,\"y\":0,\"w\":24,\"h\":15,\"i\":\"2\"},\"panelIndex\":\"2\",\"embeddableConfig\":{},\"panelRefName\":\"panel_2\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":0,\"y\":15,\"w\":16,\"h\":15,\"i\":\"3\"},\"panelIndex\":\"3\",\"embeddableConfig\":{},\"panelRefName\":\"panel_3\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":16,\"y\":15,\"w\":16,\"h\":15,\"i\":\"4\"},\"panelIndex\":\"4\",\"embeddableConfig\":{},\"panelRefName\":\"panel_4\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":32,\"y\":15,\"w\":16,\"h\":15,\"i\":\"5\"},\"panelIndex\":\"5\",\"embeddableConfig\":{},\"panelRefName\":\"panel_5\"}]",
+        "timeRestore": false,
+        "timeTo": "now",
+        "timeFrom": "now-24h",
+        "refreshInterval": {
+          "pause": false,
+          "value": 30000
+        },
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"query\":{\"match\":{\"mta_flow\":\"bounce\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "bounce-timeline",
+      "type": "visualization",
+      "attributes": {
+        "title": "Bounces Timeline",
+        "description": "Timeline of permanent delivery failures",
+        "visState": "{\"title\":\"Bounces Timeline\",\"type\":\"histogram\",\"params\":{\"grid\":{\"categoryLines\":false,\"style\":{\"color\":\"#eee\"}},\"categoryAxes\":[{\"id\":\"CategoryAxis-1\",\"type\":\"category\",\"position\":\"bottom\",\"show\":true,\"style\":{},\"scale\":{\"type\":\"linear\"},\"labels\":{\"show\":true,\"truncate\":100},\"title\":{}}],\"valueAxes\":[{\"id\":\"ValueAxis-1\",\"name\":\"LeftAxis-1\",\"type\":\"value\",\"position\":\"left\",\"show\":true,\"style\":{},\"scale\":{\"type\":\"linear\",\"mode\":\"normal\"},\"labels\":{\"show\":true,\"rotate\":0,\"filter\":false,\"truncate\":100},\"title\":{\"text\":\"Bounces\"}}],\"seriesParams\":[{\"show\":true,\"type\":\"histogram\",\"mode\":\"stacked\",\"data\":{\"label\":\"Bounced\",\"id\":\"1\"},\"valueAxis\":\"ValueAxis-1\",\"drawLinesBetweenPoints\":true,\"showCircles\":true}],\"addTooltip\":true,\"addLegend\":true,\"legendPosition\":\"right\",\"times\":[],\"addTimeMarker\":false},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"2\",\"enabled\":true,\"type\":\"date_histogram\",\"schema\":\"segment\",\"params\":{\"field\":\"@timestamp\",\"interval\":\"auto\",\"customInterval\":\"1h\",\"min_doc_count\":1,\"extended_bounds\":{}}}]}",
+        "uiStateJSON": "{}",
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"elemta-bounce-*\",\"query\":{\"match\":{\"mta_flow\":\"bounce\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "bounce-reasons",
+      "type": "visualization",
+      "attributes": {
+        "title": "Bounce Reasons",
+        "description": "Why messages are bouncing permanently",
+        "visState": "{\"title\":\"Bounce Reasons\",\"type\":\"pie\",\"params\":{\"addTooltip\":true,\"addLegend\":true,\"legendPosition\":\"right\",\"isDonut\":true},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"2\",\"enabled\":true,\"type\":\"terms\",\"schema\":\"segment\",\"params\":{\"field\":\"bounce_reason.keyword\",\"size\":8,\"order\":\"desc\",\"orderBy\":\"1\"}}]}",
+        "uiStateJSON": "{}",
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"elemta-bounce-*\",\"query\":{\"exists\":{\"field\":\"bounce_reason\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "bounce-invalid-recipients",
+      "type": "visualization",
+      "attributes": {
+        "title": "Invalid Recipients",
+        "description": "Recipients that are bouncing mail",
+        "visState": "{\"title\":\"Invalid Recipients\",\"type\":\"table\",\"params\":{\"perPage\":10,\"showPartialRows\":false,\"showMeticsAtAllLevels\":false,\"sort\":{\"columnIndex\":1,\"direction\":\"desc\"},\"showTotal\":false,\"totalFunc\":\"sum\"},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"2\",\"enabled\":true,\"type\":\"terms\",\"schema\":\"bucket\",\"params\":{\"field\":\"recipient\",\"size\":15,\"order\":\"desc\",\"orderBy\":\"1\"}}]}",
+        "uiStateJSON": "{}",
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"elemta-bounce-*\",\"query\":{\"exists\":{\"field\":\"recipient\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "bounce-delivery-servers",
+      "type": "visualization",
+      "attributes": {
+        "title": "Problematic Delivery Servers",
+        "description": "Servers rejecting mail permanently",
+        "visState": "{\"title\":\"Problematic Delivery Servers\",\"type\":\"table\",\"params\":{\"perPage\":8,\"showPartialRows\":false,\"showMeticsAtAllLevels\":false,\"sort\":{\"columnIndex\":1,\"direction\":\"desc\"},\"showTotal\":false,\"totalFunc\":\"sum\"},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"2\",\"enabled\":true,\"type\":\"terms\",\"schema\":\"bucket\",\"params\":{\"field\":\"delivery_server\",\"size\":10,\"order\":\"desc\",\"orderBy\":\"1\"}}]}",
+        "uiStateJSON": "{}",
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"elemta-bounce-*\",\"query\":{\"exists\":{\"field\":\"delivery_server\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "bounce-rate-gauge",
+      "type": "visualization",
+      "attributes": {
+        "title": "Bounce Rate (Last Hour)",
+        "description": "Current rate of permanent failures",
+        "visState": "{\"title\":\"Bounce Rate\",\"type\":\"gauge\",\"params\":{\"addTooltip\":true,\"addLegend\":false,\"isDisplayWarning\":false,\"type\":\"gauge\",\"scale\":{\"show\":false,\"labels\":false,\"color\":\"rgba(105,112,125,0.2)\"},\"labels\":{\"show\":true,\"color\":\"black\"},\"style\":{\"bgFill\":\"rgba(105,112,125,0.2)\",\"bgColor\":false,\"labelColor\":false,\"subText\":\"\",\"fontSize\":60}},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{}}]}",
+        "uiStateJSON": "{}",
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"elemta-bounce-*\",\"query\":{\"range\":{\"@timestamp\":{\"gte\":\"now-1h\"}}},\"filter\":[]}"
+        }
+      }
+    }
+  ]
+} 

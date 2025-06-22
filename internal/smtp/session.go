@@ -724,10 +724,28 @@ func (s *Session) readData() ([]byte, error) {
 	// Reset the connection timeout to normal
 	s.conn.SetReadDeadline(time.Now().Add(s.config.SessionTimeout))
 
-	// Log the message size
+	// Log the message size and extract headers for indexing
+	messageContent := buffer.String()
 	s.logger.Info("message data read complete",
 		"size_bytes", buffer.Len(),
-		"line_count", strings.Count(buffer.String(), "\n"))
+		"line_count", strings.Count(messageContent, "\n"))
+
+	// Extract and log email headers for better indexing
+	if headerEnd := strings.Index(messageContent, "\r\n\r\n"); headerEnd != -1 {
+		headers := messageContent[:headerEnd]
+		s.logger.Info("email headers received",
+			"headers", headers)
+
+		// Extract key headers for indexing
+		if subject := extractHeader(headers, "Subject"); subject != "" {
+			s.logger.Info("email subject extracted",
+				"subject", subject)
+		}
+		if messageID := extractHeader(headers, "Message-ID"); messageID != "" {
+			s.logger.Info("email message-id extracted",
+				"message_id", messageID)
+		}
+	}
 
 	return buffer.Bytes(), nil
 }
@@ -1321,6 +1339,18 @@ func (s *Session) isRelayAllowed(recipient string) bool {
 }
 
 // addHeaderToMessage adds a header to the message data by finding the last existing header
+// extractHeader extracts a header value from email headers
+func extractHeader(headers, name string) string {
+	lines := strings.Split(headers, "\r\n")
+	for _, line := range lines {
+		if strings.HasPrefix(strings.ToLower(line), strings.ToLower(name)+":") {
+			value := strings.TrimSpace(line[len(name)+1:])
+			return value
+		}
+	}
+	return ""
+}
+
 func addHeaderToMessage(data []byte, name, value string) []byte {
 	dataStr := string(data)
 

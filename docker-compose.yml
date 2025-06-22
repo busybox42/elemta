@@ -170,107 +170,20 @@ services:
       start_period: 30s
 
   elemta-dovecot:
-    image: alpine:latest
+    build:
+      context: ./docker/dovecot
+      dockerfile: Dockerfile
     container_name: elemta-dovecot
     hostname: elemta-dovecot
     ports:
       - "14143:14143"  # IMAP port
       - "2424:2424"    # LMTP port
       - "4190:4190"    # ManageSieve port
-    command: >
-      sh -c "apk add --no-cache dovecot dovecot-lmtpd dovecot-ldap dovecot-pigeonhole-plugin netcat-openbsd &&
-             adduser -D -h /var/mail -u 5000 vmail 2>/dev/null || echo 'User vmail already exists' &&
-             mkdir -p /var/mail &&
-             mkdir -p /var/mail/john.smith@example.com/{new,cur,tmp} &&
-             mkdir -p /var/mail/sarah.johnson@example.com/{new,cur,tmp} &&
-             mkdir -p /var/mail/mike.davis@example.com/{new,cur,tmp} &&
-             mkdir -p /var/mail/lisa.wilson@example.com/{new,cur,tmp} &&
-             mkdir -p /var/mail/tom.anderson@example.com/{new,cur,tmp} &&
-             mkdir -p /var/mail/emily.brown@example.com/{new,cur,tmp} &&
-             mkdir -p /var/mail/robert.chen@example.com/{new,cur,tmp} &&
-             mkdir -p /var/mail/jennifer.lee@example.com/{new,cur,tmp} &&
-             mkdir -p /var/mail/david.kim@example.com/{new,cur,tmp} &&
-             mkdir -p /var/mail/amanda.rodriguez@example.com/{new,cur,tmp} &&
-             chown -R vmail:vmail /var/mail &&
-             chmod -R 700 /var/mail &&
-             mkdir -p /etc/dovecot /var/log &&
-             touch /var/log/dovecot.log &&
-             chown vmail:vmail /var/log/dovecot.log &&
-             echo 'protocols = imap lmtp sieve' > /etc/dovecot/dovecot.conf &&
-             echo 'listen = *' >> /etc/dovecot/dovecot.conf &&
-             echo 'ssl = no' >> /etc/dovecot/dovecot.conf &&
-             echo 'mail_debug = yes' >> /etc/dovecot/dovecot.conf && 
-             echo 'auth_debug = yes' >> /etc/dovecot/dovecot.conf && 
-             echo 'auth_debug_passwords = yes' >> /etc/dovecot/dovecot.conf && 
-             echo 'auth_verbose = yes' >> /etc/dovecot/dovecot.conf &&
-             echo 'mail_location = maildir:/var/mail/%u' >> /etc/dovecot/dovecot.conf &&
-             echo 'mail_uid = vmail' >> /etc/dovecot/dovecot.conf &&
-             echo 'mail_gid = vmail' >> /etc/dovecot/dovecot.conf &&
-             echo 'lmtp_save_to_detail_mailbox = yes' >> /etc/dovecot/dovecot.conf &&
-             echo 'auth_mechanisms = plain login' >> /etc/dovecot/dovecot.conf &&
-             echo 'service lmtp {' >> /etc/dovecot/dovecot.conf &&
-             echo '  inet_listener lmtp {' >> /etc/dovecot/dovecot.conf &&
-             echo '    address = 0.0.0.0' >> /etc/dovecot/dovecot.conf &&
-             echo '    port = 2424' >> /etc/dovecot/dovecot.conf &&
-             echo '  }' >> /etc/dovecot/dovecot.conf &&
-             echo '  user = vmail' >> /etc/dovecot/dovecot.conf &&
-             echo '}' >> /etc/dovecot/dovecot.conf &&
-             echo 'ssl = no' >> /etc/dovecot/dovecot.conf &&
-             echo 'service imap-login {' >> /etc/dovecot/dovecot.conf &&
-             echo '  inet_listener imap {' >> /etc/dovecot/dovecot.conf &&
-             echo '    port = 14143' >> /etc/dovecot/dovecot.conf &&
-             echo '  }' >> /etc/dovecot/dovecot.conf &&
-             echo '}' >> /etc/dovecot/dovecot.conf &&
-             echo 'service imap {' >> /etc/dovecot/dovecot.conf &&
-             echo '}' >> /etc/dovecot/dovecot.conf &&
-             echo 'service auth {' >> /etc/dovecot/dovecot.conf &&
-             echo '  unix_listener auth-userdb {' >> /etc/dovecot/dovecot.conf &&
-             echo '    mode = 0600' >> /etc/dovecot/dovecot.conf &&
-             echo '    user = vmail' >> /etc/dovecot/dovecot.conf &&
-             echo '  }' >> /etc/dovecot/dovecot.conf &&
-             echo '}' >> /etc/dovecot/dovecot.conf &&
-             echo 'passdb {' >> /etc/dovecot/dovecot.conf &&
-             echo '  driver = ldap' >> /etc/dovecot/dovecot.conf &&
-             echo '  args = /etc/dovecot/dovecot-ldap.conf.ext' >> /etc/dovecot/dovecot.conf &&
-             echo '}' >> /etc/dovecot/dovecot.conf &&
-             echo 'userdb {' >> /etc/dovecot/dovecot.conf &&
-             echo '  driver = ldap' >> /etc/dovecot/dovecot.conf &&
-             echo '  args = /etc/dovecot/dovecot-ldap.conf.ext' >> /etc/dovecot/dovecot.conf &&
-             echo '}' >> /etc/dovecot/dovecot.conf &&
-             echo 'hosts = elemta-ldap:389' > /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'ldap_version = 3' >> /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'base = ou=people,dc=example,dc=com' >> /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'deref = never' >> /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'scope = subtree' >> /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'dn = cn=admin,dc=example,dc=com' >> /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'dnpass = admin' >> /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'auth_bind = yes' >> /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'auth_bind_userdn = uid=%n,ou=people,dc=example,dc=com' >> /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'user_attrs = =uid=5000,=gid=5000,=home=/var/mail/%u' >> /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'user_filter = (&(objectClass=posixAccount)(mail=%u))' >> /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'pass_attrs = uid=user,userPassword=password' >> /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'pass_filter = (&(objectClass=posixAccount)(mail=%u))' >> /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'default_pass_scheme = SSHA' >> /etc/dovecot/dovecot-ldap.conf.ext &&
-             echo 'log_path = /var/log/dovecot.log' >> /etc/dovecot/dovecot.conf &&
-             echo 'info_log_path = /var/log/dovecot.log' >> /etc/dovecot/dovecot.conf &&
-             echo 'debug_log_path = /var/log/dovecot.log' >> /etc/dovecot/dovecot.conf &&
-             echo 'disable_plaintext_auth = no' >> /etc/dovecot/dovecot.conf &&
-             echo 'Creating test message for testing...' &&
-             mkdir -p /var/mail/recipient@example.com/new /var/mail/recipient@example.com/cur /var/mail/recipient@example.com/tmp &&
-             chown -R vmail:vmail /var/mail/recipient@example.com &&
-             echo 'From: sender@example.com' > /var/mail/recipient@example.com/cur/test-message:2,S &&
-             echo 'To: recipient@example.com' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
-             echo 'Subject: Test Message' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
-             echo '' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
-             echo 'This is a test message.' >> /var/mail/recipient@example.com/cur/test-message:2,S &&
-             chown vmail:vmail /var/mail/recipient@example.com/cur/test-message:2,S &&
-             chmod 600 /var/mail/recipient@example.com/cur/test-message:2,S &&
-             echo 'Starting Dovecot...' &&
-             dovecot -F"
+    volumes:
+      - ./docker/dovecot/conf/dovecot-ldap.conf.ext:/etc/dovecot/dovecot-ldap.conf.ext:ro
+      - dovecot_data:/var/mail
     networks:
       - elemta_network
-    volumes:
-      - dovecot_data:/var/mail
     restart: unless-stopped
     depends_on:
       - elemta-ldap
@@ -281,6 +194,38 @@ services:
       retries: 3
       start_period: 30s
       
+  # Post-startup configuration
+  elemta-setup:
+    image: curlimages/curl:latest
+    container_name: elemta-setup
+    restart: "no"
+    volumes:
+      - ./scripts:/app/scripts:ro
+    environment:
+      - KIBANA_URL=http://elemta-kibana:5601
+      - ELASTICSEARCH_URL=http://elemta-elasticsearch:9200
+    networks:
+      - elemta_network
+      - monitoring_network
+    depends_on:
+      elemta-kibana:
+        condition: service_healthy
+      elemta-elasticsearch:
+        condition: service_healthy
+      elemta:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo '🚀 Elemta Post-Startup Configuration';
+        echo '====================================';
+        apk add --no-cache jq bash;
+        sleep 15;
+        echo '📊 Setting up Kibana Data Views...';
+        /app/scripts/setup-kibana-data-views.sh;
+        echo '🎉 Setup complete!';
+        echo '🔗 Access Kibana: http://localhost:5601';
+      "
+
   # Monitoring services
 
   prometheus:

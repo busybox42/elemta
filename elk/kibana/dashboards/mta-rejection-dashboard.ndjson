@@ -1,0 +1,89 @@
+{
+  "version": "8.11.0",
+  "objects": [
+    {
+      "id": "mta-rejection-overview",
+      "type": "dashboard",
+      "attributes": {
+        "title": "MTA Rejection Dashboard",
+        "description": "Email rejection monitoring - policy blocks, spam, and security rejections",
+        "panelsJSON": "[{\"version\":\"8.11.0\",\"gridData\":{\"x\":0,\"y\":0,\"w\":24,\"h\":15,\"i\":\"1\"},\"panelIndex\":\"1\",\"embeddableConfig\":{},\"panelRefName\":\"panel_1\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":24,\"y\":0,\"w\":24,\"h\":15,\"i\":\"2\"},\"panelIndex\":\"2\",\"embeddableConfig\":{},\"panelRefName\":\"panel_2\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":0,\"y\":15,\"w\":16,\"h\":15,\"i\":\"3\"},\"panelIndex\":\"3\",\"embeddableConfig\":{},\"panelRefName\":\"panel_3\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":16,\"y\":15,\"w\":16,\"h\":15,\"i\":\"4\"},\"panelIndex\":\"4\",\"embeddableConfig\":{},\"panelRefName\":\"panel_4\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":32,\"y\":15,\"w\":16,\"h\":15,\"i\":\"5\"},\"panelIndex\":\"5\",\"embeddableConfig\":{},\"panelRefName\":\"panel_5\"}]",
+        "timeRestore": false,
+        "timeTo": "now",
+        "timeFrom": "now-24h",
+        "refreshInterval": {
+          "pause": false,
+          "value": 30000
+        },
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"query\":{\"match\":{\"mta_flow\":\"rejection\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "rejection-timeline",
+      "type": "visualization",
+      "attributes": {
+        "title": "Rejections Timeline",
+        "description": "Timeline of email rejections",
+        "visState": "{\"title\":\"Rejections Timeline\",\"type\":\"histogram\",\"params\":{\"grid\":{\"categoryLines\":false,\"style\":{\"color\":\"#eee\"}},\"categoryAxes\":[{\"id\":\"CategoryAxis-1\",\"type\":\"category\",\"position\":\"bottom\",\"show\":true,\"style\":{},\"scale\":{\"type\":\"linear\"},\"labels\":{\"show\":true,\"truncate\":100},\"title\":{}}],\"valueAxes\":[{\"id\":\"ValueAxis-1\",\"name\":\"LeftAxis-1\",\"type\":\"value\",\"position\":\"left\",\"show\":true,\"style\":{},\"scale\":{\"type\":\"linear\",\"mode\":\"normal\"},\"labels\":{\"show\":true,\"rotate\":0,\"filter\":false,\"truncate\":100},\"title\":{\"text\":\"Rejections\"}}],\"seriesParams\":[{\"show\":true,\"type\":\"histogram\",\"mode\":\"stacked\",\"data\":{\"label\":\"Rejected\",\"id\":\"1\"},\"valueAxis\":\"ValueAxis-1\",\"drawLinesBetweenPoints\":true,\"showCircles\":true}],\"addTooltip\":true,\"addLegend\":true,\"legendPosition\":\"right\",\"times\":[],\"addTimeMarker\":false},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"2\",\"enabled\":true,\"type\":\"date_histogram\",\"schema\":\"segment\",\"params\":{\"field\":\"@timestamp\",\"interval\":\"auto\",\"customInterval\":\"1h\",\"min_doc_count\":1,\"extended_bounds\":{}}}]}",
+        "uiStateJSON": "{}",
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"elemta-rejection-*\",\"query\":{\"match\":{\"mta_flow\":\"rejection\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "rejection-reasons",
+      "type": "visualization",
+      "attributes": {
+        "title": "Rejection Reasons",
+        "description": "Breakdown of why emails were rejected",
+        "visState": "{\"title\":\"Rejection Reasons\",\"type\":\"pie\",\"params\":{\"addTooltip\":true,\"addLegend\":true,\"legendPosition\":\"right\",\"isDonut\":true},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"2\",\"enabled\":true,\"type\":\"terms\",\"schema\":\"segment\",\"params\":{\"field\":\"log_component\",\"size\":8,\"order\":\"desc\",\"orderBy\":\"1\"}}]}",
+        "uiStateJSON": "{}",
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"elemta-rejection-*\",\"query\":{\"match\":{\"mta_flow\":\"rejection\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "rejection-blocked-ips",
+      "type": "visualization",
+      "attributes": {
+        "title": "Blocked Source IPs",
+        "description": "IP addresses that had mail rejected",
+        "visState": "{\"title\":\"Blocked Source IPs\",\"type\":\"table\",\"params\":{\"perPage\":10,\"showPartialRows\":false,\"showMeticsAtAllLevels\":false,\"sort\":{\"columnIndex\":1,\"direction\":\"desc\"},\"showTotal\":false,\"totalFunc\":\"sum\"},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"2\",\"enabled\":true,\"type\":\"terms\",\"schema\":\"bucket\",\"params\":{\"field\":\"client_ip\",\"size\":15,\"order\":\"desc\",\"orderBy\":\"1\"}}]}",
+        "uiStateJSON": "{}",
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"elemta-rejection-*\",\"query\":{\"exists\":{\"field\":\"client_ip\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "rejection-recent-logs",
+      "type": "visualization",
+      "attributes": {
+        "title": "Recent Rejection Messages",
+        "description": "Latest rejection log messages",
+        "visState": "{\"title\":\"Recent Rejection Messages\",\"type\":\"table\",\"params\":{\"perPage\":8,\"showPartialRows\":false,\"showMeticsAtAllLevels\":false,\"sort\":{\"columnIndex\":0,\"direction\":\"desc\"},\"showTotal\":false,\"totalFunc\":\"sum\"},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"terms\",\"schema\":\"bucket\",\"params\":{\"field\":\"@timestamp\",\"size\":20,\"order\":\"desc\",\"orderBy\":\"_key\"}},{\"id\":\"2\",\"enabled\":true,\"type\":\"terms\",\"schema\":\"bucket\",\"params\":{\"field\":\"log_message.keyword\",\"size\":3,\"order\":\"desc\",\"orderBy\":\"_key\"}}]}",
+        "uiStateJSON": "{}",
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"elemta-rejection-*\",\"query\":{\"match\":{\"mta_flow\":\"rejection\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "rejection-rate-gauge",
+      "type": "visualization",
+      "attributes": {
+        "title": "Rejection Rate (Last Hour)",
+        "description": "Current rate of email rejections",
+        "visState": "{\"title\":\"Rejection Rate\",\"type\":\"gauge\",\"params\":{\"addTooltip\":true,\"addLegend\":false,\"isDisplayWarning\":false,\"type\":\"gauge\",\"scale\":{\"show\":false,\"labels\":false,\"color\":\"rgba(105,112,125,0.2)\"},\"labels\":{\"show\":true,\"color\":\"black\"},\"style\":{\"bgFill\":\"rgba(105,112,125,0.2)\",\"bgColor\":false,\"labelColor\":false,\"subText\":\"\",\"fontSize\":60}},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{}}]}",
+        "uiStateJSON": "{}",
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"elemta-rejection-*\",\"query\":{\"range\":{\"@timestamp\":{\"gte\":\"now-1h\"}}},\"filter\":[]}"
+        }
+      }
+    }
+  ]
+} 

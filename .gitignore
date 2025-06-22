@@ -1,0 +1,115 @@
+# Build artifacts
+build/
+dist/
+linux-package-builder/dist/
+linux-package-builder/build_tmp/
+*.rpm
+*.deb
+
+# Compiled binary
+elemta
+
+# Temporary files
+config/elemta.db
+config/test.crt
+config/test.key
+config/examples/elemta-fixed.conf
+# AI-related files
+.cursor*
+.notes/
+scripts/update_roadmap*.sh
+scripts/*_ai_*.sh
+*.txt
+latest_email.txt
+test-message*.txt
+fixme.txt
+NEXT-STEPS.md
+
+# Logs
+*.log
+
+# Archived files
+k8s/archive/
+
+# Compiled binaries
+bin/*.exe
+
+# Generated directories
+queue/active/
+queue/deferred/
+queue/failed/
+queue/hold/
+queue/data/
+certs/
+
+# Go build artifacts
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+coverage.html
+profile.out
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+env/
+venv/
+ENV/
+tests/python/e2e/__pycache__/
+tests/python/e2e/debug_auth.py
+.pytest_cache/
+*.coverage
+htmlcov/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Dependency directories (comment out if you want to include them)
+# vendor/
+
+# Configuration files with sensitive information
+# config/prod/
+
+# Temporary files
+*.tmp
+.tmp/
+
+# Testing and diagnostic scripts
+diagnose-queue.sh
+direct-deliver.sh
+direct-deliver2.sh
+elemta-fix.sh
+fix-elemta*.sh
+fix-lmtp-delivery.sh
+fix-queue-processor.sh
+process-queue.sh
+test-*.sh
+*-docker.sh
+!tests/test-elemta-docker.sh
+!tests/test-elemta.sh
+
+# Local configuration files
+elemta.toml
+simple-rspamd.conf
+test-rspamd.conf
+
+# Docker test files
+docker/dovecot/conf/passwd
+docker/rspamd/override.d/
+
+# Deploy directory
+.deploy/

@@ -87,4 +87,18 @@ api-test:
 	curl -s http://localhost:8081/api/queue/stats | json_pp
 	@echo "\nTesting API helper script..."
 	./scripts/elemta-api.sh stats
-	./scripts/elemta-api.sh --format json list | head -n 20 
+	./scripts/elemta-api.sh --format json list | head -n 20
+
+# Kibana setup targets
+setup-kibana:
+	@echo "🔧 Setting up Kibana data views..."
+	./scripts/setup-kibana-data-views.sh
+
+docker-setup:
+	@echo "🚀 Starting Elemta stack with setup..."
+	docker-compose up -d
+	@echo "⏳ Setup container will configure Kibana automatically..."
+
+docker-down:
+	@echo "🛑 Stopping all Elemta services..."
+	docker-compose down -v 
