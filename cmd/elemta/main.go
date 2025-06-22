@@ -61,6 +61,7 @@ func main() {
 		TLS:                   cfg.TLS,
 		Auth:                  cfg.Auth,
 		Delivery:              cfg.Delivery,
+		Metrics:               cfg.Metrics,
 	}
 
 	// Set defaults if not specified

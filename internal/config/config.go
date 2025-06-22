@@ -60,6 +60,9 @@ type Config struct {
 
 	// Delivery configuration
 	Delivery *smtp.DeliveryConfig `toml:"delivery"`
+
+	// Metrics configuration
+	Metrics *smtp.MetricsConfig `toml:"metrics"`
 }
 
 // DefaultConfig returns the default configuration

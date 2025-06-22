@@ -282,25 +282,6 @@ services:
       start_period: 30s
       
   # Monitoring services
-  elemta-metrics:
-    image: python:3.9-slim
-    container_name: elemta-metrics
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./scripts/metrics_server.py:/app/metrics_server.py
-    command: >
-      bash -c "apt-get update && apt-get install -y curl && 
-      python3 /app/metrics_server.py"
-    networks:
-      - monitoring_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/metrics"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
 
   prometheus:
     image: prom/prometheus:latest
@@ -448,7 +429,7 @@ services:
       - "5000:5000/udp"
       - "9600:9600"
     environment:
-      LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+      LS_JAVA_OPTS: "-Xmx1g -Xms1g"
     networks:
       - elemta_network
       - monitoring_network

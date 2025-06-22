@@ -6,7 +6,7 @@ scrape_configs:
   - job_name: 'elemta'
     scrape_interval: 5s
     static_configs:
-      - targets: ['elemta-metrics:8080']
+      - targets: ['elemta-node0:8080']
         labels:
           instance: 'elemta-server'
 

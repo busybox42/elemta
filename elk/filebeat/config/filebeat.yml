@@ -8,7 +8,6 @@ filebeat.inputs:
   fields:
     service: elemta
   fields_under_root: true
-  include_lines: ['.*elemta.*', '.*SMTP.*', '.*queue.*', '.*delivery.*']
 
 - type: log
   enabled: true
