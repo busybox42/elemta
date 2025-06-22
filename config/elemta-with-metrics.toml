@@ -1,0 +1,48 @@
+# Elemta SMTP Server Configuration
+
+[server]
+hostname = "localhost"
+listen = ":2525"
+max_size = 26214400  # 25MB
+
+# TLS Configuration - Enable STARTTLS
+[tls]
+enabled = true
+enable_starttls = true
+cert_file = "/app/certs/test.crt"
+key_file = "/app/certs/test.key"
+
+[queue]
+dir = "/app/queue"
+
+[logging]
+level = "debug"
+format = "text"
+file = ""
+
+[plugins]
+directory = "/app/plugins"
+enabled = []
+
+[queue_processor]
+enabled = true
+interval = 10
+workers = 5
+debug = false
+
+[auth] 
+enabled = false
+required = false
+datasource_type = "file"
+datasource_path = "/app/config/users.txt"
+
+[delivery]
+mode = "lmtp"
+host = "elemta-dovecot"
+port = 2424
+timeout = 30
+
+# Enable real metrics from SMTP server
+[metrics]
+enabled = true
+listen_addr = ":8080"

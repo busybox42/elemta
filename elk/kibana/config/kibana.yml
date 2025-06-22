@@ -1,0 +1,6 @@
+server.name: elemta-kibana
+server.host: "0.0.0.0"
+elasticsearch.hosts: ["http://elemta-elasticsearch:9200"]
+monitoring.ui.container.elasticsearch.enabled: true
+xpack.security.enabled: false
+xpack.encryptedSavedObjects.encryptionKey: "elemta-kibana-encryption-key-32-chars" 
