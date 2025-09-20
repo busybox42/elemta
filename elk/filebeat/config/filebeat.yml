@@ -5,8 +5,18 @@ filebeat.inputs:
   processors:
     - add_docker_metadata:
         host: "unix:///var/run/docker.sock"
+    - decode_json_fields:
+        fields: ["message"]
+        target: "elemta"
+        when:
+          and:
+            - contains:
+                message: '{"time":'
+            - equals:
+                container.name: "elemta-node0"
   fields:
-    service: elemta
+    elemta_service: elemta
+    log_type: container
   fields_under_root: true
 
 - type: log
@@ -14,7 +24,7 @@ filebeat.inputs:
   paths:
     - /var/log/elemta/*.log
   fields:
-    service: elemta
+    elemta_service: elemta
     log_type: file
   fields_under_root: true
   multiline.pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}'
@@ -29,11 +39,13 @@ processors:
 
 output.elasticsearch:
   hosts: ["elemta-elasticsearch:9200"]
-  index: "elemta-logs-%{+yyyy.MM.dd}"
+  index: "%{[container.name]}-%{+yyyy.MM.dd}"
 
 setup.kibana:
   host: "elemta-kibana:5601"
 
+setup.template.name: "elemta-containers"
+setup.template.pattern: "elemta-*"
 setup.template.settings:
   index.number_of_shards: 1
   index.codec: best_compression

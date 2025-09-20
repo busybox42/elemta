@@ -36,9 +36,12 @@ type Config struct {
 
 	// Logging configuration
 	Logging struct {
-		Level  string `toml:"level"`
-		Format string `toml:"format"`
-		File   string `toml:"file"`
+		Type    string                 `toml:"type"`    // "console", "file", "elastic"
+		Level   string                 `toml:"level"`
+		Format  string                 `toml:"format"`
+		File    string                 `toml:"file"`
+		Output  string                 `toml:"output"`  // For elastic: URL, for file: path
+		Options map[string]interface{} `toml:"options"` // Additional options like index, bufferSize
 	} `toml:"logging"`
 
 	// Plugins configuration
@@ -79,6 +82,7 @@ func DefaultConfig() *Config {
 	cfg.Queue.Dir = "/app/queue"
 
 	// Set default logging
+	cfg.Logging.Type = "console"
 	cfg.Logging.Level = "info"
 	cfg.Logging.Format = "text"
 
@@ -437,6 +441,12 @@ func (c *Config) validateQueue(result *ValidationResult) {
 
 // validateLogging validates logging configuration
 func (c *Config) validateLogging(result *ValidationResult) {
+	// Validate log type
+	validTypes := []string{"console", "file", "elastic"}
+	if c.Logging.Type != "" && !contains(validTypes, c.Logging.Type) {
+		result.AddError("logging.type", c.Logging.Type, fmt.Sprintf("invalid log type, must be one of: %s", strings.Join(validTypes, ", ")))
+	}
+
 	// Validate log level
 	validLevels := []string{"debug", "info", "warn", "error"}
 	if c.Logging.Level != "" && !contains(validLevels, c.Logging.Level) {
@@ -449,13 +459,20 @@ func (c *Config) validateLogging(result *ValidationResult) {
 		result.AddError("logging.format", c.Logging.Format, fmt.Sprintf("invalid log format, must be one of: %s", strings.Join(validFormats, ", ")))
 	}
 
-	// Validate log file path if specified
-	if c.Logging.File != "" {
-		logDir := filepath.Dir(c.Logging.File)
-		if !dirExists(logDir) {
-			if err := os.MkdirAll(logDir, 0755); err != nil {
-				result.AddError("logging.file", c.Logging.File, fmt.Sprintf("cannot create log directory: %v", err))
+	// Type-specific validation
+	switch c.Logging.Type {
+	case "file":
+		if c.Logging.File != "" {
+			logDir := filepath.Dir(c.Logging.File)
+			if !dirExists(logDir) {
+				if err := os.MkdirAll(logDir, 0755); err != nil {
+					result.AddError("logging.file", c.Logging.File, fmt.Sprintf("cannot create log directory: %v", err))
+				}
 			}
+		}
+	case "elastic":
+		if c.Logging.Output == "" {
+			result.AddError("logging.output", c.Logging.Output, "Elasticsearch URL must be specified for elastic logging")
 		}
 	}
 }

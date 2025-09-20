@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 )
@@ -267,8 +268,18 @@ func (p *Processor) processMessage(msg Message) {
 	deliveryErr := p.handler.DeliverMessage(ctx, msg, content)
 
 	if deliveryErr == nil {
-		// Success
-		logger.Info("Message delivered successfully")
+		// Success - Log comprehensive delivery success
+		logger.Info("message_delivered",
+			"event_type", "message_delivered",
+			"message_id", msg.ID,
+			"from_envelope", msg.From,
+			"to_envelope", msg.To,
+			"delivery_method", "smtp", // TODO: make this dynamic based on handler
+			"retry_count", msg.RetryCount,
+			"delivery_time", time.Now().Format(time.RFC3339),
+			"status", "delivered",
+		)
+		
 		p.metricsLock.Lock()
 		p.deliveredCount++
 		p.metricsLock.Unlock()
@@ -286,8 +297,34 @@ func (p *Processor) processMessage(msg Message) {
 		return
 	}
 
-	// Delivery failed
-	logger.Error("Message delivery failed", "error", deliveryErr)
+	// Delivery failed - determine if it's a tempfail or permanent failure
+	isTemporary := p.isTemporaryFailure(deliveryErr)
+	
+	if isTemporary {
+		// Log temporary failure (will retry)
+		logger.Warn("message_tempfail",
+			"event_type", "message_tempfail",
+			"message_id", msg.ID,
+			"from_envelope", msg.From,
+			"to_envelope", msg.To,
+			"retry_count", msg.RetryCount,
+			"max_retries", p.config.MaxRetries,
+			"error", deliveryErr.Error(),
+			"status", "temporary_failure",
+		)
+	} else {
+		// Log delivery failure
+		logger.Error("message_delivery_failed",
+			"event_type", "message_delivery_failed",
+			"message_id", msg.ID,
+			"from_envelope", msg.From,
+			"to_envelope", msg.To,
+			"retry_count", msg.RetryCount,
+			"error", deliveryErr.Error(),
+			"status", "failed",
+		)
+	}
+	
 	p.metricsLock.Lock()
 	p.retryCount++
 	p.metricsLock.Unlock()
@@ -307,7 +344,13 @@ func (p *Processor) processMessage(msg Message) {
 	if err := p.manager.MoveMessage(msg.ID, Deferred, deliveryErr.Error()); err != nil {
 		logger.Error("Failed to move message to deferred queue", "error", err)
 	} else {
-		logger.Info("Message moved to deferred queue for retry")
+		logger.Info("message_deferred",
+			"event_type", "message_deferred",
+			"message_id", msg.ID,
+			"retry_count", msg.RetryCount,
+			"next_retry", msg.NextRetry.Format(time.RFC3339),
+			"status", "deferred",
+		)
 	}
 }
 
@@ -346,15 +389,54 @@ func (p *Processor) moveToFailed(msg Message, reason string) {
 	p.failedCount++
 	p.metricsLock.Unlock()
 
+	// Log comprehensive bounce information
+	p.logger.Error("message_bounced",
+		"event_type", "message_bounced",
+		"message_id", msg.ID,
+		"from_envelope", msg.From,
+		"to_envelope", msg.To,
+		"retry_count", msg.RetryCount,
+		"bounce_reason", reason,
+		"bounce_time", time.Now().Format(time.RFC3339),
+		"status", "bounced",
+	)
+
 	if err := p.manager.MoveMessage(msg.ID, Failed, reason); err != nil {
 		p.logger.Error("Failed to move message to failed queue",
 			"message_id", msg.ID,
 			"error", err)
-	} else {
-		p.logger.Info("Message moved to failed queue",
-			"message_id", msg.ID,
-			"reason", reason)
 	}
+}
+
+// isTemporaryFailure determines if a delivery error is temporary (4xx) or permanent (5xx)
+func (p *Processor) isTemporaryFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	
+	errStr := err.Error()
+	
+	// Check for common temporary failure patterns
+	tempPatterns := []string{
+		"4.", // 4xx SMTP codes
+		"temporary",
+		"try again",
+		"busy",
+		"throttled",
+		"rate limit",
+		"connection timeout",
+		"network error",
+		"dns",
+	}
+	
+	for _, pattern := range tempPatterns {
+		if strings.Contains(strings.ToLower(errStr), pattern) {
+			return true
+		}
+	}
+	
+	// Default to permanent failure for unknown errors
+	return false
 }
 
 // logMetrics logs current processing metrics

@@ -377,26 +377,6 @@ services:
       timeout: 10s
       retries: 5
 
-  # Filebeat for log shipping
-  elemta-filebeat:
-    image: docker.elastic.co/beats/filebeat:8.11.0
-    container_name: elemta-filebeat
-    user: root
-    volumes:
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - elemta_logs:/var/log/elemta:ro
-      - elemta_filebeat_data:/usr/share/filebeat/data
-    environment:
-      - ELASTICSEARCH_HOST=elemta-elasticsearch:9200
-      - KIBANA_HOST=elemta-kibana:5601
-    networks:
-      - elemta_network
-      - monitoring_network
-    depends_on:
-      elemta-elasticsearch:
-        condition: service_healthy
-    command: filebeat -e -strict.perms=false
 
   # Monitoring Stack
   elemta-prometheus:
@@ -477,6 +457,4 @@ volumes:
   elemta_elasticsearch_data:
     driver: local
   elemta_kibana_data:
-    driver: local
-  elemta_filebeat_data:
     driver: local

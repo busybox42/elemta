@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/busybox42/elemta/internal/config"
+	"github.com/busybox42/elemta/internal/logging"
 	"github.com/busybox42/elemta/internal/queue"
 	"github.com/busybox42/elemta/internal/smtp"
 )
@@ -48,6 +49,30 @@ func main() {
 	if err := cfg.EnsureQueueDirectory(); err != nil {
 		log.Fatalf("Failed to create queue directory: %v", err)
 	}
+
+	// Initialize logging system
+	loggerConfig := logging.Config{
+		Type:      cfg.Logging.Type,
+		Level:     parseLogLevel(cfg.Logging.Level),
+		Output:    cfg.Logging.Output,
+		Formatter: cfg.Logging.Format,
+		Options:   cfg.Logging.Options,
+	}
+
+	// Use file path if type is file or if output is empty
+	if loggerConfig.Type == "file" || (loggerConfig.Type == "console" && cfg.Logging.File != "") {
+		loggerConfig.Output = cfg.Logging.File
+	}
+
+	appLogger, err := logging.Factory(loggerConfig)
+	if err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+	defer appLogger.Close()
+
+	appLogger.Info("Elemta MTA starting", 
+		logging.F("version", "1.0.0"),
+		logging.F("config_file", configPath))
 
 	// Create SMTP configuration from main config
 	smtpConfig := &smtp.Config{
@@ -241,4 +266,22 @@ func getQueueMessages(queueDir, queueType string) ([]map[string]interface{}, err
 	}
 
 	return messages, nil
+}
+
+// parseLogLevel converts string log level to logging.Level
+func parseLogLevel(level string) logging.Level {
+	switch strings.ToLower(level) {
+	case "debug":
+		return logging.Debug
+	case "info":
+		return logging.Info
+	case "warn", "warning":
+		return logging.Warn
+	case "error":
+		return logging.Error
+	case "fatal":
+		return logging.Fatal
+	default:
+		return logging.Info
+	}
 }

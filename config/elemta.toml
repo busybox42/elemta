@@ -16,9 +16,11 @@ key_file = "/app/certs/test.key"
 dir = "/app/queue"
 
 [logging]
-level = "debug"
-format = "text"
-file = ""
+type = "elastic"
+level = "info"
+format = "json"
+output = "http://elemta-elasticsearch:9200"
+options = { index = "elemta-logs", bufferSize = 50, flushInterval = "5s" }
 
 [plugins]
 directory = "/app/plugins"
@@ -46,3 +48,7 @@ mode = "lmtp"
 host = "elemta-dovecot"
 port = 2424
 timeout = 30
+
+[metrics]
+enabled = true
+listen_addr = ":8080"

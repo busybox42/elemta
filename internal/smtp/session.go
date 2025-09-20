@@ -70,12 +70,15 @@ var mockHandleSTARTTLS func(s *Session) error
 func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Session {
 	remoteAddr := conn.RemoteAddr().String()
 	sessionID := uuid.New().String()
+	
+	// Create structured logger for email transaction logging
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	})).With(
 		"component", "smtp-session",
 		"remote_addr", remoteAddr,
 		"session_id", sessionID,
+		"service", "elemta-mta",
 	)
 
 	// Initialize plugin system
@@ -415,6 +418,24 @@ func (s *Session) Handle() error {
 			s.message.id = generateMessageID()
 			s.message.receivedTime = time.Now()
 
+			// Extract email details for comprehensive logging
+			subject := s.extractSubjectFromData(data)
+			messageID := s.extractMessageIDFromData(data)
+			fromHeader := s.extractFromHeaderFromData(data)
+			
+			// Log comprehensive message reception
+			s.logger.Info("message_received",
+				"event_type", "message_received",
+				"message_id", s.message.id,
+				"from_envelope", s.message.from,
+				"from_header", fromHeader,
+				"to_envelope", s.message.to,
+				"subject", subject,
+				"header_message_id", messageID,
+				"size_bytes", len(data),
+				"received_time", s.message.receivedTime.Format(time.RFC3339),
+			)
+
 			// Before saving, validate message has required headers
 			if !s.validateMessageHeaders() {
 				s.writeWithLog("554 5.6.0 Message has invalid headers\r\n")
@@ -439,7 +460,17 @@ func (s *Session) Handle() error {
 
 			// Set state back to INIT and report success with message ID
 			s.state = INIT
-			s.logger.Info("message accepted", "id", s.message.id)
+			
+			// Log comprehensive message acceptance (reuse variables from message_received)
+			s.logger.Info("message_accepted",
+				"event_type", "message_accepted",
+				"message_id", s.message.id,
+				"from_envelope", s.message.from,
+				"to_envelope", s.message.to,
+				"queue_status", "queued",
+				"accepted_time", time.Now().Format(time.RFC3339),
+			)
+			
 			s.writeWithLog(fmt.Sprintf("250 2.0.0 Ok: message %s queued\r\n", s.message.id))
 
 		case verb == "RSET":
@@ -777,7 +808,16 @@ func (s *Session) saveMessage() error {
 		s.logger.Debug("scanning message for viruses", "id", s.message.id)
 		clean, infection, err := s.builtinPlugins.ScanForVirus(s.message.data, s.message.id)
 		if err != nil {
-			s.logger.Warn("virus scan failed", "error", err)
+			// Log virus scan failure
+			s.logger.Error("message_scan_failed",
+				"event_type", "virus_scan_failed",
+				"message_id", s.message.id,
+				"from_envelope", s.message.from,
+				"to_envelope", s.message.to,
+				"scanner", "clamav",
+				"error", err.Error(),
+			)
+			
 			// Add header indicating scan failed
 			s.message.data = addHeaderToMessage(s.message.data, "X-Virus-Scanned", "Error (ClamAV)")
 			if s.config.Antivirus != nil && s.config.Antivirus.RejectOnFailure {
@@ -785,12 +825,30 @@ func (s *Session) saveMessage() error {
 				return errors.New("virus scan failed")
 			}
 		} else if !clean {
+			// Log virus detection and rejection
+			s.logger.Warn("message_rejected",
+				"event_type", "virus_detected",
+				"message_id", s.message.id,
+				"from_envelope", s.message.from,
+				"to_envelope", s.message.to,
+				"scanner", "clamav",
+				"threat", infection,
+				"action", "rejected",
+			)
+			
 			// Message contains virus
-			s.logger.Warn("virus detected", "virus", infection)
 			s.message.data = addHeaderToMessage(s.message.data, "X-Virus-Scanned", fmt.Sprintf("Infected (ClamAV): %s", infection))
 			s.writeWithLog(fmt.Sprintf("554 5.7.1 Message contains a virus: %s\r\n", infection))
 			return errors.New("message contains virus")
 		} else {
+			// Log clean scan
+			s.logger.Info("message_scanned",
+				"event_type", "virus_scan_clean",
+				"message_id", s.message.id,
+				"scanner", "clamav",
+				"status", "clean",
+			)
+			
 			// Message is clean
 			s.message.data = addHeaderToMessage(s.message.data, "X-Virus-Scanned", "Clean (ClamAV)")
 		}
@@ -801,7 +859,16 @@ func (s *Session) saveMessage() error {
 		s.logger.Debug("scanning message for spam", "id", s.message.id)
 		clean, score, rules, err := s.builtinPlugins.ScanForSpam(s.message.data, s.message.id)
 		if err != nil {
-			s.logger.Warn("spam scan failed", "error", err)
+			// Log spam scan failure
+			s.logger.Error("message_scan_failed",
+				"event_type", "spam_scan_failed",
+				"message_id", s.message.id,
+				"from_envelope", s.message.from,
+				"to_envelope", s.message.to,
+				"scanner", "rspamd",
+				"error", err.Error(),
+			)
+			
 			// Add header indicating scan failed
 			s.message.data = addHeaderToMessage(s.message.data, "X-Spam-Scanned", "Error (Rspamd)")
 			if s.config.Antispam != nil && s.config.Antispam.RejectOnSpam {
@@ -809,8 +876,19 @@ func (s *Session) saveMessage() error {
 				return errors.New("spam scan failed")
 			}
 		} else if !clean {
+			// Log spam detection and rejection
+			s.logger.Warn("message_rejected",
+				"event_type", "spam_detected",
+				"message_id", s.message.id,
+				"from_envelope", s.message.from,
+				"to_envelope", s.message.to,
+				"scanner", "rspamd",
+				"spam_score", score,
+				"spam_rules", rules,
+				"action", "rejected",
+			)
+			
 			// Message is spam
-			s.logger.Warn("spam detected", "score", score, "rules", rules)
 			rulesList := ""
 			if len(rules) > 0 {
 				rulesList = " (" + strings.Join(rules, ", ") + ")"
@@ -825,7 +903,16 @@ func (s *Session) saveMessage() error {
 			s.writeWithLog(fmt.Sprintf("554 5.7.1 Message identified as spam (score %.2f)%s\r\n", score, rulesList))
 			return errors.New("message is spam")
 		} else {
-			s.logger.Info("message is not spam", "score", score, "rules", rules)
+			// Log clean spam scan
+			s.logger.Info("message_scanned",
+				"event_type", "spam_scan_clean",
+				"message_id", s.message.id,
+				"scanner", "rspamd",
+				"spam_score", score,
+				"spam_rules", rules,
+				"status", "clean",
+			)
+			
 			// Add headers for clean message
 			s.message.data = addHeaderToMessage(s.message.data, "X-Spam-Scanned", "Yes")
 			s.message.data = addHeaderToMessage(s.message.data, "X-Spam-Score", fmt.Sprintf("%.2f", score))
@@ -1425,4 +1512,59 @@ func addHeaderToMessage(data []byte, name, value string) []byte {
 	newLines = append(newLines, lines[insertIndex:]...)
 
 	return []byte(strings.Join(newLines, "\n"))
+}
+
+// extractSubjectFromData extracts the Subject header from email data
+func (s *Session) extractSubjectFromData(data []byte) string {
+	return s.extractHeaderFromData(data, "Subject")
+}
+
+// extractMessageIDFromData extracts the Message-ID header from email data
+func (s *Session) extractMessageIDFromData(data []byte) string {
+	return s.extractHeaderFromData(data, "Message-ID")
+}
+
+// extractFromHeaderFromData extracts the From header from email data
+func (s *Session) extractFromHeaderFromData(data []byte) string {
+	return s.extractHeaderFromData(data, "From")
+}
+
+// extractHeaderFromData extracts a specific header from email data
+func (s *Session) extractHeaderFromData(data []byte, headerName string) string {
+	content := string(data)
+	
+	// Find the end of headers (double CRLF)
+	headerEnd := strings.Index(content, "\r\n\r\n")
+	if headerEnd == -1 {
+		// Try with just LF
+		headerEnd = strings.Index(content, "\n\n")
+		if headerEnd == -1 {
+			return ""
+		}
+	}
+	
+	headers := content[:headerEnd]
+	lines := strings.Split(headers, "\n")
+	
+	var headerValue strings.Builder
+	inTargetHeader := false
+	
+	for _, line := range lines {
+		line = strings.TrimRight(line, "\r")
+		
+		if strings.HasPrefix(strings.ToLower(line), strings.ToLower(headerName)+":") {
+			// Found the header
+			headerValue.WriteString(strings.TrimSpace(line[len(headerName)+1:]))
+			inTargetHeader = true
+		} else if inTargetHeader && (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")) {
+			// Continuation line
+			headerValue.WriteString(" ")
+			headerValue.WriteString(strings.TrimSpace(line))
+		} else if inTargetHeader {
+			// End of header
+			break
+		}
+	}
+	
+	return strings.TrimSpace(headerValue.String())
 }
