@@ -24,6 +24,7 @@ latest_email.txt
 test-message*.txt
 fixme.txt
 NEXT-STEPS.md
+GEMINI.md
 
 # Logs
 *.log
@@ -106,6 +107,29 @@ test-*.sh
 elemta.toml
 simple-rspamd.conf
 test-rspamd.conf
+
+# Environment and generated config files
+.env*
+config/*-generated.toml
+config/elemta-generated.toml
+
+# Development and debugging scripts
+debug-config.sh
+fix-*.sh
+generate-*.sh
+rebuild.sh
+restart.sh
+working-config.sh
+
+# LDIF files (user data)
+*.ldif
+local-user*.ldif
+change-password.ldif
+
+# Temporary docker files and scripts
+docker/roundcube/sendmail-wrapper.sh
+docker/roundcube/smtp-proxy.py
+docker/dovecot/conf/users
 
 # Docker test files
 docker/dovecot/conf/passwd
