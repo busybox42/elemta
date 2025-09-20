@@ -579,18 +579,19 @@ func (ch *CommandHandler) checkRelayPermissions(ctx context.Context, recipient s
 		return nil
 	}
 
-	// If authentication is not required, allow relay (for webmail and internal services)
-	if ch.config.Auth != nil && ch.config.Auth.Enabled && !ch.config.Auth.Required {
-		ch.logger.DebugContext(ctx, "Relay allowed - authentication not required",
-			"recipient", recipient,
-		)
-		return nil
-	}
-
-	// Check if recipient is in local domains
+	// Check if recipient is in local domains first
 	if ch.isLocalDomain(recipient) {
 		ch.logger.DebugContext(ctx, "Local domain recipient accepted", "recipient", recipient)
 		return nil
+	}
+
+	// For external domains, require authentication (unless explicitly allowed)
+	// If authentication is not required, only allow local domains, not external relay
+	if ch.config.Auth != nil && ch.config.Auth.Enabled && !ch.config.Auth.Required {
+		ch.logger.WarnContext(ctx, "External relay denied - authentication not required but recipient is external domain",
+			"recipient", recipient,
+		)
+		return fmt.Errorf("554 5.7.1 Relay access denied")
 	}
 
 	// Check if relay is explicitly allowed

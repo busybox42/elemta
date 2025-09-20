@@ -607,9 +607,12 @@ func (dh *DataHandler) extractHeaders(data []byte) map[string]string {
 
 // validateMessageHeaders validates message headers
 func (dh *DataHandler) validateMessageHeaders(ctx context.Context, metadata *MessageMetadata) error {
-	// Skip strict header requirements for internal connections (like Roundcube)
-	if !dh.isInternalConnection() {
-		// Check required headers
+	// Skip strict header requirements for internal connections (like Roundcube) or if auth is not required
+	isInternal := dh.isInternalConnection()
+	authNotRequired := dh.config.Auth != nil && dh.config.Auth.Enabled && !dh.config.Auth.Required
+	
+	if !isInternal && !authNotRequired {
+		// Check required headers only for external connections when auth is required
 		requiredHeaders := []string{"from", "date"}
 		for _, header := range requiredHeaders {
 			if _, exists := metadata.Headers[header]; !exists {
@@ -618,7 +621,11 @@ func (dh *DataHandler) validateMessageHeaders(ctx context.Context, metadata *Mes
 			}
 		}
 	} else {
-		dh.logger.DebugContext(ctx, "Skipping strict header requirements for internal connection")
+		if isInternal {
+			dh.logger.DebugContext(ctx, "Skipping strict header requirements for internal connection")
+		} else {
+			dh.logger.DebugContext(ctx, "Skipping strict header requirements - authentication not required")
+		}
 	}
 
 	// Validate From header matches MAIL FROM
