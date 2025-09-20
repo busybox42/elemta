@@ -14,6 +14,9 @@ RUN go mod download
 # Copy source code
 COPY . .
 
+# Clean up dependencies
+RUN go mod tidy
+
 # Build the elemta binaries (statically linked)
 RUN CGO_ENABLED=0 go build -o elemta ./cmd/elemta
 RUN CGO_ENABLED=0 go build -o elemta-queue ./cmd/elemta-queue

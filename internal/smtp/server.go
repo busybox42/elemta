@@ -10,10 +10,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/busybox42/elemta/internal/api"
 	"github.com/busybox42/elemta/internal/plugin"
+	"github.com/google/uuid"
+	"github.com/sony/gobreaker"
+	"golang.org/x/sync/errgroup"
 )
 
 // Server represents an SMTP server
@@ -32,6 +36,13 @@ type Server struct {
 	logger           *log.Logger
 	resourceManager  *ResourceManager // Resource management and rate limiting
 	slogger          *slog.Logger     // Structured logger for resource management
+	
+	// Concurrency management
+	workerPool       *WorkerPool      // Standardized worker pool for connection handling
+	ctx              context.Context  // Server context for graceful shutdown
+	cancel           context.CancelFunc
+	errGroup         *errgroup.Group  // Coordinated goroutine management
+	shutdownOnce     sync.Once        // Ensure shutdown is called only once
 }
 
 // NewServer creates a new SMTP server
@@ -170,6 +181,30 @@ func NewServer(config *Config) (*Server, error) {
 	
 	resourceManager := NewResourceManager(resourceLimits, slogger)
 
+	// Initialize concurrency management
+	ctx, cancel := context.WithCancel(context.Background())
+	errGroup, gctx := errgroup.WithContext(ctx)
+	
+	// Initialize worker pool for connection handling
+	workerPoolConfig := &WorkerPoolConfig{
+		Size:               20,  // Configurable worker pool size
+		JobBufferSize:      100, // Buffer for incoming connections
+		ResultBufferSize:   100,
+		CircuitBreakerName: "smtp-connections",
+		MaxRequests:        1000,
+		Interval:           time.Minute,
+		Timeout:            30 * time.Second,
+		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
+			slogger.Info("SMTP connection circuit breaker state changed",
+				"name", name,
+				"from", from.String(),
+				"to", to.String(),
+			)
+		},
+	}
+	
+	workerPool := NewWorkerPool(workerPoolConfig, slogger)
+
 	server := &Server{
 		config:           config,
 		running:          false,
@@ -181,6 +216,12 @@ func NewServer(config *Config) (*Server, error) {
 		logger:           logger,
 		resourceManager:  resourceManager,
 		slogger:          slogger,
+		
+		// Concurrency management
+		workerPool:       workerPool,
+		ctx:              gctx,
+		cancel:           cancel,
+		errGroup:         errGroup,
 	}
 
 	// Initialize TLS manager if TLS is enabled
@@ -286,8 +327,14 @@ func (s *Server) Start() error {
 		}
 	}
 
-	// Handle connections in a goroutine
-	go s.acceptConnections()
+	// Start worker pool for connection handling
+	s.logger.Printf("Starting worker pool with %d workers", s.workerPool.size)
+	if err := s.workerPool.Start(); err != nil {
+		return fmt.Errorf("failed to start worker pool: %w", err)
+	}
+
+	// Handle connections with coordinated goroutine management
+	s.errGroup.Go(s.acceptConnections)
 
 	return nil
 }
@@ -340,35 +387,95 @@ func (s *Server) updateQueueMetricsWithRetry() {
 	}
 }
 
-// acceptConnections accepts and handles incoming connections with resource management
-func (s *Server) acceptConnections() {
-	for s.running {
+// acceptConnections accepts and handles incoming connections with standardized worker pool
+func (s *Server) acceptConnections() error {
+	s.logger.Printf("Starting connection acceptance loop")
+	
+	for {
+		select {
+		case <-s.ctx.Done():
+			s.logger.Printf("Context cancelled, stopping connection acceptance")
+			return s.ctx.Err()
+		default:
+		}
+		
+		// Set a short timeout on accept to allow periodic context checking
+		if tcpListener, ok := s.listener.(*net.TCPListener); ok {
+			tcpListener.SetDeadline(time.Now().Add(1 * time.Second))
+		}
+		
 		conn, err := s.listener.Accept()
 		if err != nil {
+			// Check if it's a timeout error (expected)
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				continue
+			}
+			
 			if s.running {
 				s.logger.Printf("Failed to accept connection: %v", err)
 			}
 			continue
 		}
 		
+		// Reset deadline after successful accept
+		if tcpListener, ok := s.listener.(*net.TCPListener); ok {
+			tcpListener.SetDeadline(time.Time{})
+		}
+		
 		// Check if connection can be accepted based on resource limits
-		if !s.resourceManager.CanAcceptConnection(conn.RemoteAddr().String()) {
-			s.logger.Printf("Connection rejected due to resource limits: %s", conn.RemoteAddr().String())
+		clientAddr := conn.RemoteAddr().String()
+		if !s.resourceManager.CanAcceptConnection(clientAddr) {
+			s.logger.Printf("Connection rejected due to resource limits: %s", clientAddr)
 			conn.Close()
 			continue
 		}
 		
-		// Use goroutine pool for connection handling
-		if !s.resourceManager.SubmitTask(func() {
-			s.handleAndCloseSession(conn)
-		}) {
-			// Goroutine pool is full, handle directly but log warning
-			s.slogger.Warn("Goroutine pool full, handling connection directly",
-				"remote_addr", conn.RemoteAddr().String(),
+		// Create connection job for worker pool
+		jobID := uuid.New().String()
+		connectionJob := &ConnectionJob{
+			id:       jobID,
+			conn:     conn,
+			handler:  s.handleConnectionWithContext,
+			priority: 1, // Normal priority
+			createdAt: time.Now(),
+		}
+		
+		// Submit job to worker pool with timeout
+		if err := s.workerPool.SubmitWithTimeout(connectionJob, 5*time.Second); err != nil {
+			s.slogger.Warn("Failed to submit connection to worker pool, handling directly",
+				"remote_addr", clientAddr,
+				"job_id", jobID,
+				"error", err,
+				"worker_pool_stats", s.workerPool.GetStats(),
 			)
-			go s.handleAndCloseSession(conn)
+			
+			// Fallback: handle connection directly in a goroutine
+			go func() {
+				defer conn.Close()
+				s.handleAndCloseSession(conn)
+			}()
+		} else {
+			s.slogger.Debug("Connection submitted to worker pool",
+				"remote_addr", clientAddr,
+				"job_id", jobID,
+			)
 		}
 	}
+}
+
+// handleConnectionWithContext processes a connection with proper context handling
+func (s *Server) handleConnectionWithContext(ctx context.Context, conn interface{}) error {
+	netConn, ok := conn.(net.Conn)
+	if !ok {
+		return fmt.Errorf("invalid connection type")
+	}
+	
+	// Ensure connection is closed when done
+	defer netConn.Close()
+	
+	// Handle the session with context
+	s.handleAndCloseSession(netConn)
+	return nil
 }
 
 // handleAndCloseSession processes a connection and ensures it's properly closed
@@ -415,76 +522,145 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 	}
 }
 
-// Close closes the server and all associated resources
+// Close closes the server and all associated resources with graceful shutdown
 func (s *Server) Close() error {
-	s.running = false
+	var shutdownErr error
 	
-	// Close resource manager
-	if s.resourceManager != nil {
-		s.resourceManager.Close()
-	}
-
-	if s.listener != nil {
-		if err := s.listener.Close(); err != nil {
-			log.Printf("Error closing listener: %v", err)
+	s.shutdownOnce.Do(func() {
+		s.logger.Printf("Initiating graceful server shutdown")
+		s.running = false
+		
+		// Cancel context to signal all goroutines to stop
+		if s.cancel != nil {
+			s.cancel()
 		}
-	}
-
-	// Close metrics server if it was started
-	if s.metricsServer != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := s.metricsServer.Shutdown(ctx); err != nil {
-			log.Printf("Error shutting down metrics server: %v", err)
-		}
-	}
-
-	// Close plugin manager
-	if s.pluginManager != nil {
-		if err := s.pluginManager.Close(); err != nil {
-			log.Printf("Error closing plugin manager: %v", err)
-		}
-	}
-
-	// Close authenticator
-	if s.authenticator != nil {
-		if auth, ok := s.authenticator.(*SMTPAuthenticator); ok {
-			if err := auth.Close(); err != nil {
-				log.Printf("Error closing authenticator: %v", err)
+		
+		// Close listener first to stop accepting new connections
+		if s.listener != nil {
+			if err := s.listener.Close(); err != nil {
+				s.logger.Printf("Error closing listener: %v", err)
+				shutdownErr = err
 			}
 		}
-	}
-
-	// Stop TLS manager if it was initialized
-	if s.tlsManager != nil {
-		if err := s.tlsManager.Stop(); err != nil {
-			log.Printf("Error stopping TLS manager: %v", err)
+		
+		// Stop worker pool gracefully
+		if s.workerPool != nil {
+			s.logger.Printf("Stopping worker pool...")
+			if err := s.workerPool.Stop(); err != nil {
+				s.logger.Printf("Error stopping worker pool: %v", err)
+				if shutdownErr == nil {
+					shutdownErr = err
+				}
+			} else {
+				s.logger.Printf("Worker pool stopped successfully")
+			}
 		}
-	}
-
-	// Stop queue integration
-	if s.queueIntegration != nil {
-		log.Printf("Stopping queue integration")
-		if err := s.queueIntegration.Stop(); err != nil {
-			log.Printf("Error stopping queue integration: %v", err)
+		
+		// Wait for all managed goroutines to complete with timeout
+		done := make(chan error, 1)
+		go func() {
+			done <- s.errGroup.Wait()
+		}()
+		
+		select {
+		case err := <-done:
+			if err != nil {
+				s.logger.Printf("Error during goroutine shutdown: %v", err)
+				if shutdownErr == nil {
+					shutdownErr = err
+				}
+			} else {
+				s.logger.Printf("All goroutines stopped successfully")
+			}
+		case <-time.After(30 * time.Second):
+			s.logger.Printf("Warning: Goroutine shutdown timeout after 30 seconds")
+			if shutdownErr == nil {
+				shutdownErr = fmt.Errorf("shutdown timeout")
+			}
 		}
-	}
-
-	// Stop queue manager
-	if s.queueManager != nil {
-		log.Printf("Stopping queue manager")
-		s.queueManager.Stop()
-	}
-
-	// Stop API server if running
-	if s.apiServer != nil {
-		if err := s.apiServer.Stop(); err != nil {
-			log.Printf("Error stopping API server: %v", err)
+		
+		// Close resource manager
+		if s.resourceManager != nil {
+			s.resourceManager.Close()
 		}
-	}
+		
+		// Close metrics server if it was started
+		if s.metricsServer != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := s.metricsServer.Shutdown(ctx); err != nil {
+				s.logger.Printf("Error shutting down metrics server: %v", err)
+				if shutdownErr == nil {
+					shutdownErr = err
+				}
+			}
+		}
 
-	return nil
+		// Close plugin manager
+		if s.pluginManager != nil {
+			if err := s.pluginManager.Close(); err != nil {
+				s.logger.Printf("Error closing plugin manager: %v", err)
+				if shutdownErr == nil {
+					shutdownErr = err
+				}
+			}
+		}
+
+		// Close authenticator
+		if s.authenticator != nil {
+			if auth, ok := s.authenticator.(*SMTPAuthenticator); ok {
+				if err := auth.Close(); err != nil {
+					s.logger.Printf("Error closing authenticator: %v", err)
+					if shutdownErr == nil {
+						shutdownErr = err
+					}
+				}
+			}
+		}
+
+		// Stop TLS manager if it was initialized
+		if s.tlsManager != nil {
+			if err := s.tlsManager.Stop(); err != nil {
+				s.logger.Printf("Error stopping TLS manager: %v", err)
+				if shutdownErr == nil {
+					shutdownErr = err
+				}
+			}
+		}
+		
+		// Stop queue integration
+		if s.queueIntegration != nil {
+			s.logger.Printf("Stopping queue integration")
+			if err := s.queueIntegration.Stop(); err != nil {
+				s.logger.Printf("Error stopping queue integration: %v", err)
+				if shutdownErr == nil {
+					shutdownErr = err
+				}
+			}
+		}
+
+		// Stop queue manager
+		if s.queueManager != nil {
+			s.logger.Printf("Stopping queue manager")
+			s.queueManager.Stop()
+		}
+
+		// Stop API server if running
+		if s.apiServer != nil {
+			if err := s.apiServer.Stop(); err != nil {
+				s.logger.Printf("Error stopping API server: %v", err)
+				if shutdownErr == nil {
+					shutdownErr = err
+				}
+			}
+		}
+		
+		s.logger.Printf("Graceful server shutdown completed")
+	})
+	
+	return shutdownErr
 }
 
 // ... existing code ...
+
 

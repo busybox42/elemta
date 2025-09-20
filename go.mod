@@ -17,9 +17,11 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/prometheus/client_golang v1.21.1
 	github.com/prometheus/client_model v0.6.1
+	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/crypto v0.37.0
+	golang.org/x/sync v0.10.0
 )
 
 require (
