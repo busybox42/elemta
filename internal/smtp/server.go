@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -29,6 +30,8 @@ type Server struct {
 	queueIntegration *QueueProcessorIntegration // New queue system integration
 	tlsManager       TLSHandler
 	logger           *log.Logger
+	resourceManager  *ResourceManager // Resource management and rate limiting
+	slogger          *slog.Logger     // Structured logger for resource management
 }
 
 // NewServer creates a new SMTP server
@@ -54,6 +57,14 @@ func NewServer(config *Config) (*Server, error) {
 	// Set up logger
 	logger := log.New(os.Stdout, "SMTP: ", log.LstdFlags)
 	logger.Printf("Initializing SMTP server with hostname: %s", config.Hostname)
+	
+	// Set up structured logger for resource management
+	slogger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})).With(
+		"component", "smtp-server",
+		"hostname", config.Hostname,
+	)
 
 	// Initialize plugin manager if enabled
 	var pluginManager *plugin.Manager
@@ -136,6 +147,29 @@ func NewServer(config *Config) (*Server, error) {
 		logger.Printf("New queue system with delivery handlers initialized")
 	}
 
+	// Initialize resource manager with limits from config
+	var resourceLimits *ResourceLimits
+	if config.Resources != nil {
+		resourceLimits = &ResourceLimits{
+			MaxConnections:            config.Resources.MaxConnections,
+			MaxConnectionsPerIP:       config.Resources.MaxConcurrent, // Use MaxConcurrent as per-IP limit
+			MaxGoroutines:             config.Resources.MaxConnections * 2, // Allow 2 goroutines per connection
+			ConnectionTimeout:         time.Duration(config.Resources.ConnectionTimeout) * time.Second,
+			SessionTimeout:            config.SessionTimeout,
+			IdleTimeout:               time.Duration(config.Resources.ReadTimeout) * time.Second,
+			RateLimitWindow:           time.Minute,
+			MaxRequestsPerWindow:      config.Resources.MaxConnections * 10, // 10 requests per connection per minute
+			MaxMemoryUsage:            500 * 1024 * 1024, // 500MB default
+			GoroutinePoolSize:         config.MaxWorkers,
+			CircuitBreakerEnabled:     true,
+			ResourceMonitoringEnabled: true,
+		}
+	} else {
+		resourceLimits = DefaultResourceLimits()
+	}
+	
+	resourceManager := NewResourceManager(resourceLimits, slogger)
+
 	server := &Server{
 		config:           config,
 		running:          false,
@@ -145,6 +179,8 @@ func NewServer(config *Config) (*Server, error) {
 		queueManager:     queueManager,
 		queueIntegration: queueIntegration,
 		logger:           logger,
+		resourceManager:  resourceManager,
+		slogger:          slogger,
 	}
 
 	// Initialize TLS manager if TLS is enabled
@@ -304,17 +340,34 @@ func (s *Server) updateQueueMetricsWithRetry() {
 	}
 }
 
-// acceptConnections accepts and handles incoming connections
+// acceptConnections accepts and handles incoming connections with resource management
 func (s *Server) acceptConnections() {
 	for s.running {
 		conn, err := s.listener.Accept()
 		if err != nil {
 			if s.running {
-				log.Printf("Failed to accept connection: %v", err)
+				s.logger.Printf("Failed to accept connection: %v", err)
 			}
 			continue
 		}
-		go s.handleAndCloseSession(conn)
+		
+		// Check if connection can be accepted based on resource limits
+		if !s.resourceManager.CanAcceptConnection(conn.RemoteAddr().String()) {
+			s.logger.Printf("Connection rejected due to resource limits: %s", conn.RemoteAddr().String())
+			conn.Close()
+			continue
+		}
+		
+		// Use goroutine pool for connection handling
+		if !s.resourceManager.SubmitTask(func() {
+			s.handleAndCloseSession(conn)
+		}) {
+			// Goroutine pool is full, handle directly but log warning
+			s.slogger.Warn("Goroutine pool full, handling connection directly",
+				"remote_addr", conn.RemoteAddr().String(),
+			)
+			go s.handleAndCloseSession(conn)
+		}
 	}
 }
 
@@ -327,7 +380,11 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 		s.logger = log.New(os.Stdout, "SMTP: ", log.LstdFlags)
 	}
 
-	s.logger.Printf("new connection: %s", clientIP)
+	// Register connection with resource manager
+	sessionID := s.resourceManager.AcceptConnection(conn)
+	defer s.resourceManager.ReleaseConnection(sessionID)
+
+	s.logger.Printf("new connection: %s (session: %s)", clientIP, sessionID)
 
 	// Create a new session with the current configuration and authentication
 	session := NewSession(conn, s.config, s.authenticator)
@@ -341,23 +398,36 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 		session.queueIntegration = s.queueIntegration
 	}
 
-	// Handle the SMTP session
-	err := session.Handle()
+	// Set session ID for tracking
+	session.sessionID = sessionID
+	session.resourceManager = s.resourceManager
+
+	// Handle the SMTP session with circuit breaker protection for external services
+	smtpCircuitBreaker := s.resourceManager.GetCircuitBreaker("smtp-session")
+	err := smtpCircuitBreaker.Execute(func() error {
+		return session.Handle()
+	})
+
 	if err != nil {
 		if err != io.EOF {
-			s.logger.Printf("session error: %v, client: %s", err, clientIP)
+			s.logger.Printf("session error: %v, client: %s, session: %s", err, clientIP, sessionID)
 		}
 	}
 
 	// Close the connection
 	if err := conn.Close(); err != nil {
-		s.logger.Printf("failed to close connection: %v, client: %s", err, clientIP)
+		s.logger.Printf("failed to close connection: %v, client: %s, session: %s", err, clientIP, sessionID)
 	}
 }
 
 // Close closes the server and all associated resources
 func (s *Server) Close() error {
 	s.running = false
+	
+	// Close resource manager
+	if s.resourceManager != nil {
+		s.resourceManager.Close()
+	}
 
 	if s.listener != nil {
 		if err := s.listener.Close(); err != nil {
@@ -422,3 +492,4 @@ func (s *Server) Close() error {
 }
 
 // ... existing code ...
+

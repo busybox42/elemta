@@ -118,13 +118,14 @@ func (p *ConnectionPool) CleanupIdleConnections() {
 }
 
 type DeliveryManager struct {
-	config         *Config
-	logger         *slog.Logger
-	running        bool
-	activeMu       sync.Mutex
-	activeJobs     map[string]bool
-	connectionPool *ConnectionPool
-	tlsConfig      *tls.Config
+	config          *Config
+	logger          *slog.Logger
+	running         bool
+	activeMu        sync.Mutex
+	activeJobs      map[string]bool
+	connectionPool  *ConnectionPool
+	tlsConfig       *tls.Config
+	resourceManager *ResourceManager // For circuit breaker protection
 }
 
 func NewDeliveryManager(config *Config) *DeliveryManager {
@@ -614,6 +615,19 @@ func (dm *DeliveryManager) deliverToHost(host string, port int, recipient, from 
 
 	// Get metrics instance
 	metrics := GetMetrics()
+	
+	// Use circuit breaker for external SMTP delivery if available
+	if dm.resourceManager != nil {
+		circuitBreaker := dm.resourceManager.GetCircuitBreaker(fmt.Sprintf("smtp-delivery-%s", host))
+		return circuitBreaker.Execute(func() error {
+			return dm.performDelivery(addr, recipient, from, data, useTLS, metrics)
+		})
+	}
+	
+	return dm.performDelivery(addr, recipient, from, data, useTLS, metrics)
+}
+
+func (dm *DeliveryManager) performDelivery(addr, recipient, from string, data []byte, useTLS bool, metrics *Metrics) error {
 
 	// Try to get connection from pool
 	var textConn *textproto.Conn

@@ -67,6 +67,9 @@ type Session struct {
 	authAttempts     int       // Number of auth attempts for this session
 	lastAuthAttempt  time.Time // Time of last auth attempt for rate limiting
 	remoteAddr       string    // Client IP address for security tracking
+	// Resource management
+	sessionID        string           // Session ID for resource tracking
+	resourceManager  *ResourceManager // Resource manager for rate limiting and monitoring
 }
 
 // For testing purposes only
@@ -273,6 +276,11 @@ func (s *Session) Handle() error {
 			"command", line,
 			"state", stateToString(s.state),
 			"authenticated", s.authenticated)
+
+		// Update activity tracking if resource manager is available
+		if s.resourceManager != nil && s.sessionID != "" {
+			s.resourceManager.UpdateConnectionActivity(s.sessionID)
+		}
 
 		// Parse the command verb (first word) and arguments separately
 		parts := strings.Fields(line)
