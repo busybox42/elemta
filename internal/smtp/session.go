@@ -698,14 +698,26 @@ func stateToString(state State) string {
 	}
 }
 
+// DataReaderState represents the state machine for RFC 5321 compliant data reading
+type DataReaderState int
+
+const (
+	DataStateNormal DataReaderState = iota
+	DataStateCR     // Just read CR (\r)
+	DataStateCRLF   // Just read CRLF (\r\n)
+	DataStateDot    // Just read CRLF.
+)
+
 func (s *Session) readData() ([]byte, error) {
 	var buffer bytes.Buffer
 	// Calculate size limit with a 10% margin to allow for headers
 	maxSize := int(float64(s.config.MaxSize) * 1.1)
 	totalBytes := 0
 	isFirstLine := true
+	state := DataStateNormal
+	suspiciousPatterns := 0
 
-	s.logger.Debug("reading message data")
+	s.logger.Debug("reading message data with RFC 5321 compliance")
 
 	// Set a longer timeout for data reading
 	dataTimeout := 5 * time.Minute
@@ -718,16 +730,21 @@ func (s *Session) readData() ([]byte, error) {
 			return nil, fmt.Errorf("error reading message data: %w", err)
 		}
 
-		// Check for end of data marker - be flexible with line endings
-		trimmedLine := strings.TrimRight(line, "\r\n")
-		if trimmedLine == "." {
-			s.logger.Debug("end of data marker found", "raw_line", line)
+		// RFC 5321 § 2.3.8 STRICT compliance: End-of-data MUST be exactly <CRLF>.<CRLF>
+		// Check for the EXACT end-of-data sequence
+		if s.isValidEndOfData(line, &state, &suspiciousPatterns) {
+			s.logger.Debug("valid end-of-data sequence found", 
+				"raw_line", line,
+				"state", state,
+				"suspicious_patterns", suspiciousPatterns)
 			break
 		}
 
 		// Per RFC 5321, lines starting with a period have it duplicated in the data stream
-		// We need to remove this extra period when processing
+		// We need to remove this extra period when processing (dot-stuffing removal)
 		if len(line) > 0 && line[0] == '.' && len(line) > 1 {
+			// Log potential dot-stuffing for security analysis
+			s.logger.Debug("removing dot-stuffing", "original_line", line[:min(50, len(line))])
 			line = line[1:]
 		}
 
@@ -751,6 +768,17 @@ func (s *Session) readData() ([]byte, error) {
 		}
 
 		buffer.WriteString(line)
+	}
+
+	// Log security metrics if suspicious patterns were detected
+	if suspiciousPatterns > 0 {
+		s.logger.Warn("smtp_security_alert",
+			"event_type", "suspicious_end_of_data_patterns",
+			"message_id", s.message.id,
+			"from_envelope", s.message.from,
+			"suspicious_count", suspiciousPatterns,
+			"remote_addr", s.conn.RemoteAddr().String(),
+		)
 	}
 
 	// Reset the connection timeout to normal
@@ -1567,4 +1595,73 @@ func (s *Session) extractHeaderFromData(data []byte, headerName string) string {
 	}
 	
 	return strings.TrimSpace(headerValue.String())
+}
+
+// isValidEndOfData implements RFC 5321 § 2.3.8 strict compliance for end-of-data sequence
+// The end-of-data sequence MUST be exactly <CRLF>.<CRLF> - no exceptions
+func (s *Session) isValidEndOfData(line string, state *DataReaderState, suspiciousPatterns *int) bool {
+	// RFC 5321 § 2.3.8: The end-of-data sequence is <CRLF>.<CRLF>
+	// We must validate the EXACT sequence: \r\n.\r\n
+	
+	// The line should be exactly ".\r\n" (dot followed by CRLF)
+	if line == ".\r\n" {
+		s.logger.Debug("rfc5321_compliance", 
+			"event", "valid_end_of_data_sequence",
+			"line_bytes", []byte(line))
+		return true
+	}
+	
+	// Log and count any suspicious end-of-data patterns that could indicate smuggling attempts
+	if strings.HasPrefix(line, ".") {
+		*suspiciousPatterns++
+		
+		// Log different types of suspicious patterns
+		if line == ".\n" {
+			s.logger.Warn("smtp_security_violation",
+				"event_type", "invalid_end_of_data_lf_only",
+				"description", "End-of-data with LF only (missing CR) - RFC 5321 violation",
+				"raw_line", line,
+				"line_bytes", []byte(line),
+				"remote_addr", s.conn.RemoteAddr().String(),
+			)
+		} else if line == "." {
+			s.logger.Warn("smtp_security_violation",
+				"event_type", "invalid_end_of_data_no_terminator", 
+				"description", "End-of-data without proper line terminator - RFC 5321 violation",
+				"raw_line", line,
+				"line_bytes", []byte(line),
+				"remote_addr", s.conn.RemoteAddr().String(),
+			)
+		} else if strings.TrimSpace(line) == "." {
+			s.logger.Warn("smtp_security_violation",
+				"event_type", "invalid_end_of_data_malformed",
+				"description", "End-of-data with malformed line endings - potential smuggling attempt", 
+				"raw_line", line,
+				"line_bytes", []byte(line),
+				"remote_addr", s.conn.RemoteAddr().String(),
+			)
+		} else {
+			s.logger.Warn("smtp_security_violation",
+				"event_type", "suspicious_dot_line",
+				"description", "Line starting with dot but not valid end-of-data",
+				"raw_line", line[:min(100, len(line))], // Limit log size
+				"line_bytes", []byte(line[:min(20, len(line))]),
+				"remote_addr", s.conn.RemoteAddr().String(),
+			)
+		}
+		
+		// For security, we reject all invalid end-of-data patterns
+		// This prevents SMTP smuggling attacks that rely on lenient parsing
+		return false
+	}
+	
+	return false
+}
+
+// min returns the minimum of two integers (helper function)
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
