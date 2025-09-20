@@ -18,10 +18,6 @@ services:
       - elemta_queue:/app/queue
       - elemta_logs:/app/logs
       - ./plugins:/app/plugins:ro
-      - ./config/elemta-with-metrics.toml:/app/config/elemta.toml:ro
-      - ./config/elemta.conf:/app/config/elemta.conf:ro
-      - ./config/users.txt:/app/config/users.txt:ro
-      - ./config/elemta.db:/app/config/elemta.db:rw
       - ./scripts/api_server.py:/app/api_server.py
     environment:
       - TZ=UTC
@@ -63,7 +59,7 @@ services:
       - API_PORT=8081
     command: >
       bash -c "apt-get update && apt-get install -y curl && 
-      python3 -u /app/api_server.py"
+      python3 /app/api_server.py"
     networks:
       - elemta_network
     healthcheck:
@@ -83,7 +79,6 @@ services:
       - elemta_queue:/app/queue:ro
       - elemta_logs:/app/logs:ro
       - ./web:/app/web:ro
-      - ./config/elemta.db:/app/config/elemta.db:ro
     environment:
       - TZ=UTC
       - NODE_ID=web
@@ -170,6 +165,7 @@ services:
       start_period: 30s
 
   elemta-dovecot:
+    image: elemta_dovecot:latest
     build:
       context: ./docker/dovecot
       dockerfile: Dockerfile
@@ -180,7 +176,6 @@ services:
       - "2424:2424"    # LMTP port
       - "4190:4190"    # ManageSieve port
     volumes:
-      - ./docker/dovecot/conf/dovecot-ldap.conf.ext:/etc/dovecot/dovecot-ldap.conf.ext:ro
       - dovecot_data:/var/mail
     networks:
       - elemta_network
@@ -361,32 +356,6 @@ services:
       timeout: 10s
       retries: 5
 
-  elemta-logstash:
-    image: docker.elastic.co/logstash/logstash:8.11.0
-    container_name: elemta-logstash
-    volumes:
-      - ./elk/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
-      - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
-      - elemta_logs:/var/log/elemta:ro
-    ports:
-      - "5044:5044"
-      - "5000:5000/tcp"
-      - "5000:5000/udp"
-      - "9600:9600"
-    environment:
-      LS_JAVA_OPTS: "-Xmx1g -Xms1g"
-    networks:
-      - elemta_network
-      - monitoring_network
-    depends_on:
-      elemta-elasticsearch:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9600 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
   elemta-kibana:
     image: docker.elastic.co/kibana/kibana:8.11.0
     container_name: elemta-kibana
@@ -401,7 +370,6 @@ services:
       XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: "elemta-kibana-encryption-key-32-chars"
     volumes:
       - elemta_kibana_data:/usr/share/kibana/data
-      - ./elk/kibana/config/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
     networks:
       - elemta_network
       - monitoring_network
@@ -420,7 +388,6 @@ services:
     container_name: elemta-filebeat
     user: root
     volumes:
-      - ./elk/filebeat/config/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - elemta_logs:/var/log/elemta:ro

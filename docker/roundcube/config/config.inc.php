@@ -12,6 +12,7 @@ $config['db_dsnw'] = 'sqlite:////var/roundcube/db/sqlite.db?mode=0646';
 // IMAP Configuration - Connect to Dovecot
 $config['default_host'] = 'elemta-dovecot';
 $config['default_port'] = 14143;
+$config['username_domain'] = 'example.com';
 $config['imap_timeout'] = 120;
 $config['imap_auth_type'] = 'PLAIN';
 $config['imap_delimiter'] = null;
@@ -23,14 +24,15 @@ $config['imap_force_lsub'] = false;
 $config['imap_force_ns'] = false;
 $config['imap_conn_options'] = null;
 
-// SMTP Configuration - Connect to Elemta MTA
+// Connect directly to Elemta - no auth required for internal networks
 $config['smtp_server'] = 'elemta';
 $config['smtp_port'] = 2525;
-$config['smtp_user'] = '';
-$config['smtp_pass'] = '';
+$config['smtp_user'] = null;
+$config['smtp_pass'] = null;
 $config['smtp_auth_type'] = null;
 $config['smtp_timeout'] = 120;
 $config['smtp_conn_options'] = null;
+$config['smtp_debug'] = false;
 
 // Interface Configuration
 $config['support_url'] = '';

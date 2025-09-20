@@ -31,10 +31,15 @@ workers = 5
 debug = false
 
 [auth] 
-enabled = false
+enabled = true
 required = false
-datasource_type = "file"
-datasource_path = "/app/config/users.txt"
+datasource_type = "ldap"
+datasource_name = "ldap"
+datasource_host = "elemta-ldap"
+datasource_port = 389
+datasource_user = "cn=admin,dc=example,dc=com"
+datasource_pass = "admin"
+datasource_db = "dc=example,dc=com"
 
 [delivery]
 mode = "lmtp"

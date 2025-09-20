@@ -6,7 +6,7 @@ ldap_version = 3
 base = ou=people,dc=example,dc=com
 deref = never
 scope = subtree
-user_filter = (&(objectClass=posixAccount)(mail=%u))
-pass_filter = (&(objectClass=posixAccount)(mail=%u))
-user_attrs = =uid=5000,=gid=5000,=home=/var/mail/%u
+user_filter = (&(objectClass=posixAccount)(mail=%{orig_user}))
+pass_filter = (&(objectClass=posixAccount)(mail=%{orig_user}))
+user_attrs = =uid=5000,=gid=5000,=home=/var/mail/%{orig_user}
 default_pass_scheme = SSHA 
