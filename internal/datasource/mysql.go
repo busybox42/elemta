@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -12,11 +14,14 @@ import (
 
 // MySQL implements the DataSource interface for MySQL databases
 type MySQL struct {
-	config     Config
-	db         *sql.DB
-	connected  bool
-	userTable  string
-	groupTable string
+	config          Config
+	db              *sql.DB
+	connected       bool
+	userTable       string
+	groupTable      string
+	securityManager *SQLSecurityManager
+	secureDB        *SecureDBConnection
+	logger          *slog.Logger
 }
 
 // NewMySQL creates a new MySQL datasource
@@ -39,11 +44,39 @@ func NewMySQL(config Config) *MySQL {
 		}
 	}
 
+	// Create logger for security operations
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})).With(
+		"component", "mysql-datasource",
+		"database", config.Database,
+	)
+
+	// Initialize security manager
+	securityManager := NewSQLSecurityManager(logger)
+	
+	// Register allowed tables and columns for MySQL
+	securityManager.RegisterTable(userTable, []string{
+		"username", "password", "email", "full_name", "is_active", "is_admin",
+		"created_at", "updated_at", "last_login_at",
+	})
+	securityManager.RegisterTable(groupTable, []string{
+		"name", "description", "is_active", "created_at", "updated_at",
+	})
+	securityManager.RegisterTable("user_attributes", []string{
+		"username", "attr_key", "attr_value",
+	})
+	securityManager.RegisterTable("user_groups", []string{
+		"user_id", "group_id",
+	})
+
 	return &MySQL{
-		config:     config,
-		connected:  false,
-		userTable:  userTable,
-		groupTable: groupTable,
+		config:          config,
+		connected:       false,
+		userTable:       userTable,
+		groupTable:      groupTable,
+		securityManager: securityManager,
+		logger:          logger,
 	}
 }
 
@@ -89,7 +122,14 @@ func (m *MySQL) Connect() error {
 		return fmt.Errorf("failed to ping MySQL server: %w", err)
 	}
 
+	// Initialize secure database connection wrapper
+	m.secureDB = NewSecureDBConnection(m.db, m.securityManager, m.logger)
+
 	m.connected = true
+	m.logger.Info("MySQL datasource connected with security enhancements",
+		"database", m.config.Database,
+		"security_enabled", true,
+	)
 	return nil
 }
 
@@ -99,12 +139,15 @@ func (m *MySQL) Close() error {
 		return nil
 	}
 
-	err := m.db.Close()
-	if err != nil {
-		return fmt.Errorf("failed to close MySQL connection: %w", err)
+	// Close secure database connection (this will cleanup prepared statements)
+	if m.secureDB != nil {
+		if err := m.secureDB.Close(); err != nil {
+			m.logger.Error("Failed to close secure database connection", "error", err)
+		}
 	}
 
 	m.connected = false
+	m.logger.Info("MySQL datasource connection closed")
 	return nil
 }
 
@@ -129,17 +172,70 @@ func (m *MySQL) Authenticate(ctx context.Context, username, password string) (bo
 		return false, ErrNotConnected
 	}
 
-	// In a real implementation, you would use a secure password hashing algorithm
-	// This is a simplified example that assumes passwords are stored hashed
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE username = ? AND password = ? AND is_active = 1", m.userTable)
-
-	var count int
-	err := m.db.QueryRowContext(ctx, query, username, password).Scan(&count)
-	if err != nil {
-		return false, fmt.Errorf("authentication query failed: %w", err)
+	// Validate inputs first
+	if err := m.securityManager.ValidateUsername(username); err != nil {
+		m.logger.Warn("Authentication failed: invalid username",
+			"username", username,
+			"error", err,
+		)
+		return false, fmt.Errorf("invalid username: %w", err)
 	}
 
-	return count > 0, nil
+	if err := m.securityManager.ValidateStringInput(password, "password", 1000); err != nil {
+		m.logger.Warn("Authentication failed: invalid password",
+			"username", username,
+			"error", err,
+		)
+		return false, fmt.Errorf("invalid password: %w", err)
+	}
+
+	// Log authentication attempt for security monitoring
+	m.logger.Info("Authentication attempt",
+		"username", username,
+		"source", "mysql",
+	)
+
+	// Use secure query execution
+	rows, err := m.secureDB.ExecuteSecureQuery(ctx, "SELECT", m.userTable,
+		[]string{"username"},
+		[]string{"username", "password", "is_active"},
+		username, password, 1)
+	if err != nil {
+		m.logger.Error("Secure authentication query failed",
+			"username", username,
+			"error", err,
+		)
+		return false, fmt.Errorf("authentication query failed: %w", err)
+	}
+	defer rows.Close()
+
+	var foundUsername string
+	success := false
+	if rows.Next() {
+		if err := rows.Scan(&foundUsername); err != nil {
+			m.logger.Error("Failed to scan authentication result",
+				"username", username,
+				"error", err,
+			)
+			return false, fmt.Errorf("failed to scan authentication result: %w", err)
+		}
+		success = foundUsername == username
+	}
+
+	if success {
+		m.logger.Info("Authentication successful",
+			"username", username,
+			"source", "mysql",
+		)
+	} else {
+		m.logger.Warn("Authentication failed",
+			"username", username,
+			"source", "mysql",
+			"reason", "invalid_credentials",
+		)
+	}
+
+	return success, nil
 }
 
 // GetUser retrieves user information from the MySQL database
@@ -148,17 +244,37 @@ func (m *MySQL) GetUser(ctx context.Context, username string) (User, error) {
 		return User{}, ErrNotConnected
 	}
 
-	query := fmt.Sprintf(`
-		SELECT username, password, email, full_name, is_active, is_admin, 
-		       created_at, updated_at, last_login_at
-		FROM %s
-		WHERE username = ?
-	`, m.userTable)
+	// Validate username first
+	if err := m.securityManager.ValidateUsername(username); err != nil {
+		m.logger.Warn("GetUser failed: invalid username",
+			"username", username,
+			"error", err,
+		)
+		return User{}, fmt.Errorf("invalid username: %w", err)
+	}
+
+	// Use secure query execution
+	rows, err := m.secureDB.ExecuteSecureQuery(ctx, "SELECT", m.userTable,
+		[]string{"username", "password", "email", "full_name", "is_active", "is_admin", "created_at", "updated_at", "last_login_at"},
+		[]string{"username"},
+		username)
+	if err != nil {
+		m.logger.Error("Secure GetUser query failed",
+			"username", username,
+			"error", err,
+		)
+		return User{}, fmt.Errorf("failed to get user: %w", err)
+	}
+	defer rows.Close()
 
 	var user User
 	var createdAt, updatedAt, lastLoginAt sql.NullInt64
 
-	err := m.db.QueryRowContext(ctx, query, username).Scan(
+	if !rows.Next() {
+		return User{}, ErrNotFound
+	}
+
+	err = rows.Scan(
 		&user.Username,
 		&user.Password,
 		&user.Email,
@@ -170,10 +286,12 @@ func (m *MySQL) GetUser(ctx context.Context, username string) (User, error) {
 		&lastLoginAt,
 	)
 
-	if err == sql.ErrNoRows {
-		return User{}, ErrNotFound
-	} else if err != nil {
-		return User{}, fmt.Errorf("failed to get user: %w", err)
+	if err != nil {
+		m.logger.Error("Failed to scan GetUser result",
+			"username", username,
+			"error", err,
+		)
+		return User{}, fmt.Errorf("failed to scan user data: %w", err)
 	}
 
 	// Convert nullable fields
@@ -196,21 +314,21 @@ func (m *MySQL) GetUser(ctx context.Context, username string) (User, error) {
 		WHERE u.username = ?
 	`, m.groupTable, m.userTable)
 
-	rows, err := m.db.QueryContext(ctx, groupQuery, username)
+	groupRows, err := m.db.QueryContext(ctx, groupQuery, username)
 	if err != nil {
 		return user, fmt.Errorf("failed to get user groups: %w", err)
 	}
-	defer rows.Close()
+	defer groupRows.Close()
 
-	for rows.Next() {
+	for groupRows.Next() {
 		var groupName string
-		if err := rows.Scan(&groupName); err != nil {
+		if err := groupRows.Scan(&groupName); err != nil {
 			return user, fmt.Errorf("failed to scan group name: %w", err)
 		}
 		user.Groups = append(user.Groups, groupName)
 	}
 
-	if err := rows.Err(); err != nil {
+	if err := groupRows.Err(); err != nil {
 		return user, fmt.Errorf("error iterating group rows: %w", err)
 	}
 
@@ -249,40 +367,73 @@ func (m *MySQL) ListUsers(ctx context.Context, filter map[string]interface{}, li
 		return nil, ErrNotConnected
 	}
 
-	// Build the query
-	query := fmt.Sprintf(`
-		SELECT username, password, email, full_name, is_active, is_admin, 
-		       created_at, updated_at, last_login_at
-		FROM %s
-		WHERE 1=1
-	`, m.userTable)
+	// Validate filter parameters
+	validatedFilter, err := m.securityManager.ValidateFilterMap(m.userTable, filter)
+	if err != nil {
+		m.logger.Warn("ListUsers failed: invalid filter",
+			"filter", filter,
+			"error", err,
+		)
+		return nil, fmt.Errorf("invalid filter parameters: %w", err)
+	}
 
-	// Add filters
-	var args []interface{}
-	for key, value := range filter {
-		// Sanitize the key to prevent SQL injection
-		key = strings.ReplaceAll(key, "`", "")
-		key = strings.ReplaceAll(key, "'", "")
-		key = strings.ReplaceAll(key, "\"", "")
+	// Validate pagination parameters
+	limitValue, err := m.securityManager.ValidateIntegerInput(limit, "limit", 0, 10000)
+	if err != nil {
+		return nil, fmt.Errorf("invalid limit parameter: %w", err)
+	}
 
-		query += fmt.Sprintf(" AND %s = ?", key)
+	offsetValue, err := m.securityManager.ValidateIntegerInput(offset, "offset", 0, 1000000)
+	if err != nil {
+		return nil, fmt.Errorf("invalid offset parameter: %w", err)
+	}
+
+	// Build secure query using validated parameters
+	baseColumns := []string{"username", "password", "email", "full_name", "is_active", "is_admin", "created_at", "updated_at", "last_login_at"}
+	whereColumns := make([]string, 0, len(validatedFilter))
+	args := make([]interface{}, 0, len(validatedFilter)+2)
+
+	for key, value := range validatedFilter {
+		whereColumns = append(whereColumns, key)
 		args = append(args, value)
 	}
 
-	// Add pagination
-	if limit > 0 {
-		query += " LIMIT ?"
-		args = append(args, limit)
-
-		if offset > 0 {
-			query += " OFFSET ?"
-			args = append(args, offset)
+	// Add pagination to args if specified
+	if limitValue > 0 {
+		args = append(args, limitValue)
+		if offsetValue > 0 {
+			args = append(args, offsetValue)
 		}
 	}
 
-	// Execute the query
-	rows, err := m.db.QueryContext(ctx, query, args...)
+	// Build the secure query
+	query, queryKey, err := m.securityManager.BuildSecureQuery("SELECT", m.userTable, baseColumns, whereColumns)
 	if err != nil {
+		return nil, fmt.Errorf("failed to build secure query: %w", err)
+	}
+
+	// Add pagination to query if specified
+	if limitValue > 0 {
+		query += " LIMIT ?"
+		if offsetValue > 0 {
+			query += " OFFSET ?"
+		}
+	}
+
+	// Get prepared statement and execute
+	stmt, err := m.securityManager.GetPreparedStatement(m.db, queryKey, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get prepared statement: %w", err)
+	}
+
+	rows, err := stmt.QueryContext(ctx, args...)
+	if err != nil {
+		m.logger.Error("Secure ListUsers query failed",
+			"filter", validatedFilter,
+			"limit", limitValue,
+			"offset", offsetValue,
+			"error", err,
+		)
 		return nil, fmt.Errorf("failed to list users: %w", err)
 	}
 	defer rows.Close()
@@ -336,6 +487,42 @@ func (m *MySQL) ListUsers(ctx context.Context, filter map[string]interface{}, li
 func (m *MySQL) CreateUser(ctx context.Context, user User) error {
 	if !m.connected {
 		return ErrNotConnected
+	}
+
+	// Validate all user inputs
+	if err := m.securityManager.ValidateUsername(user.Username); err != nil {
+		m.logger.Warn("CreateUser failed: invalid username",
+			"username", user.Username,
+			"error", err,
+		)
+		return fmt.Errorf("invalid username: %w", err)
+	}
+
+	if err := m.securityManager.ValidateStringInput(user.Password, "password", 1000); err != nil {
+		m.logger.Warn("CreateUser failed: invalid password",
+			"username", user.Username,
+			"error", err,
+		)
+		return fmt.Errorf("invalid password: %w", err)
+	}
+
+	if user.Email != "" {
+		if err := m.securityManager.ValidateEmail(user.Email); err != nil {
+			m.logger.Warn("CreateUser failed: invalid email",
+				"username", user.Username,
+				"email", user.Email,
+				"error", err,
+			)
+			return fmt.Errorf("invalid email: %w", err)
+		}
+	}
+
+	if err := m.securityManager.ValidateStringInput(user.FullName, "full_name", 255); err != nil {
+		m.logger.Warn("CreateUser failed: invalid full name",
+			"username", user.Username,
+			"error", err,
+		)
+		return fmt.Errorf("invalid full name: %w", err)
 	}
 
 	// Start a transaction
@@ -527,6 +714,15 @@ func (m *MySQL) DeleteUser(ctx context.Context, username string) error {
 		return ErrNotConnected
 	}
 
+	// Validate username first
+	if err := m.securityManager.ValidateUsername(username); err != nil {
+		m.logger.Warn("DeleteUser failed: invalid username",
+			"username", username,
+			"error", err,
+		)
+		return fmt.Errorf("invalid username: %w", err)
+	}
+
 	// Start a transaction
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -555,9 +751,8 @@ func (m *MySQL) DeleteUser(ctx context.Context, username string) error {
 		return fmt.Errorf("failed to delete user groups: %w", err)
 	}
 
-	// Delete the user
-	query := fmt.Sprintf("DELETE FROM %s WHERE username = ?", m.userTable)
-	result, err := tx.ExecContext(ctx, query, username)
+	// Delete the user using secure execution
+	result, err := m.secureDB.ExecuteSecureExec(ctx, "DELETE", m.userTable, []string{}, []string{"username"}, username)
 
 	if err != nil {
 		return fmt.Errorf("failed to delete user: %w", err)
@@ -665,3 +860,4 @@ func (m *MySQL) Query(ctx context.Context, query string, args ...interface{}) (i
 		}, nil
 	}
 }
+

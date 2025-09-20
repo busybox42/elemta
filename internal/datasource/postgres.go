@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -12,11 +14,14 @@ import (
 
 // Postgres implements the DataSource interface for PostgreSQL databases
 type Postgres struct {
-	config     Config
-	db         *sql.DB
-	connected  bool
-	userTable  string
-	groupTable string
+	config          Config
+	db              *sql.DB
+	connected       bool
+	userTable       string
+	groupTable      string
+	securityManager *SQLSecurityManager
+	secureDB        *SecureDBConnection
+	logger          *slog.Logger
 }
 
 // NewPostgres creates a new PostgreSQL datasource
@@ -39,11 +44,39 @@ func NewPostgres(config Config) *Postgres {
 		}
 	}
 
+	// Create logger for security operations
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})).With(
+		"component", "postgres-datasource",
+		"database", config.Database,
+	)
+
+	// Initialize security manager
+	securityManager := NewSQLSecurityManager(logger)
+	
+	// Register allowed tables and columns for PostgreSQL
+	securityManager.RegisterTable(userTable, []string{
+		"username", "password", "email", "full_name", "is_active", "is_admin",
+		"created_at", "updated_at", "last_login_at",
+	})
+	securityManager.RegisterTable(groupTable, []string{
+		"name", "description", "is_active", "created_at", "updated_at",
+	})
+	securityManager.RegisterTable("user_attributes", []string{
+		"username", "attr_key", "attr_value",
+	})
+	securityManager.RegisterTable("user_groups", []string{
+		"user_id", "group_id",
+	})
+
 	return &Postgres{
-		config:     config,
-		connected:  false,
-		userTable:  userTable,
-		groupTable: groupTable,
+		config:          config,
+		connected:       false,
+		userTable:       userTable,
+		groupTable:      groupTable,
+		securityManager: securityManager,
+		logger:          logger,
 	}
 }
 
@@ -85,7 +118,14 @@ func (p *Postgres) Connect() error {
 		return fmt.Errorf("failed to ping PostgreSQL server: %w", err)
 	}
 
+	// Initialize secure database connection wrapper
+	p.secureDB = NewSecureDBConnection(p.db, p.securityManager, p.logger)
+
 	p.connected = true
+	p.logger.Info("PostgreSQL datasource connected with security enhancements",
+		"database", p.config.Database,
+		"security_enabled", true,
+	)
 	return nil
 }
 
@@ -95,12 +135,15 @@ func (p *Postgres) Close() error {
 		return nil
 	}
 
-	err := p.db.Close()
-	if err != nil {
-		return fmt.Errorf("failed to close PostgreSQL connection: %w", err)
+	// Close secure database connection (this will cleanup prepared statements)
+	if p.secureDB != nil {
+		if err := p.secureDB.Close(); err != nil {
+			p.logger.Error("Failed to close secure database connection", "error", err)
+		}
 	}
 
 	p.connected = false
+	p.logger.Info("PostgreSQL datasource connection closed")
 	return nil
 }
 
@@ -125,17 +168,70 @@ func (p *Postgres) Authenticate(ctx context.Context, username, password string) 
 		return false, ErrNotConnected
 	}
 
-	// In a real implementation, you would use a secure password hashing algorithm
-	// This is a simplified example that assumes passwords are stored hashed
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE username = $1 AND password = $2 AND is_active = true", p.userTable)
-
-	var count int
-	err := p.db.QueryRowContext(ctx, query, username, password).Scan(&count)
-	if err != nil {
-		return false, fmt.Errorf("authentication query failed: %w", err)
+	// Validate inputs first
+	if err := p.securityManager.ValidateUsername(username); err != nil {
+		p.logger.Warn("Authentication failed: invalid username",
+			"username", username,
+			"error", err,
+		)
+		return false, fmt.Errorf("invalid username: %w", err)
 	}
 
-	return count > 0, nil
+	if err := p.securityManager.ValidateStringInput(password, "password", 1000); err != nil {
+		p.logger.Warn("Authentication failed: invalid password",
+			"username", username,
+			"error", err,
+		)
+		return false, fmt.Errorf("invalid password: %w", err)
+	}
+
+	// Log authentication attempt for security monitoring
+	p.logger.Info("Authentication attempt",
+		"username", username,
+		"source", "postgres",
+	)
+
+	// Use secure query execution
+	rows, err := p.secureDB.ExecuteSecureQuery(ctx, "SELECT", p.userTable,
+		[]string{"username"},
+		[]string{"username", "password", "is_active"},
+		username, password, true)
+	if err != nil {
+		p.logger.Error("Secure authentication query failed",
+			"username", username,
+			"error", err,
+		)
+		return false, fmt.Errorf("authentication query failed: %w", err)
+	}
+	defer rows.Close()
+
+	var foundUsername string
+	success := false
+	if rows.Next() {
+		if err := rows.Scan(&foundUsername); err != nil {
+			p.logger.Error("Failed to scan authentication result",
+				"username", username,
+				"error", err,
+			)
+			return false, fmt.Errorf("failed to scan authentication result: %w", err)
+		}
+		success = foundUsername == username
+	}
+
+	if success {
+		p.logger.Info("Authentication successful",
+			"username", username,
+			"source", "postgres",
+		)
+	} else {
+		p.logger.Warn("Authentication failed",
+			"username", username,
+			"source", "postgres",
+			"reason", "invalid_credentials",
+		)
+	}
+
+	return success, nil
 }
 
 // GetUser retrieves user information from the PostgreSQL database

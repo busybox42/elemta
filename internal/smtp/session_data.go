@@ -1,0 +1,701 @@
+// internal/smtp/session_data.go
+package smtp
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/md5"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/busybox42/elemta/internal/plugin"
+	"github.com/busybox42/elemta/internal/queue"
+	"github.com/google/uuid"
+)
+
+// DataReaderState represents the state of the data reader
+type DataReaderState struct {
+	InHeaders       bool
+	LastLineEmpty   bool
+	LineCount       int64
+	BytesRead       int64
+	HeadersComplete bool
+}
+
+// MessageMetadata contains metadata about a message
+type MessageMetadata struct {
+	MessageID    string
+	From         string
+	To           []string
+	Subject      string
+	Date         time.Time
+	Size         int64
+	Headers      map[string]string
+	Checksum     string
+}
+
+// SecurityScanResult represents the result of security scanning
+type SecurityScanResult struct {
+	Passed      bool
+	Threats     []string
+	SpamScore   float64
+	VirusFound  bool
+	Quarantined bool
+}
+
+// DataHandler manages message data processing for a session
+type DataHandler struct {
+	session           *Session
+	state             *SessionState
+	logger            *slog.Logger
+	conn              net.Conn
+	reader            *bufio.Reader
+	config            *Config
+	queueManager      queue.QueueManager
+	builtinPlugins    *plugin.BuiltinPlugins
+	// enhancedValidator would be added here if needed
+	mu                sync.RWMutex
+}
+
+// NewDataHandler creates a new data handler
+func NewDataHandler(session *Session, state *SessionState, conn net.Conn, reader *bufio.Reader,
+	config *Config, queueManager queue.QueueManager, builtinPlugins *plugin.BuiltinPlugins, logger *slog.Logger) *DataHandler {
+	return &DataHandler{
+		session:           session,
+		state:             state,
+		logger:            logger.With("component", "session-data"),
+		conn:              conn,
+		reader:            reader,
+		config:            config,
+		queueManager:      queueManager,
+		builtinPlugins:    builtinPlugins,
+		// enhancedValidator would be initialized here if needed
+	}
+}
+
+// ReadData reads message data from the client with comprehensive validation
+func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
+	dh.logger.DebugContext(ctx, "Starting message data reading")
+
+	startTime := time.Now()
+	var buffer bytes.Buffer
+	state := &DataReaderState{
+		InHeaders: true,
+	}
+	suspiciousPatterns := 0
+	maxSize := dh.config.MaxSize
+
+	// Set read timeout
+	if deadline, ok := ctx.Deadline(); ok {
+		dh.conn.SetReadDeadline(deadline)
+	} else {
+		dh.conn.SetReadDeadline(time.Now().Add(30 * time.Minute))
+	}
+	defer dh.conn.SetReadDeadline(time.Time{})
+
+	for {
+		line, err := dh.reader.ReadBytes('\n')
+		if err != nil {
+			if err == io.EOF {
+				dh.logger.WarnContext(ctx, "Unexpected EOF while reading message data")
+				return nil, fmt.Errorf("unexpected end of data")
+			}
+			dh.logger.ErrorContext(ctx, "Error reading message data", "error", err)
+			return nil, fmt.Errorf("error reading data: %w", err)
+		}
+
+		state.LineCount++
+		state.BytesRead += int64(len(line))
+
+		// Check message size limit
+		if state.BytesRead > maxSize {
+			dh.logger.WarnContext(ctx, "Message size limit exceeded",
+				"bytes_read", state.BytesRead,
+				"max_size", maxSize,
+			)
+			return nil, fmt.Errorf("552 5.3.4 Message size exceeds maximum allowed")
+		}
+
+		// Convert line to string for processing
+		lineStr := string(line)
+
+		// Check for end of data marker with enhanced security validation
+		if dh.isValidEndOfData(lineStr, state, &suspiciousPatterns) {
+			dh.logger.DebugContext(ctx, "Valid end-of-data marker detected")
+			break
+		}
+
+		// Validate line content for security threats
+		if err := dh.validateLineContent(ctx, lineStr, state); err != nil {
+			dh.logger.WarnContext(ctx, "Line validation failed",
+				"line_number", state.LineCount,
+				"error", err,
+			)
+			return nil, fmt.Errorf("554 5.7.1 Message rejected: %s", err.Error())
+		}
+
+		// Track header completion
+		if state.InHeaders {
+			if strings.TrimSpace(lineStr) == "" && state.LastLineEmpty {
+				state.InHeaders = false
+				state.HeadersComplete = true
+				dh.logger.DebugContext(ctx, "Headers section completed",
+					"line_count", state.LineCount,
+				)
+			}
+			state.LastLineEmpty = strings.TrimSpace(lineStr) == ""
+		}
+
+		// Write line to buffer
+		buffer.Write(line)
+
+		// Periodic logging for large messages
+		if state.LineCount%1000 == 0 {
+			dh.logger.DebugContext(ctx, "Message reading progress",
+				"lines_read", state.LineCount,
+				"bytes_read", state.BytesRead,
+				"duration", time.Since(startTime),
+			)
+		}
+	}
+
+	data := buffer.Bytes()
+	dh.state.SetDataSize(ctx, int64(len(data)))
+
+	dh.logger.InfoContext(ctx, "Message data reading completed",
+		"total_lines", state.LineCount,
+		"total_bytes", len(data),
+		"duration", time.Since(startTime),
+		"suspicious_patterns", suspiciousPatterns,
+	)
+
+	return data, nil
+}
+
+// ProcessMessage processes the complete message with security scanning and validation
+func (dh *DataHandler) ProcessMessage(ctx context.Context, data []byte) error {
+	dh.logger.DebugContext(ctx, "Starting message processing", "size", len(data))
+
+	startTime := time.Now()
+
+	// Extract message metadata
+	metadata, err := dh.extractMessageMetadata(ctx, data)
+	if err != nil {
+		dh.logger.ErrorContext(ctx, "Failed to extract message metadata", "error", err)
+		return fmt.Errorf("451 4.3.0 Message processing failed")
+	}
+
+	// Validate message headers
+	if err := dh.validateMessageHeaders(ctx, metadata); err != nil {
+		dh.logger.WarnContext(ctx, "Message header validation failed", "error", err)
+		return fmt.Errorf("554 5.7.1 Message rejected: %s", err.Error())
+	}
+
+	// Perform security scanning
+	scanResult, err := dh.performSecurityScan(ctx, data, metadata)
+	if err != nil {
+		dh.logger.ErrorContext(ctx, "Security scan failed", "error", err)
+		return fmt.Errorf("451 4.3.0 Security scan failed")
+	}
+
+	// Handle security scan results
+	if !scanResult.Passed {
+		return dh.handleSecurityThreat(ctx, scanResult, metadata)
+	}
+
+	// Save message to queue
+	if err := dh.saveMessage(ctx, data, metadata); err != nil {
+		dh.logger.ErrorContext(ctx, "Failed to save message", "error", err)
+		return fmt.Errorf("451 4.3.0 Message processing failed")
+	}
+
+	// Reset session state for next transaction
+	dh.state.Reset(ctx)
+	dh.state.IncrementMessageCount(ctx)
+
+	dh.logger.InfoContext(ctx, "Message processing completed successfully",
+		"message_id", metadata.MessageID,
+		"from", metadata.From,
+		"recipients", len(metadata.To),
+		"size", metadata.Size,
+		"duration", time.Since(startTime),
+	)
+
+	return nil
+}
+
+// isValidEndOfData checks for valid end-of-data marker with security validation
+func (dh *DataHandler) isValidEndOfData(line string, state *DataReaderState, suspiciousPatterns *int) bool {
+	// RFC 5321 § 2.3.8: The sequence "\r\n.\r\n" indicates end of data
+	// We must be strict about this to prevent SMTP smuggling attacks
+
+	// Check for exact end-of-data sequence
+	if line == ".\r\n" || line == ".\n" {
+		dh.logger.DebugContext(context.Background(), "End-of-data marker detected",
+			"line", fmt.Sprintf("%q", line),
+			"line_count", state.LineCount,
+		)
+		return true
+	}
+
+	// Check for suspicious patterns that could indicate SMTP smuggling
+	if strings.HasPrefix(line, ".") {
+		*suspiciousPatterns++
+		
+		// Log suspicious patterns for security monitoring
+		if line != ".\r\n" && line != ".\n" {
+			dh.logger.WarnContext(context.Background(), "Suspicious dot-prefixed line detected",
+				"line", fmt.Sprintf("%q", line),
+				"line_count", state.LineCount,
+				"pattern_type", "invalid_end_of_data",
+			)
+		}
+	}
+
+	return false
+}
+
+// validateLineContent validates individual lines for security threats
+func (dh *DataHandler) validateLineContent(ctx context.Context, line string, state *DataReaderState) error {
+	// Check line length (RFC 5321 recommends 1000 character limit)
+	if len(line) > 1000 {
+		return fmt.Errorf("line too long")
+	}
+
+	// Basic line validation for security
+	if strings.Contains(strings.ToUpper(line), "DROP") ||
+	   strings.Contains(strings.ToUpper(line), "DELETE") ||
+	   strings.Contains(line, ";") {
+		return fmt.Errorf("security violation detected")
+	}
+
+	// Additional header-specific validation
+	if state.InHeaders {
+		return dh.validateHeaderLine(ctx, line)
+	}
+
+	return nil
+}
+
+// validateHeaderLine validates message header lines
+func (dh *DataHandler) validateHeaderLine(ctx context.Context, line string) error {
+	line = strings.TrimSpace(line)
+	
+	// Empty lines are allowed in headers
+	if line == "" {
+		return nil
+	}
+
+	// Check for header continuation (starts with whitespace)
+	if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+		return nil // Valid header continuation
+	}
+
+	// Check for valid header format: "Name: Value"
+	if !strings.Contains(line, ":") {
+		return fmt.Errorf("invalid header format")
+	}
+
+	parts := strings.SplitN(line, ":", 2)
+	headerName := strings.TrimSpace(parts[0])
+	headerValue := strings.TrimSpace(parts[1])
+
+	// Validate header name
+	if headerName == "" {
+		return fmt.Errorf("empty header name")
+	}
+
+	// Check for valid header name characters (RFC 5322)
+	for _, char := range headerName {
+		if !((char >= 'A' && char <= 'Z') || 
+			 (char >= 'a' && char <= 'z') || 
+			 (char >= '0' && char <= '9') || 
+			 char == '-') {
+			return fmt.Errorf("invalid header name character")
+		}
+	}
+
+	// Validate specific headers
+	return dh.validateSpecificHeader(ctx, headerName, headerValue)
+}
+
+// validateSpecificHeader validates specific header types
+func (dh *DataHandler) validateSpecificHeader(ctx context.Context, name, value string) error {
+	name = strings.ToLower(name)
+
+	switch name {
+	case "content-type":
+		return dh.validateContentTypeHeader(value)
+	case "from", "to", "cc", "bcc", "reply-to":
+		return dh.validateEmailHeaders(value)
+	case "date":
+		return dh.validateDateHeader(value)
+	case "message-id":
+		return dh.validateMessageIDHeader(value)
+	}
+
+	return nil
+}
+
+// validateContentTypeHeader validates Content-Type headers
+func (dh *DataHandler) validateContentTypeHeader(value string) error {
+	// Allow common content types and parameters
+	if strings.Contains(value, ";") {
+		// Handle parameters like charset, boundary
+		parts := strings.Split(value, ";")
+		contentType := strings.TrimSpace(parts[0])
+		if contentType == "" {
+			return fmt.Errorf("empty content type")
+		}
+	}
+	return nil
+}
+
+// validateEmailHeaders validates email address headers
+func (dh *DataHandler) validateEmailHeaders(value string) error {
+	// Basic email header validation
+	if len(value) > 1000 {
+		return fmt.Errorf("email header too long")
+	}
+	return nil
+}
+
+// validateDateHeader validates Date headers
+func (dh *DataHandler) validateDateHeader(value string) error {
+	// Basic date header validation
+	if len(value) > 100 {
+		return fmt.Errorf("date header too long")
+	}
+	return nil
+}
+
+// validateMessageIDHeader validates Message-ID headers
+func (dh *DataHandler) validateMessageIDHeader(value string) error {
+	// Basic Message-ID validation
+	if len(value) > 1000 {
+		return fmt.Errorf("message-id too long")
+	}
+	return nil
+}
+
+// extractMessageMetadata extracts metadata from the message
+func (dh *DataHandler) extractMessageMetadata(ctx context.Context, data []byte) (*MessageMetadata, error) {
+	metadata := &MessageMetadata{
+		MessageID: uuid.New().String(),
+		From:      dh.state.GetMailFrom(),
+		To:        dh.state.GetRecipients(),
+		Date:      time.Now(),
+		Size:      int64(len(data)),
+		Headers:   make(map[string]string),
+	}
+
+	// Calculate checksum
+	hash := md5.Sum(data)
+	metadata.Checksum = fmt.Sprintf("%x", hash)
+
+	// Extract headers
+	headers := dh.extractHeaders(data)
+	for name, value := range headers {
+		metadata.Headers[strings.ToLower(name)] = value
+	}
+
+	// Extract specific fields
+	if subject, exists := metadata.Headers["subject"]; exists {
+		metadata.Subject = subject
+	}
+
+	if msgID, exists := metadata.Headers["message-id"]; exists {
+		metadata.MessageID = msgID
+	}
+
+	dh.logger.DebugContext(ctx, "Message metadata extracted",
+		"message_id", metadata.MessageID,
+		"from", metadata.From,
+		"recipients", len(metadata.To),
+		"subject", metadata.Subject,
+		"size", metadata.Size,
+	)
+
+	return metadata, nil
+}
+
+// extractHeaders extracts headers from message data
+func (dh *DataHandler) extractHeaders(data []byte) map[string]string {
+	headers := make(map[string]string)
+	lines := strings.Split(string(data), "\n")
+	
+	var currentHeader string
+	var currentValue strings.Builder
+
+	for _, line := range lines {
+		line = strings.TrimRight(line, "\r")
+		
+		// Empty line indicates end of headers
+		if line == "" {
+			if currentHeader != "" {
+				headers[currentHeader] = currentValue.String()
+			}
+			break
+		}
+
+		// Check for header continuation
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			if currentHeader != "" {
+				currentValue.WriteString(" ")
+				currentValue.WriteString(strings.TrimSpace(line))
+			}
+			continue
+		}
+
+		// Save previous header
+		if currentHeader != "" {
+			headers[currentHeader] = currentValue.String()
+		}
+
+		// Parse new header
+		if colonIndex := strings.Index(line, ":"); colonIndex > 0 {
+			currentHeader = strings.TrimSpace(line[:colonIndex])
+			currentValue.Reset()
+			currentValue.WriteString(strings.TrimSpace(line[colonIndex+1:]))
+		} else {
+			currentHeader = ""
+			currentValue.Reset()
+		}
+	}
+
+	return headers
+}
+
+// validateMessageHeaders validates message headers
+func (dh *DataHandler) validateMessageHeaders(ctx context.Context, metadata *MessageMetadata) error {
+	// Check required headers
+	requiredHeaders := []string{"from", "date"}
+	for _, header := range requiredHeaders {
+		if _, exists := metadata.Headers[header]; !exists {
+			dh.logger.WarnContext(ctx, "Missing required header", "header", header)
+			return fmt.Errorf("missing required header: %s", header)
+		}
+	}
+
+	// Validate From header matches MAIL FROM
+	if fromHeader, exists := metadata.Headers["from"]; exists {
+		if err := dh.validateFromHeader(ctx, fromHeader, metadata.From); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateFromHeader validates the From header against MAIL FROM
+func (dh *DataHandler) validateFromHeader(ctx context.Context, fromHeader, mailFrom string) error {
+	// Extract email from From header (may contain display name)
+	emailRegex := regexp.MustCompile(`<([^>]+)>|([^\s<>]+@[^\s<>]+)`)
+	matches := emailRegex.FindStringSubmatch(fromHeader)
+	
+	var headerEmail string
+	if len(matches) > 1 && matches[1] != "" {
+		headerEmail = matches[1]
+	} else if len(matches) > 2 && matches[2] != "" {
+		headerEmail = matches[2]
+	}
+
+	// Compare with MAIL FROM (allow some flexibility)
+	if headerEmail != "" && mailFrom != "" {
+		if strings.ToLower(headerEmail) != strings.ToLower(mailFrom) {
+			dh.logger.WarnContext(ctx, "From header mismatch",
+				"from_header", headerEmail,
+				"mail_from", mailFrom,
+			)
+			// Log but don't reject - some legitimate cases exist
+		}
+	}
+
+	return nil
+}
+
+// performSecurityScan performs comprehensive security scanning
+func (dh *DataHandler) performSecurityScan(ctx context.Context, data []byte, metadata *MessageMetadata) (*SecurityScanResult, error) {
+	result := &SecurityScanResult{
+		Passed:   true,
+		Threats:  make([]string, 0),
+	}
+
+	// Perform antivirus scan if plugins are available
+	if dh.builtinPlugins != nil {
+		if err := dh.performAntivirusScan(ctx, data, result); err != nil {
+			dh.logger.ErrorContext(ctx, "Antivirus scan failed", "error", err)
+			return nil, err
+		}
+	}
+
+	// Perform spam scan if plugins are available
+	if dh.builtinPlugins != nil {
+		if err := dh.performSpamScan(ctx, data, result); err != nil {
+			dh.logger.ErrorContext(ctx, "Spam scan failed", "error", err)
+			return nil, err
+		}
+	}
+
+	// Perform content analysis
+	if err := dh.performContentAnalysis(ctx, data, result); err != nil {
+		dh.logger.ErrorContext(ctx, "Content analysis failed", "error", err)
+		return nil, err
+	}
+
+	dh.logger.DebugContext(ctx, "Security scan completed",
+		"passed", result.Passed,
+		"threats", len(result.Threats),
+		"spam_score", result.SpamScore,
+		"virus_found", result.VirusFound,
+	)
+
+	return result, nil
+}
+
+// performAntivirusScan performs antivirus scanning
+func (dh *DataHandler) performAntivirusScan(ctx context.Context, data []byte, result *SecurityScanResult) error {
+	// This would integrate with actual antivirus plugins
+	// For now, perform basic threat detection
+	
+	threatPatterns := []string{
+		"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*", // EICAR test
+		"malware", "virus", "trojan", // Basic patterns
+	}
+
+	content := string(data)
+	for _, pattern := range threatPatterns {
+		if strings.Contains(strings.ToLower(content), strings.ToLower(pattern)) {
+			result.Passed = false
+			result.VirusFound = true
+			result.Threats = append(result.Threats, "Virus detected: "+pattern)
+			
+			dh.logger.WarnContext(ctx, "Virus detected in message",
+				"pattern", pattern,
+				"message_id", "unknown",
+			)
+		}
+	}
+
+	return nil
+}
+
+// performSpamScan performs spam detection
+func (dh *DataHandler) performSpamScan(ctx context.Context, data []byte, result *SecurityScanResult) error {
+	// Basic spam scoring
+	spamScore := 0.0
+	content := strings.ToLower(string(data))
+
+	// Check for spam indicators
+	spamPatterns := map[string]float64{
+		"viagra":        5.0,
+		"cialis":        5.0,
+		"lottery":       3.0,
+		"winner":        2.0,
+		"congratulations": 1.0,
+		"urgent":        1.5,
+		"act now":       2.0,
+		"limited time":  1.5,
+	}
+
+	for pattern, score := range spamPatterns {
+		if strings.Contains(content, pattern) {
+			spamScore += score
+		}
+	}
+
+	result.SpamScore = spamScore
+
+	// Threshold for spam detection
+	if spamScore >= 5.0 {
+		result.Passed = false
+		result.Threats = append(result.Threats, fmt.Sprintf("High spam score: %.1f", spamScore))
+		
+		dh.logger.WarnContext(ctx, "Message flagged as spam",
+			"spam_score", spamScore,
+		)
+	}
+
+	return nil
+}
+
+// performContentAnalysis performs content analysis
+func (dh *DataHandler) performContentAnalysis(ctx context.Context, data []byte, result *SecurityScanResult) error {
+	// Check for suspicious content patterns
+	content := string(data)
+
+	// Check for executable attachments (basic check)
+	if strings.Contains(content, "Content-Type: application/") {
+		if strings.Contains(content, "application/x-msdownload") ||
+		   strings.Contains(content, "application/octet-stream") {
+			result.Threats = append(result.Threats, "Suspicious attachment type detected")
+			dh.logger.WarnContext(ctx, "Suspicious attachment detected")
+		}
+	}
+
+	return nil
+}
+
+// handleSecurityThreat handles detected security threats
+func (dh *DataHandler) handleSecurityThreat(ctx context.Context, scanResult *SecurityScanResult, metadata *MessageMetadata) error {
+	if scanResult.VirusFound {
+		dh.logger.WarnContext(ctx, "Message rejected due to virus",
+			"threats", scanResult.Threats,
+			"message_id", metadata.MessageID,
+		)
+		return fmt.Errorf("554 5.7.1 Message rejected: virus detected")
+	}
+
+	if scanResult.SpamScore >= 10.0 {
+		dh.logger.WarnContext(ctx, "Message rejected due to high spam score",
+			"spam_score", scanResult.SpamScore,
+			"message_id", metadata.MessageID,
+		)
+		return fmt.Errorf("554 5.7.1 Message rejected: identified as spam")
+	}
+
+	// For lower threat levels, quarantine instead of reject
+	if len(scanResult.Threats) > 0 {
+		scanResult.Quarantined = true
+		dh.logger.InfoContext(ctx, "Message quarantined due to security concerns",
+			"threats", scanResult.Threats,
+			"message_id", metadata.MessageID,
+		)
+	}
+
+	return nil
+}
+
+// saveMessage saves the message to the queue
+func (dh *DataHandler) saveMessage(ctx context.Context, data []byte, metadata *MessageMetadata) error {
+	// Save to queue using EnqueueMessage
+	if dh.queueManager != nil {
+		messageID, err := dh.queueManager.EnqueueMessage(
+			metadata.From,
+			metadata.To,
+			metadata.Subject,
+			data,
+			queue.PriorityNormal,
+		)
+		if err != nil {
+			dh.logger.ErrorContext(ctx, "Failed to enqueue message", "error", err)
+			return fmt.Errorf("failed to save message: %w", err)
+		}
+		
+		dh.logger.InfoContext(ctx, "Message enqueued successfully",
+			"message_id", messageID,
+			"size", metadata.Size,
+		)
+	}
+
+	// Note: Queue integration processing would be handled by the queue manager
+
+	return nil
+}

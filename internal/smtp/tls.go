@@ -18,6 +18,16 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
+// TLSHandler interface defines methods for handling TLS connections
+type TLSHandler interface {
+	WrapConnection(conn net.Conn) (net.Conn, error)
+	GetTLSConfig() *tls.Config
+	StartTLSListener(ctx context.Context) (net.Listener, error)
+	RenewCertificates(ctx context.Context) error
+	GetCertificateInfo() (map[string]interface{}, error)
+	Stop() error
+}
+
 // TLSManager handles TLS certificates and connections
 type TLSManager struct {
 	config            *Config

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -21,16 +22,21 @@ type SQLSecurityManager struct {
 	allowedTables      map[string]bool
 	allowedColumns     map[string]map[string]bool
 	queryWhitelist     map[string]bool
+	debugMode          bool
 }
 
 // NewSQLSecurityManager creates a new SQL security manager
 func NewSQLSecurityManager(logger *slog.Logger) *SQLSecurityManager {
+	// Check if debug mode is enabled via environment variable
+	debugMode := os.Getenv("ELEMTA_SQL_DEBUG") == "true" || os.Getenv("DEBUG") == "true"
+	
 	return &SQLSecurityManager{
 		preparedStatements: make(map[string]*sql.Stmt),
 		logger:             logger,
 		allowedTables:      make(map[string]bool),
 		allowedColumns:     make(map[string]map[string]bool),
 		queryWhitelist:     make(map[string]bool),
+		debugMode:          debugMode,
 	}
 }
 
@@ -204,10 +210,19 @@ func (sm *SQLSecurityManager) GetPreparedStatement(db *sql.DB, queryKey, query s
 	
 	sm.preparedStatements[queryKey] = stmt
 	
-	sm.logger.Debug("Created prepared statement",
-		"query_key", queryKey,
-		"total_statements", len(sm.preparedStatements),
-	)
+	// Log query in debug mode
+	if sm.debugMode {
+		sm.logger.Info("SQL Query Prepared (DEBUG MODE)",
+			"query_key", queryKey,
+			"query", query,
+			"total_statements", len(sm.preparedStatements),
+		)
+	} else {
+		sm.logger.Debug("Created prepared statement",
+			"query_key", queryKey,
+			"total_statements", len(sm.preparedStatements),
+		)
+	}
 	
 	return stmt, nil
 }
@@ -389,11 +404,22 @@ func (sdb *SecureDBConnection) ExecuteSecureQuery(ctx context.Context, operation
 		return nil, fmt.Errorf("query execution failed: %w", err)
 	}
 	
-	sdb.logger.Debug("Secure query executed successfully",
-		"operation", operation,
-		"table", tableName,
-		"args_count", len(args),
-	)
+	// Log query execution in debug mode
+	if sdb.securityManager.debugMode {
+		sdb.logger.Info("SQL Query Executed (DEBUG MODE)",
+			"operation", operation,
+			"table", tableName,
+			"query", query,
+			"args_count", len(args),
+			"sanitized_args", sanitizedArgs,
+		)
+	} else {
+		sdb.logger.Debug("Secure query executed successfully",
+			"operation", operation,
+			"table", tableName,
+			"args_count", len(args),
+		)
+	}
 	
 	return rows, nil
 }
@@ -440,11 +466,22 @@ func (sdb *SecureDBConnection) ExecuteSecureExec(ctx context.Context, operation,
 		return nil, fmt.Errorf("exec execution failed: %w", err)
 	}
 	
-	sdb.logger.Debug("Secure exec executed successfully",
-		"operation", operation,
-		"table", tableName,
-		"args_count", len(args),
-	)
+	// Log exec execution in debug mode
+	if sdb.securityManager.debugMode {
+		sdb.logger.Info("SQL Exec Executed (DEBUG MODE)",
+			"operation", operation,
+			"table", tableName,
+			"query", query,
+			"args_count", len(args),
+			"sanitized_args", sanitizedArgs,
+		)
+	} else {
+		sdb.logger.Debug("Secure exec executed successfully",
+			"operation", operation,
+			"table", tableName,
+			"args_count", len(args),
+		)
+	}
 	
 	return result, nil
 }
@@ -458,6 +495,223 @@ func (sdb *SecureDBConnection) Close() error {
 	}
 	
 	return nil
+}
+
+// ValidateUsername validates username input with strict type checking
+func (sm *SQLSecurityManager) ValidateUsername(username string) error {
+	if username == "" {
+		return fmt.Errorf("username cannot be empty")
+	}
+	
+	// Length validation
+	if len(username) > 255 {
+		sm.logger.Warn("SQL injection attempt: username too long",
+			"length", len(username),
+			"threat", "buffer_overflow_attempt",
+		)
+		return fmt.Errorf("username exceeds maximum allowed length")
+	}
+	
+	// Character validation - alphanumeric, underscore, hyphen, dot allowed
+	if !regexp.MustCompile(`^[a-zA-Z0-9._@-]+$`).MatchString(username) {
+		sm.logger.Warn("SQL injection attempt: invalid username format",
+			"username", username[:min(50, len(username))],
+			"threat", "username_format_injection",
+		)
+		return fmt.Errorf("username contains invalid characters")
+	}
+	
+	_, err := sm.SanitizeInput(username)
+	return err
+}
+
+// ValidateEmail validates email input with strict type checking
+func (sm *SQLSecurityManager) ValidateEmail(email string) error {
+	if email == "" {
+		return nil // Email can be empty
+	}
+	
+	// Length validation
+	if len(email) > 320 { // RFC 5321 limit
+		sm.logger.Warn("SQL injection attempt: email too long",
+			"length", len(email),
+			"threat", "buffer_overflow_attempt",
+		)
+		return fmt.Errorf("email exceeds maximum allowed length")
+	}
+	
+	// Basic email format validation
+	emailRegex := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	if !regexp.MustCompile(emailRegex).MatchString(email) {
+		sm.logger.Warn("SQL injection attempt: invalid email format",
+			"email", email[:min(50, len(email))],
+			"threat", "email_format_injection",
+		)
+		return fmt.Errorf("email format is invalid")
+	}
+	
+	_, err := sm.SanitizeInput(email)
+	return err
+}
+
+// ValidateStringInput validates general string input with type checking
+func (sm *SQLSecurityManager) ValidateStringInput(input string, fieldName string, maxLength int) error {
+	if input == "" {
+		return nil // Allow empty strings
+	}
+	
+	// Length validation
+	if len(input) > maxLength {
+		sm.logger.Warn("SQL injection attempt: input too long",
+			"field", fieldName,
+			"length", len(input),
+			"max_length", maxLength,
+			"threat", "buffer_overflow_attempt",
+		)
+		return fmt.Errorf("%s exceeds maximum allowed length of %d characters", fieldName, maxLength)
+	}
+	
+	_, err := sm.SanitizeInput(input)
+	return err
+}
+
+// ValidateIntegerInput validates integer input with range checking
+func (sm *SQLSecurityManager) ValidateIntegerInput(input interface{}, fieldName string, min, max int64) (int64, error) {
+	var value int64
+	
+	switch v := input.(type) {
+	case int:
+		value = int64(v)
+	case int32:
+		value = int64(v)
+	case int64:
+		value = v
+	case bool:
+		if v {
+			value = 1
+		} else {
+			value = 0
+		}
+	default:
+		sm.logger.Warn("SQL injection attempt: invalid integer type",
+			"field", fieldName,
+			"type", fmt.Sprintf("%T", input),
+			"threat", "type_confusion_injection",
+		)
+		return 0, fmt.Errorf("%s must be an integer value", fieldName)
+	}
+	
+	// Range validation
+	if value < min || value > max {
+		sm.logger.Warn("SQL injection attempt: integer out of range",
+			"field", fieldName,
+			"value", value,
+			"min", min,
+			"max", max,
+			"threat", "range_injection",
+		)
+		return 0, fmt.Errorf("%s must be between %d and %d", fieldName, min, max)
+	}
+	
+	return value, nil
+}
+
+// ValidateFilterMap validates filter parameters for ListUsers operations
+func (sm *SQLSecurityManager) ValidateFilterMap(tableName string, filter map[string]interface{}) (map[string]interface{}, error) {
+	if filter == nil {
+		return nil, nil
+	}
+	
+	validatedFilter := make(map[string]interface{})
+	
+	for key, value := range filter {
+		// Validate column name
+		if err := sm.ValidateColumnName(tableName, key); err != nil {
+			return nil, err
+		}
+		
+		// Validate value based on type
+		switch v := value.(type) {
+		case string:
+			if err := sm.ValidateStringInput(v, key, 1000); err != nil {
+				return nil, err
+			}
+			validatedFilter[key] = v
+		case int, int32, int64, bool:
+			validatedValue, err := sm.ValidateIntegerInput(v, key, -2147483648, 2147483647)
+			if err != nil {
+				return nil, err
+			}
+			validatedFilter[key] = validatedValue
+		default:
+			sm.logger.Warn("SQL injection attempt: unsupported filter value type",
+				"field", key,
+				"type", fmt.Sprintf("%T", value),
+				"threat", "type_confusion_injection",
+			)
+			return nil, fmt.Errorf("unsupported value type for filter field %s", key)
+		}
+	}
+	
+	return validatedFilter, nil
+}
+
+// LogSecureOperation logs database operations for audit purposes
+func (sm *SQLSecurityManager) LogSecureOperation(operation, tableName string, username string, success bool, err error) {
+	if success {
+		sm.logger.Info("Secure database operation completed",
+			"operation", operation,
+			"table", tableName,
+			"username", username,
+			"status", "success",
+		)
+	} else {
+		sm.logger.Error("Secure database operation failed",
+			"operation", operation,
+			"table", tableName,
+			"username", username,
+			"status", "failed",
+			"error", err,
+		)
+	}
+}
+
+// HandleSecureError provides consistent error handling with security logging
+func (sm *SQLSecurityManager) HandleSecureError(operation, tableName, username string, internalError error, userMessage string) error {
+	// Log detailed error internally for debugging
+	sm.logger.Error("Database operation error (internal details)",
+		"operation", operation,
+		"table", tableName,
+		"username", username,
+		"internal_error", internalError.Error(),
+	)
+	
+	// Log security event for monitoring
+	sm.LogSecureOperation(operation, tableName, username, false, internalError)
+	
+	// Return generic error to user to prevent information disclosure
+	if userMessage == "" {
+		return fmt.Errorf("database operation failed")
+	}
+	return fmt.Errorf("%s", userMessage)
+}
+
+// EnableDebugMode enables or disables debug mode for SQL query logging
+func (sm *SQLSecurityManager) EnableDebugMode(enabled bool) {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+	
+	sm.debugMode = enabled
+	sm.logger.Info("SQL debug mode changed",
+		"debug_enabled", enabled,
+	)
+}
+
+// IsDebugMode returns whether debug mode is currently enabled
+func (sm *SQLSecurityManager) IsDebugMode() bool {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+	return sm.debugMode
 }
 
 // min returns the minimum of two integers

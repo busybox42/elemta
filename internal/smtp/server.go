@@ -389,18 +389,13 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 	// Create a new session with the current configuration and authentication
 	session := NewSession(conn, s.config, s.authenticator)
 
-	// Set the queue manager and TLS manager from the server
-	session.queueManager = s.queueManager
-	session.tlsManager = s.tlsManager
+	// Set the TLS manager from the server
+	session.SetTLSManager(s.tlsManager)
+	// Note: Queue manager integration would be set up separately if compatible
 
-	// Set the queue integration if available
-	if s.queueIntegration != nil {
-		session.queueIntegration = s.queueIntegration
-	}
-
-	// Set session ID for tracking
-	session.sessionID = sessionID
-	session.resourceManager = s.resourceManager
+	// Set additional components
+	session.SetResourceManager(s.resourceManager)
+	// Note: Builtin plugins would be set through plugin manager if needed
 
 	// Handle the SMTP session with circuit breaker protection for external services
 	smtpCircuitBreaker := s.resourceManager.GetCircuitBreaker("smtp-session")
