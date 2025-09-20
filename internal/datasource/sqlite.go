@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,12 +15,15 @@ import (
 
 // SQLite implements the DataSource interface for SQLite databases
 type SQLite struct {
-	config     Config
-	db         *sql.DB
-	connected  bool
-	userTable  string
-	groupTable string
-	dbPath     string
+	config          Config
+	db              *sql.DB
+	connected       bool
+	userTable       string
+	groupTable      string
+	dbPath          string
+	securityManager *SQLSecurityManager
+	secureDB        *SecureDBConnection
+	logger          *slog.Logger
 }
 
 // NewSQLite creates a new SQLite datasource
@@ -56,12 +60,40 @@ func NewSQLite(config Config) *SQLite {
 		}
 	}
 
+	// Create logger for security operations
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})).With(
+		"component", "sqlite-datasource",
+		"database", dbPath,
+	)
+
+	// Initialize security manager
+	securityManager := NewSQLSecurityManager(logger)
+	
+	// Register allowed tables and columns for SQLite
+	securityManager.RegisterTable("users", []string{
+		"username", "password", "email", "full_name", "is_active", "is_admin",
+		"created_at", "updated_at", "last_login_at",
+	})
+	securityManager.RegisterTable("groups", []string{
+		"name", "description", "is_active", "created_at", "updated_at",
+	})
+	securityManager.RegisterTable("user_attributes", []string{
+		"username", "key", "value",
+	})
+	securityManager.RegisterTable("user_groups", []string{
+		"username", "group_name",
+	})
+
 	return &SQLite{
-		config:     config,
-		connected:  false,
-		userTable:  userTable,
-		groupTable: groupTable,
-		dbPath:     dbPath,
+		config:          config,
+		connected:       false,
+		userTable:       userTable,
+		groupTable:      groupTable,
+		dbPath:          dbPath,
+		securityManager: securityManager,
+		logger:          logger,
 	}
 }
 
@@ -103,7 +135,14 @@ func (s *SQLite) Connect() error {
 		return fmt.Errorf("failed to initialize database schema: %w", err)
 	}
 
+	// Initialize secure database connection wrapper
+	s.secureDB = NewSecureDBConnection(s.db, s.securityManager, s.logger)
+
 	s.connected = true
+	s.logger.Info("SQLite datasource connected with security enhancements",
+		"database", s.dbPath,
+		"security_enabled", true,
+	)
 	return nil
 }
 
@@ -183,12 +222,15 @@ func (s *SQLite) Close() error {
 		return nil
 	}
 
-	err := s.db.Close()
-	if err != nil {
-		return fmt.Errorf("failed to close SQLite connection: %w", err)
+	// Close secure database connection (this will cleanup prepared statements)
+	if s.secureDB != nil {
+		if err := s.secureDB.Close(); err != nil {
+			s.logger.Error("Failed to close secure database connection", "error", err)
+		}
 	}
 
 	s.connected = false
+	s.logger.Info("SQLite datasource connection closed")
 	return nil
 }
 
@@ -213,17 +255,52 @@ func (s *SQLite) Authenticate(ctx context.Context, username, password string) (b
 		return false, ErrNotConnected
 	}
 
-	// In a real implementation, you would use a secure password hashing algorithm
-	// This is a simplified example that assumes passwords are stored hashed
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE username = ? AND password = ? AND is_active = 1", s.userTable)
+	// Log authentication attempt for security monitoring
+	s.logger.Info("Authentication attempt",
+		"username", username,
+		"source", "sqlite",
+	)
 
-	var count int
-	err := s.db.QueryRowContext(ctx, query, username, password).Scan(&count)
+	// Use secure query execution - check if user exists with valid credentials
+	rows, err := s.secureDB.ExecuteSecureQuery(ctx, "SELECT", s.userTable,
+		[]string{"username"},
+		[]string{"username", "password", "is_active"},
+		username, password, 1)
 	if err != nil {
+		s.logger.Error("Secure authentication query failed",
+			"username", username,
+			"error", err,
+		)
 		return false, fmt.Errorf("authentication query failed: %w", err)
 	}
+	defer rows.Close()
 
-	return count > 0, nil
+	var foundUsername string
+	success := false
+	if rows.Next() {
+		if err := rows.Scan(&foundUsername); err != nil {
+			s.logger.Error("Failed to scan authentication result",
+				"username", username,
+				"error", err,
+			)
+			return false, fmt.Errorf("failed to scan authentication result: %w", err)
+		}
+		success = foundUsername == username
+	}
+	if success {
+		s.logger.Info("Authentication successful",
+			"username", username,
+			"source", "sqlite",
+		)
+	} else {
+		s.logger.Warn("Authentication failed",
+			"username", username,
+			"source", "sqlite",
+			"reason", "invalid_credentials",
+		)
+	}
+
+	return success, nil
 }
 
 // GetUser retrieves user information from the SQLite database
@@ -232,17 +309,28 @@ func (s *SQLite) GetUser(ctx context.Context, username string) (User, error) {
 		return User{}, ErrNotConnected
 	}
 
-	query := fmt.Sprintf(`
-		SELECT username, password, email, full_name, is_active, is_admin, 
-		       created_at, updated_at, last_login_at
-		FROM %s
-		WHERE username = ?
-	`, s.userTable)
+	// Use secure query execution
+	rows, err := s.secureDB.ExecuteSecureQuery(ctx, "SELECT", s.userTable,
+		[]string{"username", "password", "email", "full_name", "is_active", "is_admin", "created_at", "updated_at", "last_login_at"},
+		[]string{"username"},
+		username)
+	if err != nil {
+		s.logger.Error("Secure GetUser query failed",
+			"username", username,
+			"error", err,
+		)
+		return User{}, fmt.Errorf("failed to get user: %w", err)
+	}
+	defer rows.Close()
 
 	var user User
 	var createdAt, updatedAt, lastLoginAt sql.NullInt64
 
-	err := s.db.QueryRowContext(ctx, query, username).Scan(
+	if !rows.Next() {
+		return User{}, ErrNotFound
+	}
+
+	err = rows.Scan(
 		&user.Username,
 		&user.Password,
 		&user.Email,
@@ -254,10 +342,12 @@ func (s *SQLite) GetUser(ctx context.Context, username string) (User, error) {
 		&lastLoginAt,
 	)
 
-	if err == sql.ErrNoRows {
-		return User{}, ErrNotFound
-	} else if err != nil {
-		return User{}, fmt.Errorf("failed to get user: %w", err)
+	if err != nil {
+		s.logger.Error("Failed to scan GetUser result",
+			"username", username,
+			"error", err,
+		)
+		return User{}, fmt.Errorf("failed to scan user data: %w", err)
 	}
 
 	// Convert nullable fields
@@ -280,21 +370,21 @@ func (s *SQLite) GetUser(ctx context.Context, username string) (User, error) {
 		WHERE u.username = ?
 	`, s.groupTable, s.userTable)
 
-	rows, err := s.db.QueryContext(ctx, groupQuery, username)
+	groupRows, err := s.db.QueryContext(ctx, groupQuery, username)
 	if err != nil {
 		return user, fmt.Errorf("failed to get user groups: %w", err)
 	}
-	defer rows.Close()
+	defer groupRows.Close()
 
-	for rows.Next() {
+	for groupRows.Next() {
 		var groupName string
-		if err := rows.Scan(&groupName); err != nil {
+		if err := groupRows.Scan(&groupName); err != nil {
 			return user, fmt.Errorf("failed to scan group name: %w", err)
 		}
 		user.Groups = append(user.Groups, groupName)
 	}
 
-	if err := rows.Err(); err != nil {
+	if err := groupRows.Err(); err != nil {
 		return user, fmt.Errorf("error iterating group rows: %w", err)
 	}
 
