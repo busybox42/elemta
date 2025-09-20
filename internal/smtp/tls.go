@@ -30,9 +30,10 @@ type TLSManager struct {
 	httpServer        *http.Server
 	notificationsSent map[string]time.Time // Track when notifications were last sent
 	// New security components
-	security *TLSSecurity
-	monitor  *TLSMonitor
-	slogger  *slog.Logger
+	security    *TLSSecurity
+	monitor     *TLSMonitor
+	certMonitor *CertificateMonitor
+	slogger     *slog.Logger
 }
 
 // CertificateInfo holds information about the current certificate
@@ -68,6 +69,10 @@ func NewTLSManager(config *Config) (*TLSManager, error) {
 	// Initialize security hardening and monitoring components
 	manager.security = NewTLSSecurity(config.TLS, slogger)
 	manager.monitor = NewTLSMonitor(slogger)
+	
+	// Initialize certificate monitor with default alerter
+	alerter := NewDefaultCertificateAlerter(slogger)
+	manager.certMonitor = NewCertificateMonitor(slogger, alerter)
 
 	// Set up TLS configuration with security hardening
 	var err error
@@ -664,6 +669,11 @@ func (m *TLSManager) updateCertificateInfo(cert tls.Certificate) error {
 		m.certInfo.Source = "manual"
 	}
 
+	// Add certificate to monitoring if monitor is available
+	if m.certMonitor != nil {
+		m.certMonitor.MonitorCertificate(m.certInfo.Domain, x509Cert)
+	}
+
 	return nil
 }
 
@@ -874,6 +884,19 @@ func (m *TLSManager) GetTLSSecurity() *TLSSecurity {
 	return m.security
 }
 
+// GetCertificateMonitor returns the certificate monitor for external access
+func (m *TLSManager) GetCertificateMonitor() *CertificateMonitor {
+	return m.certMonitor
+}
+
+// ValidateSMTPSTS validates SMTP STS compliance for a connection
+func (m *TLSManager) ValidateSMTPSTS(hostname string, tlsUsed bool) error {
+	if m.security == nil {
+		return fmt.Errorf("TLS security module not initialized")
+	}
+	return m.security.ValidateSMTPSTSCompliance(hostname, tlsUsed)
+}
+
 // GetSecurityReport generates a comprehensive TLS security report
 func (m *TLSManager) GetSecurityReport(ctx context.Context, duration time.Duration) map[string]interface{} {
 	report := make(map[string]interface{})
@@ -901,6 +924,23 @@ func (m *TLSManager) GetSecurityReport(ctx context.Context, duration time.Durati
 		if len(alerts) > 0 {
 			report["active_alerts"] = alerts
 		}
+	}
+
+	// Add certificate monitoring data
+	if m.certMonitor != nil {
+		certHealthReport := m.certMonitor.GetCertificateHealthReport()
+		report["certificate_health"] = certHealthReport
+		
+		// Get all certificate statuses
+		certStatuses := m.certMonitor.GetAllCertificateStatuses()
+		report["certificate_count"] = len(certStatuses)
+		
+		// Count certificates by status
+		statusCounts := make(map[string]int)
+		for _, status := range certStatuses {
+			statusCounts[status.Status]++
+		}
+		report["certificate_status_distribution"] = statusCounts
 	}
 
 	return report
