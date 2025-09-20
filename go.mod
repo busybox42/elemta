@@ -6,25 +6,27 @@ toolchain go1.24.3
 
 require (
 	github.com/BurntSushi/toml v1.4.0
-	github.com/bradfitz/gomemcache v0.0.0-20221031212613-62deef7fc822
+	github.com/bradfitz/gomemcache v0.0.0-20230905024940-24af94b03874
 	github.com/go-ldap/ldap/v3 v3.4.11
-	github.com/go-redis/redis/v8 v8.11.5
-	github.com/go-sql-driver/mysql v1.7.1
+	github.com/go-sql-driver/mysql v1.8.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/lib/pq v1.10.9
-	github.com/mattn/go-sqlite3 v1.14.19
+	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/prometheus/client_golang v1.21.1
 	github.com/prometheus/client_model v0.6.1
+	github.com/redis/go-redis/v9 v9.7.3
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/crypto v0.37.0
-	golang.org/x/sync v0.10.0
+	golang.org/x/sync v0.13.0
+	golang.org/x/text v0.24.0
 )
 
 require (
+	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -42,7 +44,6 @@ require (
 	github.com/stretchr/objx v0.5.2 // indirect
 	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/sys v0.32.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
 	google.golang.org/protobuf v1.36.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

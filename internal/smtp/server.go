@@ -498,7 +498,12 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 
 	// Set the TLS manager from the server
 	session.SetTLSManager(s.tlsManager)
-	// Note: Queue manager integration would be set up separately if compatible
+	
+	// Set queue manager for message processing
+	if s.queueIntegration != nil && s.queueIntegration.manager != nil {
+		session.SetQueueManager(s.queueIntegration.manager)
+	}
+	// Note: Old queue manager interface is not compatible with new interface
 
 	// Set additional components
 	session.SetResourceManager(s.resourceManager)

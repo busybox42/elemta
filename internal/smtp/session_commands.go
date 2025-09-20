@@ -130,8 +130,8 @@ func (ch *CommandHandler) HandleHELO(ctx context.Context, args string) error {
 		return fmt.Errorf("501 5.0.0 Invalid hostname: %s", args)
 	}
 
-	// Set phase to init (allows MAIL command)
-	if err := ch.state.SetPhase(ctx, PhaseInit); err != nil {
+	// Set phase to mail (allows MAIL command)
+	if err := ch.state.SetPhase(ctx, PhaseMail); err != nil {
 		return fmt.Errorf("451 4.3.0 Internal server error")
 	}
 
@@ -151,8 +151,8 @@ func (ch *CommandHandler) HandleEHLO(ctx context.Context, args string) error {
 		return fmt.Errorf("501 5.0.0 Invalid hostname: %s", args)
 	}
 
-	// Set phase to init (allows MAIL command)
-	if err := ch.state.SetPhase(ctx, PhaseInit); err != nil {
+	// Set phase to mail (allows MAIL command)
+	if err := ch.state.SetPhase(ctx, PhaseMail); err != nil {
 		return fmt.Errorf("451 4.3.0 Internal server error")
 	}
 
@@ -169,11 +169,15 @@ func (ch *CommandHandler) HandleEHLO(ctx context.Context, args string) error {
 		responses = append(responses, "250-STARTTLS")
 	}
 
-	// Add AUTH methods if TLS is active or not required
-	if ch.state.IsTLSActive() || !ch.authHandler.securityManager.config.RequireTLSForPlain {
-		authMethods := ch.authHandler.GetAuthMethodsString()
-		if authMethods != "" {
-			responses = append(responses, "250-AUTH "+authMethods)
+	// Add AUTH methods if authentication is enabled
+	// Always advertise AUTH if auth is enabled but not required (for webmail clients)
+	// Or if TLS is active or not required for PLAIN auth
+	if ch.config.Auth != nil && ch.config.Auth.Enabled {
+		if !ch.config.Auth.Required || ch.state.IsTLSActive() || !ch.authHandler.securityManager.config.RequireTLSForPlain {
+			authMethods := ch.authHandler.GetAuthMethodsString()
+			if authMethods != "" {
+				responses = append(responses, "250-AUTH "+authMethods)
+			}
 		}
 	}
 
@@ -194,6 +198,11 @@ func (ch *CommandHandler) HandleEHLO(ctx context.Context, args string) error {
 func (ch *CommandHandler) HandleMAIL(ctx context.Context, args string) error {
 	ch.logger.DebugContext(ctx, "Processing MAIL command", "args", args)
 
+	// Check if authentication is required and user is not authenticated
+	if ch.config.Auth != nil && ch.config.Auth.Enabled && ch.config.Auth.Required && !ch.state.IsAuthenticated() {
+		return fmt.Errorf("530 5.7.0 Authentication required")
+	}
+
 	// Parse MAIL FROM command
 	mailFrom, err := ch.parseMailFrom(ctx, args)
 	if err != nil {
@@ -208,6 +217,11 @@ func (ch *CommandHandler) HandleMAIL(ctx context.Context, args string) error {
 	// Set mail from in state
 	if err := ch.state.SetMailFrom(ctx, mailFrom); err != nil {
 		return fmt.Errorf("503 5.5.1 %s", err.Error())
+	}
+
+	// Transition to RCPT phase to allow RCPT TO commands
+	if err := ch.state.SetPhase(ctx, PhaseRcpt); err != nil {
+		return fmt.Errorf("451 4.3.0 Internal server error")
 	}
 
 	ch.logger.InfoContext(ctx, "MAIL FROM accepted",
@@ -561,6 +575,14 @@ func (ch *CommandHandler) checkRelayPermissions(ctx context.Context, recipient s
 		ch.logger.DebugContext(ctx, "Relay allowed for authenticated user",
 			"recipient", recipient,
 			"username", ch.state.GetUsername(),
+		)
+		return nil
+	}
+
+	// If authentication is not required, allow relay (for webmail and internal services)
+	if ch.config.Auth != nil && ch.config.Auth.Enabled && !ch.config.Auth.Required {
+		ch.logger.DebugContext(ctx, "Relay allowed - authentication not required",
+			"recipient", recipient,
 		)
 		return nil
 	}

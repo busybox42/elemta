@@ -18,12 +18,14 @@ import (
 type Config struct {
 	// Server configuration
 	Server struct {
-		Hostname string `toml:"hostname"`
-		Listen   string `toml:"listen"`
-		MaxSize  int64  `toml:"max_size"`
-		TLS      bool   `toml:"tls"`
-		CertFile string `toml:"cert_file"`
-		KeyFile  string `toml:"key_file"`
+		Hostname         string   `toml:"hostname"`
+		Listen           string   `toml:"listen"`
+		ListenSubmission string   `toml:"listen_submission"`
+		MaxSize          int64    `toml:"max_size"`
+		LocalDomains     []string `toml:"local_domains"`
+		TLS              bool     `toml:"tls"`
+		CertFile         string   `toml:"cert_file"`
+		KeyFile          string   `toml:"key_file"`
 	} `toml:"server"`
 
 	// Enhanced TLS configuration

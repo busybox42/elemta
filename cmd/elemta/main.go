@@ -79,6 +79,7 @@ func main() {
 		Hostname:              cfg.Server.Hostname,
 		ListenAddr:            cfg.Server.Listen,
 		MaxSize:               cfg.Server.MaxSize,
+		LocalDomains:          cfg.Server.LocalDomains,
 		QueueDir:              cfg.Queue.Dir,
 		QueueProcessorEnabled: cfg.QueueProcessor.Enabled,
 		QueueProcessInterval:  cfg.QueueProcessor.Interval,

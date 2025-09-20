@@ -9,7 +9,9 @@ services:
     container_name: elemta-node0
     restart: unless-stopped
     ports:
-      - "2525:2525"
+      - "25:2525"    # Map external MX port 25 to internal port 2525
+      - "587:2525"   # Map submission port 587 to internal port 2525
+      - "2525:2525"  # Direct access to internal SMTP port
       - "8080:8080"  # Metrics endpoint
       # Don't expose these ports to avoid conflicts
       # - "8080:8080"
@@ -17,8 +19,8 @@ services:
     volumes:
       - elemta_queue:/app/queue
       - elemta_logs:/app/logs
-      - ./plugins:/app/plugins:ro
-      - ./scripts/api_server.py:/app/api_server.py
+      # Disable plugins mount for now due to Docker file sharing issues
+      # - ./plugins:/app/plugins:ro
     environment:
       - TZ=UTC
       - DEBUG=true
@@ -45,28 +47,28 @@ services:
       - elemta-dovecot
       - elemta-ldap
 
-  elemta-api:
-    image: python:3.9-slim
-    container_name: elemta-api
-    restart: unless-stopped
-    ports:
-      - "8081:8081"
-    volumes:
-      - ./scripts/api_server.py:/app/api_server.py
-      - elemta_queue:/app/queue:ro
-    environment:
-      - API_PORT=8081
-    command: >
-      bash -c "apt-get update && apt-get install -y curl && 
-      python3 /app/api_server.py"
-    networks:
-      - elemta_network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+  # elemta-api:
+  #   image: python:3.9-slim
+  #   container_name: elemta-api
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8081:8081"
+  #   volumes:
+  #     - ./scripts/api_server.py:/app/api_server.py
+  #     - elemta_queue:/app/queue:ro
+  #   environment:
+  #     - API_PORT=8081
+  #   command: >
+  #     bash -c "apt-get update && apt-get install -y curl && 
+  #     python3 /app/api_server.py"
+  #   networks:
+  #     - elemta_network
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 15s
 
   elemta-web:
     image: elemta_node:latest
@@ -77,7 +79,7 @@ services:
     volumes:
       - elemta_queue:/app/queue:ro
       - elemta_logs:/app/logs:ro
-      - ./web:/app/web
+      # Web files are now included in the Docker image
     environment:
       - TZ=UTC
       - NODE_ID=web
@@ -118,12 +120,13 @@ services:
       - elemta_network
     volumes:
       - rspamd_data:/var/lib/rspamd
-      - ./docker/rspamd/override.d/worker-controller.conf:/etc/rspamd/override.d/worker-controller.conf
-      - ./docker/rspamd/override.d/worker-proxy.conf:/etc/rspamd/override.d/worker-proxy.conf
-      - ./docker/rspamd/override.d/worker-normal.conf:/etc/rspamd/override.d/worker-normal.conf
-      - ./docker/rspamd/override.d/modules.conf:/etc/rspamd/override.d/modules.conf
-      - ./docker/rspamd/override.d/logging.conf:/etc/rspamd/override.d/logging.conf
-      - ./docker/rspamd/override.d/actions.conf:/etc/rspamd/override.d/actions.conf
+      # Disable custom configuration for now to avoid Docker mount issues
+      # - ./docker/rspamd/override.d/worker-controller.conf:/etc/rspamd/override.d/worker-controller.conf
+      # - ./docker/rspamd/override.d/worker-proxy.conf:/etc/rspamd/override.d/worker-proxy.conf
+      # - ./docker/rspamd/override.d/worker-normal.conf:/etc/rspamd/override.d/worker-normal.conf
+      # - ./docker/rspamd/override.d/modules.conf:/etc/rspamd/override.d/modules.conf
+      # - ./docker/rspamd/override.d/logging.conf:/etc/rspamd/override.d/logging.conf
+      # - ./docker/rspamd/override.d/actions.conf:/etc/rspamd/override.d/actions.conf
     ports:
       - "11334:11334"  # Web interface
     healthcheck:
@@ -188,107 +191,105 @@ services:
       start_period: 30s
       
   # Post-startup configuration
-  elemta-setup:
-    image: curlimages/curl:latest
-    container_name: elemta-setup
-    restart: "no"
-    volumes:
-      - ./scripts:/app/scripts:ro
-    environment:
-      - KIBANA_URL=http://elemta-kibana:5601
-      - ELASTICSEARCH_URL=http://elemta-elasticsearch:9200
-    networks:
-      - elemta_network
-      - monitoring_network
-    depends_on:
-      elemta-kibana:
-        condition: service_healthy
-      elemta-elasticsearch:
-        condition: service_healthy
-      elemta:
-        condition: service_healthy
-    command: >
-      sh -c "
-        echo '🚀 Elemta Post-Startup Configuration';
-        echo '====================================';
-        apk add --no-cache jq bash;
-        sleep 15;
-        echo '📊 Setting up Kibana Data Views...';
-        /app/scripts/setup-kibana-data-views.sh;
-        echo '🎉 Setup complete!';
-        echo '🔗 Access Kibana: http://localhost:5601';
-      "
+  # elemta-setup:
+  #   image: curlimages/curl:latest
+  #   container_name: elemta-setup
+  #   restart: "no"
+  #   volumes:
+  #     - ./scripts:/app/scripts:ro
+  #   environment:
+  #     - KIBANA_URL=http://elemta-kibana:5601
+  #     - ELASTICSEARCH_URL=http://elemta-elasticsearch:9200
+  #   networks:
+  #     - elemta_network
+  #     - monitoring_network
+  #   depends_on:
+  #     elemta-kibana:
+  #       condition: service_healthy
+  #     elemta-elasticsearch:
+  #       condition: service_healthy
+  #     elemta:
+  #       condition: service_healthy
+  #   command: >
+  #     sh -c "
+  #       echo '🚀 Elemta Post-Startup Configuration';
+  #       echo '====================================';
+  #       apk add --no-cache jq bash;
+  #       sleep 15;
+  #       echo '📊 Setting up Kibana Data Views...';
+  #       /app/scripts/setup-kibana-data-views.sh;
+  #       echo '🎉 Setup complete!';
+  #       echo '🔗 Access Kibana: http://localhost:5601';
+  #     "
 
   # Monitoring services
 
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: elemta-prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus:/etc/prometheus
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-    networks:
-      - monitoring_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: elemta-prometheus
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./monitoring/prometheus:/etc/prometheus
+  #     - prometheus_data:/prometheus
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.path=/prometheus'
+  #   networks:
+  #     - monitoring_network
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 20s
 
-  grafana:
-    image: grafana/grafana:latest
-    container_name: elemta-grafana
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=elemta123
-      - GF_USERS_ALLOW_SIGN_UP=false
-    networks:
-      - monitoring_network
-    depends_on:
-      - prometheus
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: elemta-grafana
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
+  #     - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+  #     - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+  #   environment:
+  #     - GF_SECURITY_ADMIN_USER=admin
+  #     - GF_SECURITY_ADMIN_PASSWORD=elemta123
+  #     - GF_USERS_ALLOW_SIGN_UP=false
+  #   networks:
+  #     - monitoring_network
+  #   depends_on:
+  #     - prometheus
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 10s
 
-  alertmanager:
-    image: prom/alertmanager:latest
-    container_name: elemta-alertmanager
-    ports:
-      - "9093:9093"
-    volumes:
-      - ./monitoring/alertmanager:/etc/alertmanager
-      - alertmanager_data:/alertmanager
-    command:
-      - '--config.file=/etc/alertmanager/alertmanager.yml'
-      - '--storage.path=/alertmanager'
-    networks:
-      - monitoring_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    depends_on:
-      - prometheus
+  # alertmanager:
+  #   image: prom/alertmanager:latest
+  #   container_name: elemta-alertmanager
+  #   ports:
+  #     - "9093:9093"
+  #   volumes:
+  #     - ./monitoring/alertmanager:/etc/alertmanager
+  #     - alertmanager_data:/alertmanager
+  #   command:
+  #     - '--config.file=/etc/alertmanager/alertmanager.yml'
+  #     - '--storage.path=/alertmanager'
+  #   networks:
+  #     - monitoring_network
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 20s
 
   # Webmail Interface
   elemta-roundcube:
@@ -307,7 +308,8 @@ services:
       - ROUNDCUBEMAIL_ASPELL_ENABLE=true
     volumes:
       - roundcube_data:/var/roundcube
-      - ./docker/roundcube/config/config.inc.php:/var/roundcube/config/config.inc.php:ro
+      # Disable custom config for now due to Docker file sharing issues
+      # - ./docker/roundcube/config/config.inc.php:/var/roundcube/config/config.inc.php:ro
     networks:
       - elemta_network
     restart: unless-stopped
@@ -379,49 +381,6 @@ services:
 
 
   # Monitoring Stack
-  elemta-prometheus:
-    image: elemta-prometheus:latest
-    container_name: elemta-prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-    networks:
-      - elemta_network
-      - monitoring_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  elemta-alertmanager:
-    image: elemta-alertmanager:latest
-    container_name: elemta-alertmanager
-    ports:
-      - "9093:9093"
-    volumes:
-      - alertmanager_data:/alertmanager
-    command:
-      - '--config.file=/etc/alertmanager/alertmanager.yml'
-      - '--storage.path=/alertmanager'
-    networks:
-      - elemta_network
-      - monitoring_network
-    restart: unless-stopped
-    depends_on:
-      - elemta-prometheus
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
 networks:
   elemta_network:

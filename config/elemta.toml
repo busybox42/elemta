@@ -1,9 +1,11 @@
 # Elemta SMTP Server Configuration
 
 [server]
-hostname = "localhost"
-listen = ":2525"
+hostname = "mail.example.com"
+listen = ":2525"  # Internal SMTP port (non-privileged)
+listen_submission = ":587"  # Submission port for authenticated clients
 max_size = 26214400  # 25MB
+local_domains = ["example.com", "mail.example.com", "localhost"]
 
 # TLS Configuration - Enable STARTTLS
 [tls]

@@ -143,14 +143,14 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 
 		// Track header completion
 		if state.InHeaders {
-			if strings.TrimSpace(lineStr) == "" && state.LastLineEmpty {
+			// Headers end with a single empty line (RFC 5322)
+			if strings.TrimSpace(lineStr) == "" {
 				state.InHeaders = false
 				state.HeadersComplete = true
 				dh.logger.DebugContext(ctx, "Headers section completed",
 					"line_count", state.LineCount,
 				)
 			}
-			state.LastLineEmpty = strings.TrimSpace(lineStr) == ""
 		}
 
 		// Write line to buffer
@@ -210,8 +210,15 @@ func (dh *DataHandler) ProcessMessage(ctx context.Context, data []byte) error {
 		return dh.handleSecurityThreat(ctx, scanResult, metadata)
 	}
 
-	// Save message to queue
-	if err := dh.saveMessage(ctx, data, metadata); err != nil {
+	// Add server headers before queuing
+	enhancedData, err := dh.addServerHeaders(ctx, data, metadata, scanResult)
+	if err != nil {
+		dh.logger.ErrorContext(ctx, "Failed to add server headers", "error", err)
+		return fmt.Errorf("451 4.3.0 Message processing failed")
+	}
+
+	// Save enhanced message to queue
+	if err := dh.saveMessage(ctx, enhancedData, metadata); err != nil {
 		dh.logger.ErrorContext(ctx, "Failed to save message", "error", err)
 		return fmt.Errorf("451 4.3.0 Message processing failed")
 	}
@@ -269,19 +276,143 @@ func (dh *DataHandler) validateLineContent(ctx context.Context, line string, sta
 		return fmt.Errorf("line too long")
 	}
 
-	// Basic line validation for security
-	if strings.Contains(strings.ToUpper(line), "DROP") ||
-	   strings.Contains(strings.ToUpper(line), "DELETE") ||
-	   strings.Contains(line, ";") {
+	// Basic line validation for security (only check for obvious SQL injection patterns)
+	// Allow semicolons in headers (common in Content-Type, etc.)
+	// Allow "DROP" and "DELETE" in email content (they're legitimate words)
+	if strings.Contains(line, "'; DROP TABLE") ||
+	   strings.Contains(line, "\"; DROP TABLE") ||
+	   strings.Contains(line, "UNION SELECT") ||
+	   strings.Contains(line, "<script") {
 		return fmt.Errorf("security violation detected")
 	}
 
 	// Additional header-specific validation
-	if state.InHeaders {
+	// Skip strict header validation for internal Docker network connections (like Roundcube)
+	isInternal := dh.isInternalConnection()
+	dh.logger.DebugContext(ctx, "Connection validation check",
+		"is_internal", isInternal,
+		"remote_addr", dh.conn.RemoteAddr().String(),
+		"in_headers", state.InHeaders,
+	)
+	
+	if state.InHeaders && !isInternal {
+		dh.logger.DebugContext(ctx, "Applying strict header validation for external connection")
 		return dh.validateHeaderLine(ctx, line)
+	} else if state.InHeaders {
+		dh.logger.DebugContext(ctx, "Skipping strict header validation for internal connection")
 	}
 
 	return nil
+}
+
+// addServerHeaders adds server-generated headers to the message
+func (dh *DataHandler) addServerHeaders(ctx context.Context, data []byte, metadata *MessageMetadata, scanResult *SecurityScanResult) ([]byte, error) {
+	dataStr := string(data)
+	
+	// Find the end of headers
+	headerEnd := strings.Index(dataStr, "\r\n\r\n")
+	if headerEnd == -1 {
+		// Try with just LF instead of CRLF
+		headerEnd = strings.Index(dataStr, "\n\n")
+		if headerEnd == -1 {
+			// No clear header/body separation, add headers at the beginning
+			headerEnd = 0
+		}
+	}
+	
+	var headers, body string
+	if headerEnd > 0 {
+		headers = dataStr[:headerEnd]
+		body = dataStr[headerEnd:]
+	} else {
+		headers = ""
+		body = dataStr
+	}
+	
+	// Build additional headers
+	var additionalHeaders []string
+	
+	// Add Received header (most important for email tracing)
+	receivedTime := time.Now().Format(time.RFC1123Z)
+	receivedHeader := fmt.Sprintf("Received: from %s (%s)\r\n\tby %s with ESMTP id %s\r\n\t(envelope-from <%s>)\r\n\tfor <%s>; %s",
+		dh.config.Hostname,
+		dh.conn.RemoteAddr().String(),
+		dh.config.Hostname,
+		metadata.MessageID,
+		metadata.From,
+		strings.Join(metadata.To, ", "),
+		receivedTime,
+	)
+	additionalHeaders = append(additionalHeaders, receivedHeader)
+	
+	// Add security scan headers
+	if scanResult != nil {
+		if scanResult.VirusFound {
+			additionalHeaders = append(additionalHeaders, "X-Virus-Scanned: Yes")
+			additionalHeaders = append(additionalHeaders, "X-Virus-Status: INFECTED")
+		} else {
+			additionalHeaders = append(additionalHeaders, "X-Virus-Scanned: Clean (Elemta)")
+		}
+		
+		spamStatus := "No"
+		if scanResult.SpamScore > 5.0 {
+			spamStatus = "Yes"
+		}
+		additionalHeaders = append(additionalHeaders, fmt.Sprintf("X-Spam-Scanned: Yes"))
+		additionalHeaders = append(additionalHeaders, fmt.Sprintf("X-Spam-Status: %s, score=%.1f/10.0", spamStatus, scanResult.SpamScore))
+		additionalHeaders = append(additionalHeaders, fmt.Sprintf("X-Spam-Score: %.1f", scanResult.SpamScore))
+	}
+	
+	// Add server identification headers
+	additionalHeaders = append(additionalHeaders, "X-Elemta-Version: 1.0")
+	additionalHeaders = append(additionalHeaders, "X-Processed-By: Elemta MTA")
+	additionalHeaders = append(additionalHeaders, fmt.Sprintf("X-Message-ID: %s", metadata.MessageID))
+	
+	// Combine headers
+	var finalHeaders string
+	if headers != "" {
+		finalHeaders = headers + "\r\n" + strings.Join(additionalHeaders, "\r\n")
+	} else {
+		finalHeaders = strings.Join(additionalHeaders, "\r\n")
+	}
+	
+	// Ensure proper header/body separation
+	if body != "" {
+		if !strings.HasPrefix(body, "\r\n\r\n") && !strings.HasPrefix(body, "\n\n") {
+			finalHeaders += "\r\n"
+		}
+		return []byte(finalHeaders + body), nil
+	} else {
+		return []byte(finalHeaders + "\r\n\r\n"), nil
+	}
+}
+
+// isInternalConnection checks if the connection is from internal Docker network
+func (dh *DataHandler) isInternalConnection() bool {
+	if dh.conn == nil {
+		return false
+	}
+	
+	remoteAddr := dh.conn.RemoteAddr().String()
+	
+	// Check for Docker internal networks (172.x.x.x range)
+	if strings.HasPrefix(remoteAddr, "172.") {
+		return true
+	}
+	
+	// Check for localhost connections (IPv4 and IPv6)
+	if strings.HasPrefix(remoteAddr, "127.") || 
+	   strings.HasPrefix(remoteAddr, "[::1]") ||
+	   strings.Contains(remoteAddr, "::1") {
+		return true
+	}
+	
+	// Check for Docker bridge network (10.x.x.x range)
+	if strings.HasPrefix(remoteAddr, "10.") {
+		return true
+	}
+	
+	return false
 }
 
 // validateHeaderLine validates message header lines
@@ -300,6 +431,7 @@ func (dh *DataHandler) validateHeaderLine(ctx context.Context, line string) erro
 
 	// Check for valid header format: "Name: Value"
 	if !strings.Contains(line, ":") {
+		dh.logger.DebugContext(ctx, "Header validation failed: no colon found", "line", line)
 		return fmt.Errorf("invalid header format")
 	}
 
@@ -475,13 +607,18 @@ func (dh *DataHandler) extractHeaders(data []byte) map[string]string {
 
 // validateMessageHeaders validates message headers
 func (dh *DataHandler) validateMessageHeaders(ctx context.Context, metadata *MessageMetadata) error {
-	// Check required headers
-	requiredHeaders := []string{"from", "date"}
-	for _, header := range requiredHeaders {
-		if _, exists := metadata.Headers[header]; !exists {
-			dh.logger.WarnContext(ctx, "Missing required header", "header", header)
-			return fmt.Errorf("missing required header: %s", header)
+	// Skip strict header requirements for internal connections (like Roundcube)
+	if !dh.isInternalConnection() {
+		// Check required headers
+		requiredHeaders := []string{"from", "date"}
+		for _, header := range requiredHeaders {
+			if _, exists := metadata.Headers[header]; !exists {
+				dh.logger.WarnContext(ctx, "Missing required header", "header", header)
+				return fmt.Errorf("missing required header: %s", header)
+			}
 		}
+	} else {
+		dh.logger.DebugContext(ctx, "Skipping strict header requirements for internal connection")
 	}
 
 	// Validate From header matches MAIL FROM

@@ -62,6 +62,9 @@ COPY config/elemta.db /app/config/elemta.db
 COPY config/test.crt /app/certs/test.crt
 COPY config/test.key /app/certs/test.key
 
+# Copy web files
+COPY web /app/web
+
 # Expose ports
 EXPOSE 2525 8080 8081
 
