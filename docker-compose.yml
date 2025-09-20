@@ -9,9 +9,7 @@ services:
     container_name: elemta-node0
     restart: unless-stopped
     ports:
-      - "25:2525"    # Map external MX port 25 to internal port 2525
-      - "587:2525"   # Map submission port 587 to internal port 2525
-      - "2525:2525"  # Direct access to internal SMTP port
+      - "2525:2525"  # SMTP server port
       - "8080:8080"  # Metrics endpoint
       # Don't expose these ports to avoid conflicts
       # - "8080:8080"

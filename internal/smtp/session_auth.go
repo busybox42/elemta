@@ -94,7 +94,7 @@ func NewAuthHandler(session *Session, state *SessionState, authenticator Authent
 		MaxAuthAttemptsPerIP:   10,
 		AuthRateInterval:       15 * time.Minute,
 		AccountLockoutDuration: 30 * time.Minute,
-		RequireTLSForPlain:     true,
+		RequireTLSForPlain:     false, // Allow PLAIN auth without TLS for testing/internal use
 		EnabledMethods:         []AuthMethod{AuthMethodPlain, AuthMethodLogin},
 	}
 
