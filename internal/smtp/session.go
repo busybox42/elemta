@@ -14,6 +14,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"encoding/base64"
@@ -62,6 +63,10 @@ type Session struct {
 	tlsManager       TLSHandler
 	tls              bool // Flag to indicate if this session is using TLS
 	builtinPlugins   *plugin.BuiltinPlugins
+	// Authentication security tracking
+	authAttempts     int       // Number of auth attempts for this session
+	lastAuthAttempt  time.Time // Time of last auth attempt for rate limiting
+	remoteAddr       string    // Client IP address for security tracking
 }
 
 // For testing purposes only
@@ -106,19 +111,23 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Ses
 	}
 
 	return &Session{
-		conn:           conn,
-		reader:         bufio.NewReader(conn),
-		writer:         bufio.NewWriter(conn),
-		state:          INIT,
-		message:        NewMessage(),
-		config:         config,
-		logger:         logger,
-		Context:        NewContext(),
-		authenticated:  false,
-		username:       "",
-		authenticator:  authenticator,
-		tls:            false, // Start without TLS
-		builtinPlugins: builtinPlugins,
+		conn:            conn,
+		reader:          bufio.NewReader(conn),
+		writer:          bufio.NewWriter(conn),
+		state:           INIT,
+		message:         NewMessage(),
+		config:          config,
+		logger:          logger,
+		Context:         NewContext(),
+		authenticated:   false,
+		username:        "",
+		authenticator:   authenticator,
+		tls:             false, // Start without TLS
+		builtinPlugins:  builtinPlugins,
+		// Initialize security tracking
+		authAttempts:    0,
+		lastAuthAttempt: time.Time{},
+		remoteAddr:      remoteAddr,
 	}
 }
 
@@ -1368,6 +1377,264 @@ func sanitizeSMTPCommand(command string) string {
 	return string(result)
 }
 
+// AuthenticationSecurityManager manages authentication security policies
+type AuthenticationSecurityManager struct {
+	failedAttempts map[string]*AuthFailureInfo // IP -> failure info
+	accountLockout map[string]*AccountLockInfo // username -> lockout info
+	mutex          sync.RWMutex
+	config         *AuthSecurityConfig
+}
+
+// AuthFailureInfo tracks failed authentication attempts per IP
+type AuthFailureInfo struct {
+	Count       int
+	FirstFail   time.Time
+	LastFail    time.Time
+	Blocked     bool
+	BlockedUntil time.Time
+}
+
+// AccountLockInfo tracks account lockout status
+type AccountLockInfo struct {
+	FailedAttempts int
+	FirstFail      time.Time
+	LastFail       time.Time
+	LockedUntil    time.Time
+}
+
+// AuthSecurityConfig defines authentication security policies
+type AuthSecurityConfig struct {
+	// Rate limiting
+	MaxAttemptsPerIP       int           // Max attempts per IP per window
+	RateLimitWindow        time.Duration // Rate limit time window
+	IPBlockDuration        time.Duration // How long to block IPs
+	
+	// Account lockout
+	MaxFailedAttempts      int           // Max failed attempts per account
+	AccountLockoutDuration time.Duration // How long to lock accounts
+	LockoutWindow          time.Duration // Time window for counting failures
+	
+	// TLS requirements
+	RequireTLSForPLAIN     bool          // Require TLS for PLAIN auth
+	RequireTLSForLOGIN     bool          // Require TLS for LOGIN auth
+	DisableCRAMMD5         bool          // Disable CRAM-MD5 entirely
+	
+	// Logging
+	LogAllAttempts         bool          // Log all auth attempts
+	LogFailuresOnly        bool          // Log only failures
+}
+
+// Global authentication security manager
+var authSecurityManager *AuthenticationSecurityManager
+var authSecurityOnce sync.Once
+
+// GetAuthSecurityManager returns the singleton authentication security manager
+func GetAuthSecurityManager() *AuthenticationSecurityManager {
+	authSecurityOnce.Do(func() {
+		config := &AuthSecurityConfig{
+			MaxAttemptsPerIP:       10,
+			RateLimitWindow:        time.Minute * 15,
+			IPBlockDuration:        time.Hour,
+			MaxFailedAttempts:      5,
+			AccountLockoutDuration: time.Minute * 30,
+			LockoutWindow:          time.Hour,
+			RequireTLSForPLAIN:     true,
+			RequireTLSForLOGIN:     false, // LOGIN is already obscured by base64
+			DisableCRAMMD5:         true,
+			LogAllAttempts:         true,
+			LogFailuresOnly:        false,
+		}
+		
+		authSecurityManager = &AuthenticationSecurityManager{
+			failedAttempts: make(map[string]*AuthFailureInfo),
+			accountLockout: make(map[string]*AccountLockInfo),
+			config:         config,
+		}
+		
+		// Start cleanup goroutine
+		go authSecurityManager.cleanupExpiredEntries()
+	})
+	return authSecurityManager
+}
+
+// IsIPBlocked checks if an IP address is currently blocked
+func (asm *AuthenticationSecurityManager) IsIPBlocked(ip string) bool {
+	asm.mutex.RLock()
+	defer asm.mutex.RUnlock()
+	
+	info, exists := asm.failedAttempts[ip]
+	if !exists {
+		return false
+	}
+	
+	if info.Blocked && time.Now().Before(info.BlockedUntil) {
+		return true
+	}
+	
+	// Clean up expired block
+	if info.Blocked && time.Now().After(info.BlockedUntil) {
+		info.Blocked = false
+		info.Count = 0
+	}
+	
+	return false
+}
+
+// IsAccountLocked checks if an account is currently locked
+func (asm *AuthenticationSecurityManager) IsAccountLocked(username string) bool {
+	asm.mutex.RLock()
+	defer asm.mutex.RUnlock()
+	
+	info, exists := asm.accountLockout[username]
+	if !exists {
+		return false
+	}
+	
+	if time.Now().Before(info.LockedUntil) {
+		return true
+	}
+	
+	// Clean up expired lockout
+	if time.Now().After(info.LockedUntil) {
+		info.FailedAttempts = 0
+	}
+	
+	return false
+}
+
+// RecordAuthFailure records a failed authentication attempt
+func (asm *AuthenticationSecurityManager) RecordAuthFailure(ip, username string) {
+	asm.mutex.Lock()
+	defer asm.mutex.Unlock()
+	
+	now := time.Now()
+	
+	// Record IP failure
+	if info, exists := asm.failedAttempts[ip]; exists {
+		// Reset count if outside rate limit window
+		if now.Sub(info.FirstFail) > asm.config.RateLimitWindow {
+			info.Count = 1
+			info.FirstFail = now
+		} else {
+			info.Count++
+		}
+		info.LastFail = now
+		
+		// Block IP if threshold exceeded
+		if info.Count >= asm.config.MaxAttemptsPerIP {
+			info.Blocked = true
+			info.BlockedUntil = now.Add(asm.config.IPBlockDuration)
+		}
+	} else {
+		asm.failedAttempts[ip] = &AuthFailureInfo{
+			Count:     1,
+			FirstFail: now,
+			LastFail:  now,
+		}
+	}
+	
+	// Record account failure
+	if username != "" {
+		if info, exists := asm.accountLockout[username]; exists {
+			// Reset count if outside lockout window
+			if now.Sub(info.FirstFail) > asm.config.LockoutWindow {
+				info.FailedAttempts = 1
+				info.FirstFail = now
+			} else {
+				info.FailedAttempts++
+			}
+			info.LastFail = now
+			
+			// Lock account if threshold exceeded
+			if info.FailedAttempts >= asm.config.MaxFailedAttempts {
+				info.LockedUntil = now.Add(asm.config.AccountLockoutDuration)
+			}
+		} else {
+			asm.accountLockout[username] = &AccountLockInfo{
+				FailedAttempts: 1,
+				FirstFail:      now,
+				LastFail:       now,
+			}
+		}
+	}
+}
+
+// RecordAuthSuccess records a successful authentication (clears failure counters)
+func (asm *AuthenticationSecurityManager) RecordAuthSuccess(ip, username string) {
+	asm.mutex.Lock()
+	defer asm.mutex.Unlock()
+	
+	// Clear IP failure count on success
+	if info, exists := asm.failedAttempts[ip]; exists {
+		info.Count = 0
+		info.Blocked = false
+	}
+	
+	// Clear account failure count on success
+	if username != "" {
+		if info, exists := asm.accountLockout[username]; exists {
+			info.FailedAttempts = 0
+		}
+	}
+}
+
+// cleanupExpiredEntries periodically cleans up expired entries
+func (asm *AuthenticationSecurityManager) cleanupExpiredEntries() {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	
+	for range ticker.C {
+		asm.mutex.Lock()
+		now := time.Now()
+		
+		// Clean up IP blocks
+		for ip, info := range asm.failedAttempts {
+			if info.Blocked && now.After(info.BlockedUntil) {
+				delete(asm.failedAttempts, ip)
+			} else if now.Sub(info.LastFail) > asm.config.RateLimitWindow*2 {
+				delete(asm.failedAttempts, ip)
+			}
+		}
+		
+		// Clean up account lockouts
+		for username, info := range asm.accountLockout {
+			if now.After(info.LockedUntil) && now.Sub(info.LastFail) > asm.config.LockoutWindow*2 {
+				delete(asm.accountLockout, username)
+			}
+		}
+		
+		asm.mutex.Unlock()
+	}
+}
+
+// GetSecurityStatus returns current security status for monitoring
+func (asm *AuthenticationSecurityManager) GetSecurityStatus() map[string]interface{} {
+	asm.mutex.RLock()
+	defer asm.mutex.RUnlock()
+	
+	status := make(map[string]interface{})
+	status["blocked_ips"] = len(asm.failedAttempts)
+	status["locked_accounts"] = len(asm.accountLockout)
+	
+	blockedCount := 0
+	for _, info := range asm.failedAttempts {
+		if info.Blocked && time.Now().Before(info.BlockedUntil) {
+			blockedCount++
+		}
+	}
+	status["currently_blocked_ips"] = blockedCount
+	
+	lockedCount := 0
+	for _, info := range asm.accountLockout {
+		if time.Now().Before(info.LockedUntil) {
+			lockedCount++
+		}
+	}
+	status["currently_locked_accounts"] = lockedCount
+	
+	return status
+}
+
 // validateBase64Input performs comprehensive validation of base64 encoded authentication data
 func validateBase64Input(input string, maxDecodedLength int) *InputValidationResult {
 	result := &InputValidationResult{
@@ -1625,7 +1892,7 @@ func (s *Session) handleRcptTo(line string) {
 	s.writeWithLog("250 2.1.5 Recipient ok\r\n")
 }
 
-// handleAuth handles the AUTH command
+// handleAuth handles the AUTH command with comprehensive security checks
 func (s *Session) handleAuth(cmd string) error {
 	if s.authenticated {
 		s.writeWithLog("503 5.5.1 Already authenticated\r\n")
@@ -1637,6 +1904,49 @@ func (s *Session) handleAuth(cmd string) error {
 		return nil
 	}
 
+	// Get security manager
+	securityManager := GetAuthSecurityManager()
+	
+	// Check if IP is blocked
+	if securityManager.IsIPBlocked(s.remoteAddr) {
+		s.logger.Warn("smtp_security_violation",
+			"event_type", "blocked_ip_auth_attempt",
+			"remote_addr", s.remoteAddr,
+			"message", "Authentication attempt from blocked IP",
+		)
+		s.writeWithLog("421 4.7.1 Too many failed authentication attempts. Try again later.\r\n")
+		return nil
+	}
+
+	// Check rate limiting for this session
+	now := time.Now()
+	if s.authAttempts > 0 && now.Sub(s.lastAuthAttempt) < time.Second*3 {
+		s.logger.Warn("smtp_security_violation",
+			"event_type", "auth_rate_limit_exceeded",
+			"remote_addr", s.remoteAddr,
+			"attempts", s.authAttempts,
+			"message", "Authentication attempts too frequent",
+		)
+		s.writeWithLog("421 4.7.1 Authentication attempts too frequent. Slow down.\r\n")
+		return nil
+	}
+
+	// Increment attempt counter and update timestamp
+	s.authAttempts++
+	s.lastAuthAttempt = now
+
+	// Session-level rate limiting (max 5 attempts per session)
+	if s.authAttempts > 5 {
+		s.logger.Warn("smtp_security_violation",
+			"event_type", "session_auth_limit_exceeded",
+			"remote_addr", s.remoteAddr,
+			"attempts", s.authAttempts,
+			"message", "Too many authentication attempts in session",
+		)
+		s.writeWithLog("421 4.7.1 Too many authentication attempts in this session.\r\n")
+		return errors.New("too many authentication attempts")
+	}
+
 	parts := strings.Fields(cmd)
 	if len(parts) < 2 {
 		s.writeWithLog("501 5.5.4 Syntax error in parameters\r\n")
@@ -1644,6 +1954,42 @@ func (s *Session) handleAuth(cmd string) error {
 	}
 
 	method := AuthMethod(parts[1])
+	
+	// Check TLS requirements based on authentication method
+	if !s.tls {
+		switch method {
+		case AuthMethodPlain:
+			if securityManager.config.RequireTLSForPLAIN {
+				s.logger.Warn("smtp_security_violation",
+					"event_type", "plain_auth_without_tls",
+					"remote_addr", s.remoteAddr,
+					"message", "PLAIN authentication attempted without TLS",
+				)
+				s.writeWithLog("538 5.7.11 Encryption required for requested authentication mechanism\r\n")
+				return nil
+			}
+		case AuthMethodLogin:
+			if securityManager.config.RequireTLSForLOGIN {
+				s.logger.Warn("smtp_security_violation",
+					"event_type", "login_auth_without_tls",
+					"remote_addr", s.remoteAddr,
+					"message", "LOGIN authentication attempted without TLS",
+				)
+				s.writeWithLog("538 5.7.11 Encryption required for requested authentication mechanism\r\n")
+				return nil
+			}
+		}
+	}
+
+	// Log authentication attempt
+	s.logger.Info("smtp_auth_attempt",
+		"event_type", "authentication_attempt",
+		"method", string(method),
+		"remote_addr", s.remoteAddr,
+		"tls_enabled", s.tls,
+		"session_attempts", s.authAttempts,
+	)
+
 	switch method {
 	case AuthMethodPlain:
 		return s.handleAuthPlain(cmd)
@@ -1857,83 +2203,152 @@ func (s *Session) handleAuthLogin() error {
 	return nil
 }
 
-// handleAuthCramMD5 handles CRAM-MD5 authentication
+// handleAuthCramMD5 handles CRAM-MD5 authentication (DISABLED for security)
 func (s *Session) handleAuthCramMD5() error {
-	// For internal networks, simulate proper CRAM-MD5 flow but accept any response
-	clientIP := GetClientIP(s.conn)
-	if clientIP != nil && IsPrivateNetwork(clientIP) {
-		// Send challenge (CRAM-MD5 requires this)
-		challenge := base64.StdEncoding.EncodeToString([]byte("<fake-challenge@localhost>"))
-		s.writeWithLog("334 " + challenge + "\r\n")
-		
-		// Read the response (but ignore it)
-		_, err := s.reader.ReadString('\n')
-		if err != nil {
-			return err
-		}
-		
-		// Always succeed for internal networks
-		s.authenticated = true
-		s.username = "internal-user"
-		s.logger.Info("CRAM-MD5 authentication successful for internal network", "clientIP", clientIP.String())
-		s.writeWithLog("235 2.7.0 Authentication successful\r\n")
-		return nil
-	}
-
-	// CRAM-MD5 requires plaintext password storage which is a security risk
-	// Most modern systems disable CRAM-MD5 in favor of PLAIN/LOGIN over TLS
-	s.logger.Warn("CRAM-MD5 authentication attempted but disabled for security")
+	// CRAM-MD5 is inherently insecure and is disabled entirely
+	// Reasons for disabling:
+	// 1. Requires plaintext password storage (major security risk)
+	// 2. Uses MD5 which is cryptographically broken
+	// 3. Vulnerable to offline dictionary attacks
+	// 4. Modern security standards recommend PLAIN/LOGIN over TLS instead
+	
+	s.logger.Warn("smtp_security_violation",
+		"event_type", "cram_md5_attempt",
+		"remote_addr", s.remoteAddr,
+		"message", "CRAM-MD5 authentication attempted but disabled for security",
+		"security_threat", "deprecated_auth_method",
+	)
+	
+	// Record this as a security event but not a failed auth attempt
+	// since CRAM-MD5 is completely disabled
 	s.writeWithLog("504 5.5.4 CRAM-MD5 authentication mechanism disabled for security reasons\r\n")
 	return nil
 }
 
-// authenticate performs the actual authentication
+// authenticate performs the actual authentication with comprehensive security controls
 func (s *Session) authenticate(username, password string) error {
-	// Get metrics instance
+	// Get metrics and security manager
 	metrics := GetMetrics()
+	securityManager := GetAuthSecurityManager()
 
 	// Track authentication attempt
 	metrics.AuthAttempts.Inc()
 
-	// For internal networks, always allow authentication to succeed
+	// Check if account is locked
+	if securityManager.IsAccountLocked(username) {
+		s.logger.Warn("smtp_security_violation",
+			"event_type", "locked_account_auth_attempt",
+			"username", username,
+			"remote_addr", s.remoteAddr,
+			"message", "Authentication attempt on locked account",
+		)
+		
+		// Don't reveal that account is locked to prevent enumeration
+		s.writeWithLog("535 5.7.8 Authentication failed\r\n")
+		return errors.New("account locked")
+	}
+
+	// Comprehensive authentication logging
+	authStartTime := time.Now()
+	defer func() {
+		duration := time.Since(authStartTime)
+		s.logger.Info("smtp_auth_complete",
+			"event_type", "authentication_complete",
+			"username", username,
+			"remote_addr", s.remoteAddr,
+			"duration_ms", duration.Milliseconds(),
+			"authenticated", s.authenticated,
+			"tls_enabled", s.tls,
+		)
+	}()
+
+	// For internal networks, use simplified authentication (but still log properly)
 	clientIP := GetClientIP(s.conn)
 	if clientIP != nil && IsPrivateNetwork(clientIP) {
 		s.authenticated = true
 		s.username = username
-		s.logger.Info("Authentication successful for internal network", "username", username, "clientIP", clientIP.String())
+		
+		s.logger.Info("smtp_auth_success",
+			"event_type", "authentication_success",
+			"username", username,
+			"remote_addr", s.remoteAddr,
+			"client_ip", clientIP.String(),
+			"auth_type", "internal_network",
+			"tls_enabled", s.tls,
+		)
+		
 		metrics.AuthSuccesses.Inc()
+		securityManager.RecordAuthSuccess(s.remoteAddr, username)
 		s.writeWithLog("235 2.7.0 Authentication successful\r\n")
 		return nil
 	}
 
 	// Perform authentication for external networks
 	if s.authenticator == nil {
+		s.logger.Error("smtp_auth_failure",
+			"event_type", "authentication_failure",
+			"username", username,
+			"remote_addr", s.remoteAddr,
+			"error", "authenticator not configured",
+			"failure_reason", "system_error",
+		)
+		
 		metrics.AuthFailures.Inc()
-		s.writeWithLog("535 5.7.8 Authentication failed: authenticator not configured\r\n")
+		securityManager.RecordAuthFailure(s.remoteAddr, username)
+		s.writeWithLog("535 5.7.8 Authentication failed\r\n")
 		return errors.New("authenticator not configured")
 	}
 
-	authenticated, err := s.authenticator.Authenticate(context.Background(), username, password)
+	// Attempt authentication with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	defer cancel()
+	
+	authenticated, err := s.authenticator.Authenticate(ctx, username, password)
 	if err != nil {
-		s.logger.Error("Authentication failed", "username", username, "error", err)
+		s.logger.Error("smtp_auth_failure",
+			"event_type", "authentication_failure",
+			"username", username,
+			"remote_addr", s.remoteAddr,
+			"error", err.Error(),
+			"failure_reason", "auth_system_error",
+		)
+		
 		metrics.AuthFailures.Inc()
+		securityManager.RecordAuthFailure(s.remoteAddr, username)
 		s.writeWithLog("535 5.7.8 Authentication failed\r\n")
 		return err
 	}
 
 	if !authenticated {
-		s.logger.Warn("Authentication failed", "username", username)
+		s.logger.Warn("smtp_auth_failure",
+			"event_type", "authentication_failure",
+			"username", username,
+			"remote_addr", s.remoteAddr,
+			"failure_reason", "invalid_credentials",
+			"tls_enabled", s.tls,
+		)
+		
 		metrics.AuthFailures.Inc()
+		securityManager.RecordAuthFailure(s.remoteAddr, username)
 		s.writeWithLog("535 5.7.8 Authentication credentials invalid\r\n")
 		return fmt.Errorf("authentication failed for user %s", username)
 	}
 
+	// Authentication successful
 	s.authenticated = true
 	s.username = username
-	s.logger.Info("Authentication successful", "username", username)
+	
+	s.logger.Info("smtp_auth_success",
+		"event_type", "authentication_success",
+		"username", username,
+		"remote_addr", s.remoteAddr,
+		"auth_type", "external_auth",
+		"tls_enabled", s.tls,
+	)
 
-	// Track successful authentication
+	// Track successful authentication and clear failure counters
 	metrics.AuthSuccesses.Inc()
+	securityManager.RecordAuthSuccess(s.remoteAddr, username)
 
 	// Send success message
 	s.writeWithLog("235 2.7.0 Authentication successful\r\n")

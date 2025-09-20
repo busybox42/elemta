@@ -142,7 +142,12 @@ func (a *SMTPAuthenticator) IsRequired() bool {
 
 // GetSupportedMethods returns the supported authentication methods
 func (a *SMTPAuthenticator) GetSupportedMethods() []AuthMethod {
-	return []AuthMethod{AuthMethodPlain, AuthMethodLogin, AuthMethodCramMD5}
+	// CRAM-MD5 is disabled for security reasons:
+	// 1. Requires plaintext password storage (major security risk)
+	// 2. Uses MD5 which is cryptographically broken
+	// 3. Vulnerable to offline dictionary attacks
+	// 4. Modern security standards recommend PLAIN/LOGIN over TLS instead
+	return []AuthMethod{AuthMethodPlain, AuthMethodLogin}
 }
 
 // Close closes the authenticator and releases resources
