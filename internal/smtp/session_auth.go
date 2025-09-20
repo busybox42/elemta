@@ -330,6 +330,12 @@ func (ah *AuthHandler) performAuthentication(ctx context.Context, username, pass
 		"duration", duration,
 	)
 
+	// Send success response to client
+	if err := ah.session.write("235 2.7.0 Authentication successful"); err != nil {
+		ah.logger.ErrorContext(ctx, "Failed to send authentication success response", "error", err)
+		return fmt.Errorf("451 4.3.0 Internal server error")
+	}
+
 	return nil
 }
 
