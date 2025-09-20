@@ -230,7 +230,36 @@ func (s *Session) Handle() error {
 			return fmt.Errorf("failed to read command: %w", err)
 		}
 
+		// Comprehensive input validation and sanitization
+		validationResult := validateSMTPCommand(line)
+		if !validationResult.Valid {
+			s.logger.Warn("smtp_security_violation",
+				"event_type", "invalid_command_input",
+				"error_type", validationResult.ErrorType,
+				"error_message", validationResult.ErrorMessage,
+				"security_threat", validationResult.SecurityThreat,
+				"raw_command", line[:min(100, len(line))], // Limit log size
+				"remote_addr", s.conn.RemoteAddr().String(),
+			)
+			
+			// Send appropriate error response based on threat type
+			switch validationResult.SecurityThreat {
+			case "command_injection_attempt":
+				s.writeWithLog("554 5.7.1 Command injection attempt detected\r\n")
+			case "sql_injection_attempt":
+				s.writeWithLog("554 5.7.1 SQL injection attempt detected\r\n")
+			case "buffer_overflow_attempt":
+				s.writeWithLog("500 5.5.2 Command too long\r\n")
+			default:
+				s.writeWithLog("500 5.5.2 Invalid command syntax\r\n")
+			}
+			continue
+		}
+
+		// Use sanitized command for processing
+		line = validationResult.SanitizedValue
 		line = strings.TrimSpace(line)
+		
 		s.logger.Debug("received command",
 			"command", line,
 			"state", stateToString(s.state),
@@ -991,41 +1020,469 @@ func extractAddress(cmd string) string {
 	return cmd[start+1 : end]
 }
 
-// validateEmailAddress performs basic RFC 5322 email validation
+// InputValidationResult contains detailed validation results
+type InputValidationResult struct {
+	Valid        bool
+	ErrorType    string
+	ErrorMessage string
+	SanitizedValue string
+	SecurityThreat string
+}
+
+// validateEmailAddress performs comprehensive RFC 5322 email validation with security checks
 func validateEmailAddress(email string) bool {
+	result := validateEmailAddressDetailed(email)
+	return result.Valid
+}
+
+// validateEmailAddressDetailed performs comprehensive RFC 5322 email validation with detailed security analysis
+func validateEmailAddressDetailed(email string) *InputValidationResult {
+	result := &InputValidationResult{
+		Valid: false,
+		SanitizedValue: email,
+	}
+
 	// Basic format check
 	if email == "" {
-		return false
+		result.ErrorType = "empty_email"
+		result.ErrorMessage = "Email address cannot be empty"
+		return result
 	}
 
 	// Special case: RFC 5321 allows "<>" for null sender (bounce messages)
 	if email == "" {
-		return true
+		result.Valid = true
+		return result
 	}
 
-	// Simple email format validation
-	atIndex := strings.Index(email, "@")
+	// Length validation - RFC 5321 limits
+	if len(email) > 320 { // RFC 5321: 64 (local) + 1 (@) + 255 (domain) = 320
+		result.ErrorType = "length_exceeded"
+		result.ErrorMessage = "Email address exceeds RFC 5321 length limit (320 characters)"
+		result.SecurityThreat = "potential_buffer_overflow"
+		return result
+	}
+
+	// Command injection detection - check for dangerous characters
+	dangerousPatterns := []string{
+		"\n", "\r", "\x00", // Control characters
+		"|", "&", ";", "`", "$", // Shell metacharacters
+		"$(", "${", "``",        // Command substitution
+		"../", "..\\",           // Path traversal
+		"<script", "</script",   // Script injection
+		"javascript:", "data:",  // Protocol injection
+		"'", "\"",              // SQL injection characters (basic)
+	}
+
+	for _, pattern := range dangerousPatterns {
+		if strings.Contains(strings.ToLower(email), strings.ToLower(pattern)) {
+			result.ErrorType = "injection_attempt"
+			result.ErrorMessage = fmt.Sprintf("Dangerous pattern detected: %s", pattern)
+			result.SecurityThreat = "command_injection_attempt"
+			return result
+		}
+	}
+
+	// SQL injection pattern detection
+	sqlPatterns := []string{
+		"union select", "drop table", "delete from", "insert into",
+		"update set", "alter table", "create table", "exec ",
+		"execute ", "sp_", "xp_", "@@", "char(", "cast(",
+		"convert(", "substring(", "ascii(", "len(",
+	}
+
+	emailLower := strings.ToLower(email)
+	for _, pattern := range sqlPatterns {
+		if strings.Contains(emailLower, pattern) {
+			result.ErrorType = "sql_injection"
+			result.ErrorMessage = fmt.Sprintf("SQL injection pattern detected: %s", pattern)
+			result.SecurityThreat = "sql_injection_attempt"
+			return result
+		}
+	}
+
+	// RFC 5322 format validation
+	atIndex := strings.LastIndex(email, "@") // Use LastIndex for proper handling of @ in local part
 	if atIndex <= 0 || atIndex == len(email)-1 {
+		result.ErrorType = "invalid_format"
+		result.ErrorMessage = "Invalid email format - missing or misplaced @ symbol"
+		return result
+	}
+
+	localPart := email[:atIndex]
+	domain := email[atIndex+1:]
+
+	// Validate local part (before @)
+	if len(localPart) == 0 || len(localPart) > 64 {
+		result.ErrorType = "invalid_local_part"
+		result.ErrorMessage = "Local part length must be 1-64 characters"
+		return result
+	}
+
+	// RFC 5322 local part validation
+	if !isValidLocalPart(localPart) {
+		result.ErrorType = "invalid_local_part"
+		result.ErrorMessage = "Local part contains invalid characters"
+		return result
+	}
+
+	// Validate domain part (after @)
+	if len(domain) == 0 || len(domain) > 255 {
+		result.ErrorType = "invalid_domain"
+		result.ErrorMessage = "Domain length must be 1-255 characters"
+		return result
+	}
+
+	// Domain format validation
+	if !isValidDomain(domain) {
+		result.ErrorType = "invalid_domain"
+		result.ErrorMessage = "Domain contains invalid characters or format"
+		return result
+	}
+
+	// Additional security checks for domain
+	if strings.Contains(domain, "..") || strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
+		result.ErrorType = "malformed_domain"
+		result.ErrorMessage = "Domain has malformed dot notation"
+		result.SecurityThreat = "domain_spoofing_attempt"
+		return result
+	}
+
+	result.Valid = true
+	return result
+}
+
+// isValidLocalPart validates the local part of an email address according to RFC 5322
+func isValidLocalPart(localPart string) bool {
+	if len(localPart) == 0 {
 		return false
 	}
 
-	// Check for illegal characters
-	illegalChars := []string{" ", ",", ";", "(", ")", "[", "]", "\\", "\"", "'"}
-	for _, char := range illegalChars {
-		if strings.Contains(email, char) {
+	// Check for consecutive dots
+	if strings.Contains(localPart, "..") {
+		return false
+	}
+
+	// Check for leading or trailing dots
+	if strings.HasPrefix(localPart, ".") || strings.HasSuffix(localPart, ".") {
+		return false
+	}
+
+	// Validate characters in local part
+	for _, r := range localPart {
+		if !isValidLocalPartChar(r) {
 			return false
 		}
 	}
 
-	// Validate domain has at least one dot
-	domain := email[atIndex+1:]
-	if !strings.Contains(domain, ".") {
+	return true
+}
+
+// isValidLocalPartChar checks if a character is valid in the local part of an email
+func isValidLocalPartChar(r rune) bool {
+	// RFC 5322 allows: A-Z, a-z, 0-9, and these special characters: !#$%&'*+-/=?^_`{|}~
+	if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+		return true
+	}
+
+	specialChars := "!#$%&'*+-/=?^_`{|}~."
+	return strings.ContainsRune(specialChars, r)
+}
+
+// isValidDomain validates the domain part of an email address
+func isValidDomain(domain string) bool {
+	if len(domain) == 0 {
 		return false
 	}
 
-	// More sophisticated validation could be added here
+	// Split domain into labels
+	labels := strings.Split(domain, ".")
+	if len(labels) < 2 {
+		return false // Domain must have at least one dot
+	}
+
+	for _, label := range labels {
+		if !isValidDomainLabel(label) {
+			return false
+		}
+	}
 
 	return true
+}
+
+// isValidDomainLabel validates a single label in a domain name
+func isValidDomainLabel(label string) bool {
+	if len(label) == 0 || len(label) > 63 {
+		return false
+	}
+
+	// Label cannot start or end with hyphen
+	if strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+		return false
+	}
+
+	// Validate characters in label
+	for _, r := range label {
+		if !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-') {
+			return false
+		}
+	}
+
+	return true
+}
+
+// validateSMTPCommand performs comprehensive validation and sanitization of SMTP commands
+func validateSMTPCommand(command string) *InputValidationResult {
+	result := &InputValidationResult{
+		Valid: false,
+		SanitizedValue: command,
+	}
+
+	// Length validation - RFC 5321 limits command lines to 512 octets including CRLF
+	if len(command) > 510 { // 512 - 2 for CRLF
+		result.ErrorType = "command_too_long"
+		result.ErrorMessage = "Command exceeds RFC 5321 length limit (512 octets)"
+		result.SecurityThreat = "buffer_overflow_attempt"
+		return result
+	}
+
+	// Check for null bytes and other control characters
+	for i, r := range command {
+		if r == 0 || (r < 32 && r != 9 && r != 10 && r != 13) { // Allow TAB, LF, CR
+			result.ErrorType = "invalid_control_character"
+			result.ErrorMessage = fmt.Sprintf("Invalid control character at position %d", i)
+			result.SecurityThreat = "command_injection_attempt"
+			return result
+		}
+	}
+
+	// Command injection detection - check for dangerous patterns
+	dangerousPatterns := []string{
+		"|", "&", ";", "`", "$", // Shell metacharacters
+		"$(", "${", "``",        // Command substitution
+		"../", "..\\",           // Path traversal
+		"\x00", "\x01", "\x02", "\x03", "\x04", "\x05", "\x06", "\x07", // Control chars
+		"\x08", "\x0b", "\x0c", "\x0e", "\x0f", "\x10", "\x11", "\x12",
+		"<script", "</script",   // Script injection
+		"javascript:", "data:",  // Protocol injection
+		"file://", "ftp://",     // Protocol injection
+	}
+
+	commandLower := strings.ToLower(command)
+	for _, pattern := range dangerousPatterns {
+		if strings.Contains(commandLower, pattern) {
+			result.ErrorType = "injection_attempt"
+			result.ErrorMessage = fmt.Sprintf("Dangerous pattern detected: %s", pattern)
+			result.SecurityThreat = "command_injection_attempt"
+			return result
+		}
+	}
+
+	// SQL injection pattern detection
+	sqlPatterns := []string{
+		"union select", "drop table", "delete from", "insert into",
+		"update set", "alter table", "create table", "exec ",
+		"execute ", "sp_", "xp_", "@@", "char(", "cast(",
+		"convert(", "substring(", "ascii(", "len(",
+		"waitfor delay", "benchmark(", "sleep(",
+		"information_schema", "sys.tables", "sysobjects",
+	}
+
+	for _, pattern := range sqlPatterns {
+		if strings.Contains(commandLower, pattern) {
+			result.ErrorType = "sql_injection"
+			result.ErrorMessage = fmt.Sprintf("SQL injection pattern detected: %s", pattern)
+			result.SecurityThreat = "sql_injection_attempt"
+			return result
+		}
+	}
+
+	// SMTP command format validation
+	if !isValidSMTPCommandFormat(command) {
+		result.ErrorType = "invalid_smtp_format"
+		result.ErrorMessage = "Command does not conform to SMTP format"
+		return result
+	}
+
+	// Sanitize the command - remove any potentially dangerous characters while preserving functionality
+	sanitized := sanitizeSMTPCommand(command)
+	result.SanitizedValue = sanitized
+	result.Valid = true
+	return result
+}
+
+// isValidSMTPCommandFormat validates that the command follows basic SMTP syntax
+func isValidSMTPCommandFormat(command string) bool {
+	// Trim whitespace for validation
+	trimmed := strings.TrimSpace(command)
+	if len(trimmed) == 0 {
+		return false
+	}
+
+	// Split into verb and arguments
+	parts := strings.Fields(trimmed)
+	if len(parts) == 0 {
+		return false
+	}
+
+	verb := strings.ToUpper(parts[0])
+
+	// Validate known SMTP commands
+	validCommands := map[string]bool{
+		"EHLO": true, "HELO": true, "MAIL": true, "RCPT": true,
+		"DATA": true, "QUIT": true, "RSET": true, "NOOP": true,
+		"VRFY": true, "EXPN": true, "HELP": true, "AUTH": true,
+		"STARTTLS": true, "XDEBUG": true,
+	}
+
+	// Check if it's a valid command or starts with a valid command
+	isValid := validCommands[verb]
+	if !isValid {
+		// Check for compound commands like "MAIL FROM:" or "RCPT TO:"
+		if strings.HasPrefix(trimmed, "MAIL FROM:") || strings.HasPrefix(trimmed, "mail from:") {
+			isValid = true
+		} else if strings.HasPrefix(trimmed, "RCPT TO:") || strings.HasPrefix(trimmed, "rcpt to:") {
+			isValid = true
+		}
+	}
+
+	return isValid
+}
+
+// sanitizeSMTPCommand removes potentially dangerous characters while preserving SMTP functionality
+func sanitizeSMTPCommand(command string) string {
+	// Create a byte slice for efficient manipulation
+	result := make([]byte, 0, len(command))
+
+	for _, r := range command {
+		// Allow printable ASCII characters and specific control characters (TAB, CR, LF)
+		if (r >= 32 && r <= 126) || r == 9 || r == 10 || r == 13 {
+			// Convert to bytes and append
+			if r <= 127 {
+				result = append(result, byte(r))
+			}
+		}
+		// Skip any other characters (effectively removing them)
+	}
+
+	return string(result)
+}
+
+// validateBase64Input performs comprehensive validation of base64 encoded authentication data
+func validateBase64Input(input string, maxDecodedLength int) *InputValidationResult {
+	result := &InputValidationResult{
+		Valid: false,
+		SanitizedValue: input,
+	}
+
+	// Length validation for base64 input
+	if len(input) > 4096 { // Reasonable limit for auth data
+		result.ErrorType = "base64_too_long"
+		result.ErrorMessage = "Base64 input exceeds maximum length"
+		result.SecurityThreat = "buffer_overflow_attempt"
+		return result
+	}
+
+	// Check for dangerous characters in base64 input (before decoding)
+	for i, r := range input {
+		// Base64 alphabet: A-Z, a-z, 0-9, +, /, = (padding)
+		if !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '+' || r == '/' || r == '=') {
+			result.ErrorType = "invalid_base64_character"
+			result.ErrorMessage = fmt.Sprintf("Invalid base64 character at position %d", i)
+			result.SecurityThreat = "command_injection_attempt"
+			return result
+		}
+	}
+
+	// Attempt to decode base64
+	decoded, err := base64.StdEncoding.DecodeString(input)
+	if err != nil {
+		result.ErrorType = "base64_decode_error"
+		result.ErrorMessage = "Invalid base64 encoding"
+		return result
+	}
+
+	// Validate decoded length
+	if len(decoded) > maxDecodedLength {
+		result.ErrorType = "decoded_data_too_long"
+		result.ErrorMessage = "Decoded data exceeds maximum length"
+		result.SecurityThreat = "buffer_overflow_attempt"
+		return result
+	}
+
+	// Check decoded data for injection patterns
+	decodedStr := string(decoded)
+	injectionResult := validateAuthenticationData(decodedStr)
+	if !injectionResult.Valid {
+		result.ErrorType = injectionResult.ErrorType
+		result.ErrorMessage = injectionResult.ErrorMessage
+		result.SecurityThreat = injectionResult.SecurityThreat
+		return result
+	}
+
+	result.Valid = true
+	result.SanitizedValue = input
+	return result
+}
+
+// validateAuthenticationData validates decoded authentication credentials
+func validateAuthenticationData(data string) *InputValidationResult {
+	result := &InputValidationResult{
+		Valid: false,
+		SanitizedValue: data,
+	}
+
+	// Check for null bytes and dangerous control characters
+	for i, r := range data {
+		if r == 0 || (r < 32 && r != 9 && r != 10 && r != 13) {
+			result.ErrorType = "invalid_auth_character"
+			result.ErrorMessage = fmt.Sprintf("Invalid control character in auth data at position %d", i)
+			result.SecurityThreat = "command_injection_attempt"
+			return result
+		}
+	}
+
+	// Command injection detection in auth data
+	dangerousPatterns := []string{
+		"|", "&", ";", "`", "$", // Shell metacharacters
+		"$(", "${", "``",        // Command substitution
+		"../", "..\\",           // Path traversal
+		"<script", "</script",   // Script injection
+		"javascript:", "data:",  // Protocol injection
+	}
+
+	dataLower := strings.ToLower(data)
+	for _, pattern := range dangerousPatterns {
+		if strings.Contains(dataLower, pattern) {
+			result.ErrorType = "auth_injection_attempt"
+			result.ErrorMessage = fmt.Sprintf("Dangerous pattern in auth data: %s", pattern)
+			result.SecurityThreat = "command_injection_attempt"
+			return result
+		}
+	}
+
+	// SQL injection patterns in auth data
+	sqlPatterns := []string{
+		"union select", "drop table", "delete from", "insert into",
+		"update set", "alter table", "create table", "exec ",
+		"execute ", "sp_", "xp_", "@@", "char(", "cast(",
+		"convert(", "substring(", "ascii(", "len(",
+		"waitfor delay", "benchmark(", "sleep(",
+		"information_schema", "sys.tables", "sysobjects",
+		"' or '1'='1", "' or 1=1", "admin'--", "' union",
+	}
+
+	for _, pattern := range sqlPatterns {
+		if strings.Contains(dataLower, pattern) {
+			result.ErrorType = "auth_sql_injection"
+			result.ErrorMessage = fmt.Sprintf("SQL injection pattern in auth data: %s", pattern)
+			result.SecurityThreat = "sql_injection_attempt"
+			return result
+		}
+	}
+
+	result.Valid = true
+	return result
 }
 
 // handleMailFrom handles the MAIL FROM command with proper parsing
@@ -1033,10 +1490,38 @@ func (s *Session) handleMailFrom(line string) {
 	// Extract the address
 	addr := extractAddress(line)
 
-	// Validate the email address
-	if addr == "" || !validateEmailAddress(addr) {
-		s.logger.Warn("invalid address in MAIL FROM", "command", line)
+	// Comprehensive email address validation with security analysis
+	if addr == "" {
+		s.logger.Warn("empty address in MAIL FROM", "command", line)
 		s.writeWithLog("501 5.1.7 Invalid address format\r\n")
+		return
+	}
+
+	validationResult := validateEmailAddressDetailed(addr)
+	if !validationResult.Valid {
+		s.logger.Warn("smtp_security_violation",
+			"event_type", "invalid_mail_from_address",
+			"error_type", validationResult.ErrorType,
+			"error_message", validationResult.ErrorMessage,
+			"security_threat", validationResult.SecurityThreat,
+			"address", addr,
+			"command", line,
+			"remote_addr", s.conn.RemoteAddr().String(),
+		)
+
+		// Send appropriate error response based on threat type
+		switch validationResult.SecurityThreat {
+		case "command_injection_attempt":
+			s.writeWithLog("554 5.7.1 Address contains dangerous characters\r\n")
+		case "sql_injection_attempt":
+			s.writeWithLog("554 5.7.1 Address contains SQL injection patterns\r\n")
+		case "potential_buffer_overflow":
+			s.writeWithLog("501 5.1.7 Address too long\r\n")
+		case "domain_spoofing_attempt":
+			s.writeWithLog("501 5.1.7 Malformed domain in address\r\n")
+		default:
+			s.writeWithLog("501 5.1.7 Invalid address format\r\n")
+		}
 		return
 	}
 
@@ -1080,10 +1565,38 @@ func (s *Session) handleRcptTo(line string) {
 	// Extract the address
 	addr := extractAddress(line)
 
-	// Validate the email address
-	if addr == "" || !validateEmailAddress(addr) {
-		s.logger.Warn("invalid address in RCPT TO", "command", line)
+	// Comprehensive email address validation with security analysis
+	if addr == "" {
+		s.logger.Warn("empty address in RCPT TO", "command", line)
 		s.writeWithLog("501 5.1.3 Invalid address format\r\n")
+		return
+	}
+
+	validationResult := validateEmailAddressDetailed(addr)
+	if !validationResult.Valid {
+		s.logger.Warn("smtp_security_violation",
+			"event_type", "invalid_rcpt_to_address",
+			"error_type", validationResult.ErrorType,
+			"error_message", validationResult.ErrorMessage,
+			"security_threat", validationResult.SecurityThreat,
+			"address", addr,
+			"command", line,
+			"remote_addr", s.conn.RemoteAddr().String(),
+		)
+
+		// Send appropriate error response based on threat type
+		switch validationResult.SecurityThreat {
+		case "command_injection_attempt":
+			s.writeWithLog("554 5.7.1 Recipient address contains dangerous characters\r\n")
+		case "sql_injection_attempt":
+			s.writeWithLog("554 5.7.1 Recipient address contains SQL injection patterns\r\n")
+		case "potential_buffer_overflow":
+			s.writeWithLog("501 5.1.3 Recipient address too long\r\n")
+		case "domain_spoofing_attempt":
+			s.writeWithLog("501 5.1.3 Malformed domain in recipient address\r\n")
+		default:
+			s.writeWithLog("501 5.1.3 Invalid recipient address format\r\n")
+		}
 		return
 	}
 
@@ -1172,6 +1685,30 @@ func (s *Session) handleAuthPlain(cmd string) error {
 		s.logger.Debug("AUTH PLAIN two-step mode", "authData", authData)
 	}
 
+	// Comprehensive validation of base64 authentication data
+	authValidation := validateBase64Input(authData, 1024) // Max 1024 chars for combined auth data
+	if !authValidation.Valid {
+		s.logger.Warn("smtp_security_violation",
+			"event_type", "invalid_auth_plain_input",
+			"error_type", authValidation.ErrorType,
+			"error_message", authValidation.ErrorMessage,
+			"security_threat", authValidation.SecurityThreat,
+			"remote_addr", s.conn.RemoteAddr().String(),
+		)
+		
+		switch authValidation.SecurityThreat {
+		case "command_injection_attempt":
+			s.writeWithLog("554 5.7.1 Authentication data contains dangerous characters\r\n")
+		case "sql_injection_attempt":
+			s.writeWithLog("554 5.7.1 Authentication data contains SQL injection patterns\r\n")
+		case "buffer_overflow_attempt":
+			s.writeWithLog("501 5.5.2 Authentication data too long\r\n")
+		default:
+			s.writeWithLog("501 5.5.2 Invalid base64 encoding\r\n")
+		}
+		return nil
+	}
+
 	data, err := base64.StdEncoding.DecodeString(authData)
 	if err != nil {
 		s.writeWithLog("501 5.5.2 Invalid base64 encoding\r\n")
@@ -1190,6 +1727,31 @@ func (s *Session) handleAuthPlain(cmd string) error {
 
 	username := parts[1]
 	password := parts[2]
+
+	// Additional validation for extracted username and password
+	usernameValidation := validateAuthenticationData(username)
+	if !usernameValidation.Valid {
+		s.logger.Warn("smtp_security_violation",
+			"event_type", "invalid_auth_plain_username",
+			"error_type", usernameValidation.ErrorType,
+			"security_threat", usernameValidation.SecurityThreat,
+			"remote_addr", s.conn.RemoteAddr().String(),
+		)
+		s.writeWithLog("554 5.7.1 Invalid username format\r\n")
+		return nil
+	}
+
+	passwordValidation := validateAuthenticationData(password)
+	if !passwordValidation.Valid {
+		s.logger.Warn("smtp_security_violation",
+			"event_type", "invalid_auth_plain_password",
+			"error_type", passwordValidation.ErrorType,
+			"security_threat", passwordValidation.SecurityThreat,
+			"remote_addr", s.conn.RemoteAddr().String(),
+		)
+		s.writeWithLog("554 5.7.1 Invalid password format\r\n")
+		return nil
+	}
 
 	s.logger.Debug("AUTH PLAIN credentials",
 		"username", username,
@@ -1211,7 +1773,33 @@ func (s *Session) handleAuthLogin() error {
 	if err != nil {
 		return err
 	}
+	
 	usernameB64 := strings.TrimSpace(line)
+	
+	// Comprehensive validation of base64 username input
+	usernameValidation := validateBase64Input(usernameB64, 256) // Max 256 chars for username
+	if !usernameValidation.Valid {
+		s.logger.Warn("smtp_security_violation",
+			"event_type", "invalid_auth_username_input",
+			"error_type", usernameValidation.ErrorType,
+			"error_message", usernameValidation.ErrorMessage,
+			"security_threat", usernameValidation.SecurityThreat,
+			"remote_addr", s.conn.RemoteAddr().String(),
+		)
+		
+		switch usernameValidation.SecurityThreat {
+		case "command_injection_attempt":
+			s.writeWithLog("554 5.7.1 Username contains dangerous characters\r\n")
+		case "sql_injection_attempt":
+			s.writeWithLog("554 5.7.1 Username contains SQL injection patterns\r\n")
+		case "buffer_overflow_attempt":
+			s.writeWithLog("501 5.5.2 Username too long\r\n")
+		default:
+			s.writeWithLog("501 5.5.2 Invalid base64 encoding\r\n")
+		}
+		return nil
+	}
+	
 	usernameBytes, err := base64.StdEncoding.DecodeString(usernameB64)
 	if err != nil {
 		s.writeWithLog("501 5.5.2 Invalid base64 encoding\r\n")
@@ -1225,7 +1813,33 @@ func (s *Session) handleAuthLogin() error {
 	if err != nil {
 		return err
 	}
+	
 	passwordB64 := strings.TrimSpace(line)
+	
+	// Comprehensive validation of base64 password input
+	passwordValidation := validateBase64Input(passwordB64, 512) // Max 512 chars for password
+	if !passwordValidation.Valid {
+		s.logger.Warn("smtp_security_violation",
+			"event_type", "invalid_auth_password_input",
+			"error_type", passwordValidation.ErrorType,
+			"error_message", passwordValidation.ErrorMessage,
+			"security_threat", passwordValidation.SecurityThreat,
+			"remote_addr", s.conn.RemoteAddr().String(),
+		)
+		
+		switch passwordValidation.SecurityThreat {
+		case "command_injection_attempt":
+			s.writeWithLog("554 5.7.1 Password contains dangerous characters\r\n")
+		case "sql_injection_attempt":
+			s.writeWithLog("554 5.7.1 Password contains SQL injection patterns\r\n")
+		case "buffer_overflow_attempt":
+			s.writeWithLog("501 5.5.2 Password too long\r\n")
+		default:
+			s.writeWithLog("501 5.5.2 Invalid base64 encoding\r\n")
+		}
+		return nil
+	}
+	
 	passwordBytes, err := base64.StdEncoding.DecodeString(passwordB64)
 	if err != nil {
 		s.writeWithLog("501 5.5.2 Invalid base64 encoding\r\n")
