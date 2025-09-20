@@ -70,10 +70,20 @@ type Session struct {
 	// Resource management
 	sessionID        string           // Session ID for resource tracking
 	resourceManager  *ResourceManager // Resource manager for rate limiting and monitoring
+	// Enhanced input validation
+	enhancedValidator *EnhancedValidator // Enhanced validator for comprehensive input validation
 }
 
 // For testing purposes only
 var mockHandleSTARTTLS func(s *Session) error
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Session {
 	remoteAddr := conn.RemoteAddr().String()
@@ -113,6 +123,9 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Ses
 		logger.Warn("failed to initialize plugins", "error", err)
 	}
 
+	// Initialize enhanced validator for comprehensive input validation
+	enhancedValidator := NewEnhancedValidator(logger)
+
 	return &Session{
 		conn:            conn,
 		reader:          bufio.NewReader(conn),
@@ -131,6 +144,8 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Ses
 		authAttempts:    0,
 		lastAuthAttempt: time.Time{},
 		remoteAddr:      remoteAddr,
+		// Initialize enhanced validation
+		enhancedValidator: enhancedValidator,
 	}
 }
 
@@ -299,15 +314,42 @@ func (s *Session) Handle() error {
 			return nil
 
 		case verb == "HELO" || verb == "EHLO":
-			s.logger.Info("client hello", "command", line)
-
 			// Extract the client identity
 			clientIdentity := ""
 			if len(parts) > 1 {
 				clientIdentity = parts[1]
-				// Store client identity in context for logging
-				s.Context.Set("client_identity", clientIdentity)
+				
+				// Enhanced hostname validation
+				hostnameValidation := s.enhancedValidator.ValidateSMTPParameter("HELO", clientIdentity)
+				if !hostnameValidation.Valid {
+					LogSecurityEvent(s.logger, "invalid_helo_hostname", hostnameValidation.SecurityThreat,
+						hostnameValidation.ErrorMessage, clientIdentity, s.conn.RemoteAddr().String())
+					
+					switch hostnameValidation.SecurityThreat {
+					case "command_injection_attack":
+						s.writeWithLog("554 5.7.1 Hostname rejected: contains dangerous characters\r\n")
+					case "sql_injection_attack":
+						s.writeWithLog("554 5.7.1 Hostname rejected: contains prohibited patterns\r\n")
+					case "buffer_overflow_attempt":
+						s.writeWithLog("501 5.5.4 Hostname rejected: exceeds maximum length\r\n")
+					case "unicode_attack", "homograph_attack", "encoding_attack":
+						s.writeWithLog("554 5.7.1 Hostname rejected: contains unsafe characters\r\n")
+					default:
+						s.writeWithLog("501 5.5.4 Invalid hostname format\r\n")
+					}
+					continue
+				}
+				
+				// Store client identity in context for logging (using sanitized version)
+				s.Context.Set("client_identity", hostnameValidation.SanitizedValue)
+			} else {
+				LogSecurityEvent(s.logger, "missing_helo_hostname", "validation_error", 
+					"HELO/EHLO command missing hostname", line, s.conn.RemoteAddr().String())
+				s.writeWithLog("501 5.5.4 Hostname required\r\n")
+				continue
 			}
+			
+			s.logger.Info("client hello", "command", verb, "hostname", SafeLogString(clientIdentity))
 
 			// Respond with different formats for HELO vs EHLO (per RFC)
 			if verb == "HELO" {
@@ -457,6 +499,35 @@ func (s *Session) Handle() error {
 					s.writeWithLog("451 4.3.0 Error processing message data\r\n")
 				}
 				continue
+			}
+
+			// Enhanced header validation for DATA content
+			messageStr := string(data)
+			headerEndIndex := strings.Index(messageStr, "\r\n\r\n")
+			if headerEndIndex == -1 {
+				headerEndIndex = strings.Index(messageStr, "\n\n")
+			}
+			
+			if headerEndIndex != -1 {
+				headersSection := messageStr[:headerEndIndex]
+				headerValidation := s.enhancedValidator.ValidateEmailHeaders(headersSection)
+				if !headerValidation.Valid {
+					LogSecurityEvent(s.logger, "invalid_email_headers", headerValidation.SecurityThreat,
+						headerValidation.ErrorMessage, SafeLogString(headersSection[:min(200, len(headersSection))]), 
+						s.conn.RemoteAddr().String())
+					
+					switch headerValidation.SecurityThreat {
+					case "header_injection_attack":
+						s.writeWithLog("554 5.7.1 Message rejected: header injection detected\r\n")
+					case "buffer_overflow_attempt":
+						s.writeWithLog("552 5.3.4 Message rejected: headers too large\r\n")
+					case "resource_exhaustion":
+						s.writeWithLog("552 5.3.4 Message rejected: too many headers\r\n")
+					default:
+						s.writeWithLog("554 5.6.0 Message rejected: invalid headers\r\n")
+					}
+					continue
+				}
 			}
 
 			// Generate a unique message ID and set data
@@ -1760,40 +1831,35 @@ func validateAuthenticationData(data string) *InputValidationResult {
 	return result
 }
 
-// handleMailFrom handles the MAIL FROM command with proper parsing
+// handleMailFrom handles the MAIL FROM command with enhanced validation
 func (s *Session) handleMailFrom(line string) {
 	// Extract the address
 	addr := extractAddress(line)
 
-	// Comprehensive email address validation with security analysis
+	// Enhanced email address validation with comprehensive security analysis
 	if addr == "" {
-		s.logger.Warn("empty address in MAIL FROM", "command", line)
+		LogSecurityEvent(s.logger, "empty_mail_from", "validation_error", 
+			"Empty address in MAIL FROM command", line, s.conn.RemoteAddr().String())
 		s.writeWithLog("501 5.1.7 Invalid address format\r\n")
 		return
 	}
 
-	validationResult := validateEmailAddressDetailed(addr)
+	// Use enhanced validator for comprehensive validation
+	validationResult := s.enhancedValidator.ValidateSMTPParameter("MAIL_FROM", addr)
 	if !validationResult.Valid {
-		s.logger.Warn("smtp_security_violation",
-			"event_type", "invalid_mail_from_address",
-			"error_type", validationResult.ErrorType,
-			"error_message", validationResult.ErrorMessage,
-			"security_threat", validationResult.SecurityThreat,
-			"address", addr,
-			"command", line,
-			"remote_addr", s.conn.RemoteAddr().String(),
-		)
+		LogSecurityEvent(s.logger, "invalid_mail_from_address", validationResult.SecurityThreat,
+			validationResult.ErrorMessage, addr, s.conn.RemoteAddr().String())
 
-		// Send appropriate error response based on threat type
+		// Send appropriate RFC-compliant error response based on threat type
 		switch validationResult.SecurityThreat {
-		case "command_injection_attempt":
-			s.writeWithLog("554 5.7.1 Address contains dangerous characters\r\n")
-		case "sql_injection_attempt":
-			s.writeWithLog("554 5.7.1 Address contains SQL injection patterns\r\n")
-		case "potential_buffer_overflow":
-			s.writeWithLog("501 5.1.7 Address too long\r\n")
-		case "domain_spoofing_attempt":
-			s.writeWithLog("501 5.1.7 Malformed domain in address\r\n")
+		case "command_injection_attack":
+			s.writeWithLog("554 5.7.1 Address rejected: contains dangerous characters\r\n")
+		case "sql_injection_attack":
+			s.writeWithLog("554 5.7.1 Address rejected: contains prohibited patterns\r\n")
+		case "buffer_overflow_attempt":
+			s.writeWithLog("501 5.1.7 Address rejected: exceeds maximum length\r\n")
+		case "unicode_attack", "homograph_attack", "encoding_attack":
+			s.writeWithLog("554 5.7.1 Address rejected: contains unsafe characters\r\n")
 		default:
 			s.writeWithLog("501 5.1.7 Invalid address format\r\n")
 		}
@@ -1810,19 +1876,32 @@ func (s *Session) handleMailFrom(line string) {
 			sizeParam = sizeParam[:spaceIndex]
 		}
 
-		// Check the size parameter
+		// Enhanced SIZE parameter validation
 		if sizeParam != "" {
-			size, err := strconv.ParseInt(sizeParam, 10, 64)
-			if err != nil {
-				s.logger.Warn("invalid size parameter", "size", sizeParam)
-				s.writeWithLog("501 5.5.4 Invalid SIZE parameter\r\n")
+			sizeValidation := s.enhancedValidator.ValidateSMTPParameter("SIZE", sizeParam)
+			if !sizeValidation.Valid {
+				LogSecurityEvent(s.logger, "invalid_size_parameter", sizeValidation.SecurityThreat,
+					sizeValidation.ErrorMessage, sizeParam, s.conn.RemoteAddr().String())
+				
+				switch sizeValidation.SecurityThreat {
+				case "buffer_overflow_attempt":
+					s.writeWithLog("501 5.5.4 SIZE parameter format invalid\r\n")
+				case "resource_exhaustion":
+					s.writeWithLog("552 5.3.4 SIZE parameter exceeds maximum allowed\r\n")
+				default:
+					s.writeWithLog("501 5.5.4 Invalid SIZE parameter\r\n")
+				}
 				return
 			}
-
-			if size > s.config.MaxSize {
-				s.logger.Warn("message too large", "size", size, "max", s.config.MaxSize)
-				s.writeWithLog(fmt.Sprintf("552 5.3.4 Message size exceeds limit of %d bytes\r\n", s.config.MaxSize))
-				return
+			
+			// Additional check against configured maximum
+			if size, err := strconv.ParseInt(sizeParam, 10, 64); err == nil {
+				if size > s.config.MaxSize {
+					s.logger.Warn("SIZE parameter exceeds configured maximum", 
+						"size", size, "max", s.config.MaxSize)
+					s.writeWithLog(fmt.Sprintf("552 5.3.4 Message size exceeds limit of %d bytes\r\n", s.config.MaxSize))
+					return
+				}
 			}
 		}
 	}
@@ -1835,40 +1914,35 @@ func (s *Session) handleMailFrom(line string) {
 	s.writeWithLog("250 2.1.0 Sender ok\r\n")
 }
 
-// handleRcptTo handles the RCPT TO command with proper parsing and relay control
+// handleRcptTo handles the RCPT TO command with enhanced validation and relay control
 func (s *Session) handleRcptTo(line string) {
 	// Extract the address
 	addr := extractAddress(line)
 
-	// Comprehensive email address validation with security analysis
+	// Enhanced email address validation with comprehensive security analysis
 	if addr == "" {
-		s.logger.Warn("empty address in RCPT TO", "command", line)
+		LogSecurityEvent(s.logger, "empty_rcpt_to", "validation_error", 
+			"Empty address in RCPT TO command", line, s.conn.RemoteAddr().String())
 		s.writeWithLog("501 5.1.3 Invalid address format\r\n")
 		return
 	}
 
-	validationResult := validateEmailAddressDetailed(addr)
+	// Use enhanced validator for comprehensive validation
+	validationResult := s.enhancedValidator.ValidateSMTPParameter("RCPT_TO", addr)
 	if !validationResult.Valid {
-		s.logger.Warn("smtp_security_violation",
-			"event_type", "invalid_rcpt_to_address",
-			"error_type", validationResult.ErrorType,
-			"error_message", validationResult.ErrorMessage,
-			"security_threat", validationResult.SecurityThreat,
-			"address", addr,
-			"command", line,
-			"remote_addr", s.conn.RemoteAddr().String(),
-		)
+		LogSecurityEvent(s.logger, "invalid_rcpt_to_address", validationResult.SecurityThreat,
+			validationResult.ErrorMessage, addr, s.conn.RemoteAddr().String())
 
-		// Send appropriate error response based on threat type
+		// Send appropriate RFC-compliant error response based on threat type
 		switch validationResult.SecurityThreat {
-		case "command_injection_attempt":
-			s.writeWithLog("554 5.7.1 Recipient address contains dangerous characters\r\n")
-		case "sql_injection_attempt":
-			s.writeWithLog("554 5.7.1 Recipient address contains SQL injection patterns\r\n")
-		case "potential_buffer_overflow":
-			s.writeWithLog("501 5.1.3 Recipient address too long\r\n")
-		case "domain_spoofing_attempt":
-			s.writeWithLog("501 5.1.3 Malformed domain in recipient address\r\n")
+		case "command_injection_attack":
+			s.writeWithLog("554 5.7.1 Recipient rejected: contains dangerous characters\r\n")
+		case "sql_injection_attack":
+			s.writeWithLog("554 5.7.1 Recipient rejected: contains prohibited patterns\r\n")
+		case "buffer_overflow_attempt":
+			s.writeWithLog("501 5.1.3 Recipient rejected: exceeds maximum length\r\n")
+		case "unicode_attack", "homograph_attack", "encoding_attack":
+			s.writeWithLog("554 5.7.1 Recipient rejected: contains unsafe characters\r\n")
 		default:
 			s.writeWithLog("501 5.1.3 Invalid recipient address format\r\n")
 		}
@@ -2695,10 +2769,3 @@ func (s *Session) isValidEndOfData(line string, state *DataReaderState, suspicio
 	return false
 }
 
-// min returns the minimum of two integers (helper function)
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
