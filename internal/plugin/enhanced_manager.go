@@ -29,6 +29,10 @@ type EnhancedManager struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	started bool
+	
+	// Secure plugin integration
+	secureIntegration *SecurePluginIntegration
+	useSecurePlugins  bool
 }
 
 // EnhancedConfig extends the basic plugin configuration

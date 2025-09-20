@@ -1,0 +1,14 @@
+{
+  "name": "example-antivirus",
+  "version": "1.0.0",
+  "description": "Example secure antivirus plugin without CGO dependencies",
+  "author": "Elemta Security Team",
+  "type": "antivirus",
+  "api_version": "1.0.0",
+  "capabilities": [
+    "scan_message",
+    "network_access"
+  ],
+  "dependencies": [],
+  "checksum": "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+}
