@@ -26,6 +26,7 @@ type Config struct {
 		TLS              bool     `toml:"tls"`
 		CertFile         string   `toml:"cert_file"`
 		KeyFile          string   `toml:"key_file"`
+		DevMode          bool     `toml:"dev_mode"`
 	} `toml:"server"`
 
 	// Enhanced TLS configuration

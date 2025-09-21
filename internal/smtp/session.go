@@ -263,6 +263,12 @@ func (s *Session) processCommands(ctx context.Context) error {
 				s.logger.InfoContext(ctx, "Session terminated by client")
 				return nil
 			}
+		} else {
+			// Check for QUIT command after successful command processing
+			if s.state.GetPhase() == PhaseQuit {
+				s.logger.InfoContext(ctx, "Session terminated by client")
+				return nil
+			}
 		}
 	}
 }

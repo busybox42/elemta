@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"net"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -23,13 +25,13 @@ type CommandResult struct {
 
 // CommandHandler manages SMTP command processing for a session
 type CommandHandler struct {
-	session     *Session
-	state       *SessionState
-	authHandler *AuthHandler
-	logger      *slog.Logger
-	conn        net.Conn
-	config      *Config
-	tlsManager  TLSHandler
+	session         *Session
+	state           *SessionState
+	authHandler     *AuthHandler
+	logger          *slog.Logger
+	conn            net.Conn
+	config          *Config
+	tlsManager      TLSHandler
 	securityManager *CommandSecurityManager
 }
 
@@ -37,13 +39,13 @@ type CommandHandler struct {
 func NewCommandHandler(session *Session, state *SessionState, authHandler *AuthHandler,
 	conn net.Conn, config *Config, tlsManager TLSHandler, logger *slog.Logger) *CommandHandler {
 	return &CommandHandler{
-		session:     session,
-		state:       state,
-		authHandler: authHandler,
-		logger:      logger.With("component", "session-commands"),
-		conn:        conn,
-		config:      config,
-		tlsManager:  tlsManager,
+		session:         session,
+		state:           state,
+		authHandler:     authHandler,
+		logger:          logger.With("component", "session-commands"),
+		conn:            conn,
+		config:          config,
+		tlsManager:      tlsManager,
 		securityManager: NewCommandSecurityManager(logger),
 	}
 }
@@ -179,6 +181,11 @@ func (ch *CommandHandler) HandleEHLO(ctx context.Context, args string) error {
 				responses = append(responses, "250-AUTH "+authMethods)
 			}
 		}
+	}
+
+	// Add XDEBUG in development mode
+	if ch.config.DevMode {
+		responses = append(responses, "250-XDEBUG")
 	}
 
 	// Add final response
@@ -323,7 +330,15 @@ func (ch *CommandHandler) HandleQUIT(ctx context.Context) error {
 
 	ch.logger.InfoContext(ctx, "Client initiated session termination")
 
-	return ch.session.write(fmt.Sprintf("221 2.0.0 %s closing connection", ch.config.Hostname))
+	// Send the goodbye message
+	if err := ch.session.write(fmt.Sprintf("221 2.0.0 %s closing connection", ch.config.Hostname)); err != nil {
+		return err
+	}
+
+	// Give the client a moment to read the response before closing
+	time.Sleep(100 * time.Millisecond)
+
+	return nil
 }
 
 // HandleAUTH processes the AUTH command
@@ -417,14 +432,47 @@ func (ch *CommandHandler) HandleXDEBUG(ctx context.Context, cmd string) error {
 
 	parts := strings.Fields(cmd)
 	if len(parts) < 2 {
-		return ch.session.write("214 XDEBUG commands: STATE")
+		// Show available XDEBUG commands
+		commands := []string{
+			"214-XDEBUG commands:",
+			"214-  CONTEXT    - Show complete connection context",
+			"214-  STATE      - Show session state information",
+			"214-  CONNECTION - Show connection details",
+			"214-  CONFIG     - Show server configuration",
+			"214-  MEMORY     - Show memory usage statistics",
+			"214-  RESOURCES  - Show resource usage",
+			"214-  AUTH       - Show authentication details",
+			"214-  TLS        - Show TLS connection status",
+			"214-  QUEUE      - Show queue information",
+			"214 For more info use \"XDEBUG <command>\"",
+		}
+		for _, cmd := range commands {
+			if err := ch.session.write(cmd); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 
 	switch strings.ToUpper(parts[1]) {
+	case "CONTEXT":
+		return ch.handleXDEBUGContext(ctx)
 	case "STATE":
-		snapshot := ch.state.GetStateSnapshot()
-		response := fmt.Sprintf("214-Session State: %+v", snapshot)
-		return ch.session.write(response)
+		return ch.handleXDEBUGState(ctx)
+	case "CONNECTION":
+		return ch.handleXDEBUGConnection(ctx)
+	case "CONFIG":
+		return ch.handleXDEBUGConfig(ctx)
+	case "MEMORY":
+		return ch.handleXDEBUGMemory(ctx)
+	case "RESOURCES":
+		return ch.handleXDEBUGResources(ctx)
+	case "AUTH":
+		return ch.handleXDEBUGAuth(ctx)
+	case "TLS":
+		return ch.handleXDEBUGTLS(ctx)
+	case "QUEUE":
+		return ch.handleXDEBUGQueue(ctx)
 	default:
 		return ch.session.write("214 Unknown XDEBUG command")
 	}
@@ -437,7 +485,6 @@ func (ch *CommandHandler) HandleUnknown(ctx context.Context, cmd string) error {
 }
 
 // Helper methods
-
 
 // parseCommand parses a command line into command and arguments
 func (ch *CommandHandler) parseCommand(line string) (string, string) {
@@ -633,4 +680,293 @@ func (ch *CommandHandler) logCommandResult(ctx context.Context, command string, 
 		"authenticated", ch.state.IsAuthenticated(),
 		"username", ch.state.GetUsername(),
 	)
+}
+
+// XDEBUG subcommand handlers
+
+// handleXDEBUGContext shows complete connection context (like Momentum's XDUMPCONTEXT)
+func (ch *CommandHandler) handleXDEBUGContext(ctx context.Context) error {
+	responses := []string{
+		"214-=== XDEBUG CONTEXT DUMP ===",
+		"214-Connection Information:",
+		fmt.Sprintf("214-  Remote Address: %s", ch.session.remoteAddr),
+		fmt.Sprintf("214-  Session ID: %s", ch.session.sessionID),
+		fmt.Sprintf("214-  Connected At: %s", time.Now().Format("2006-01-02 15:04:05")),
+		fmt.Sprintf("214-  Session Duration: %v", ch.state.GetSessionDuration()),
+		fmt.Sprintf("214-  Idle Time: %v", ch.state.GetIdleTime()),
+		"214-Session State:",
+		fmt.Sprintf("214-  Current Phase: %s", ch.state.GetPhase().String()),
+		fmt.Sprintf("214-  Mail From: %s", ch.state.GetMailFrom()),
+		fmt.Sprintf("214-  Recipients: %d", ch.state.GetRecipientCount()),
+		fmt.Sprintf("214-  Data Size: %d bytes", ch.state.GetDataSize()),
+		fmt.Sprintf("214-  Message Count: %d", ch.state.GetMessageCount()),
+		"214-Authentication:",
+		fmt.Sprintf("214-  Authenticated: %t", ch.state.IsAuthenticated()),
+		fmt.Sprintf("214-  Username: %s", ch.state.GetUsername()),
+		fmt.Sprintf("214-  Auth Attempts: %d", ch.state.GetAuthAttempts()),
+		fmt.Sprintf("214-  Last Auth Attempt: %s", ch.state.GetLastAuthAttempt().Format("2006-01-02 15:04:05")),
+		"214-TLS Status:",
+		fmt.Sprintf("214-  TLS Active: %t", ch.state.IsTLSActive()),
+		"214-Traffic Statistics:",
+	}
+
+	sent, received := ch.state.GetTrafficStats()
+	responses = append(responses, fmt.Sprintf("214-  Bytes Sent: %d", sent))
+	responses = append(responses, fmt.Sprintf("214-  Bytes Received: %d", received))
+
+	// Add error information
+	errors := ch.state.GetErrors()
+	responses = append(responses, fmt.Sprintf("214-  Error Count: %d", len(errors)))
+
+	responses = append(responses, "214-=== END CONTEXT DUMP ===")
+
+	for _, response := range responses {
+		if err := ch.session.write(response); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// handleXDEBUGState shows detailed session state information
+func (ch *CommandHandler) handleXDEBUGState(ctx context.Context) error {
+	snapshot := ch.state.GetStateSnapshot()
+
+	responses := []string{
+		"214-=== XDEBUG STATE ===",
+	}
+
+	for key, value := range snapshot {
+		responses = append(responses, fmt.Sprintf("214-  %s: %v", key, value))
+	}
+
+	responses = append(responses, "214-=== END STATE ===")
+
+	for _, response := range responses {
+		if err := ch.session.write(response); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// handleXDEBUGConnection shows connection details
+func (ch *CommandHandler) handleXDEBUGConnection(ctx context.Context) error {
+	responses := []string{
+		"214-=== XDEBUG CONNECTION ===",
+		fmt.Sprintf("214-  Remote Address: %s", ch.session.remoteAddr),
+		fmt.Sprintf("214-  Session ID: %s", ch.session.sessionID),
+		fmt.Sprintf("214-  Session Duration: %v", ch.state.GetSessionDuration()),
+		fmt.Sprintf("214-  Idle Time: %v", ch.state.GetIdleTime()),
+		fmt.Sprintf("214-  Connected At: %s", time.Now().Format("2006-01-02 15:04:05")),
+		"214-=== END CONNECTION ===",
+	}
+
+	for _, response := range responses {
+		if err := ch.session.write(response); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// handleXDEBUGConfig shows server configuration
+func (ch *CommandHandler) handleXDEBUGConfig(ctx context.Context) error {
+	responses := []string{
+		"214-=== XDEBUG CONFIG ===",
+		fmt.Sprintf("214-  Hostname: %s", ch.config.Hostname),
+		fmt.Sprintf("214-  Listen Address: %s", ch.config.ListenAddr),
+		fmt.Sprintf("214-  Queue Directory: %s", ch.config.QueueDir),
+		fmt.Sprintf("214-  Max Message Size: %d bytes", ch.config.MaxSize),
+		fmt.Sprintf("214-  Development Mode: %t", ch.config.DevMode),
+		fmt.Sprintf("214-  Local Domains: %v", ch.config.LocalDomains),
+		fmt.Sprintf("214-  Max Workers: %d", ch.config.MaxWorkers),
+		fmt.Sprintf("214-  Max Retries: %d", ch.config.MaxRetries),
+		"214-=== END CONFIG ===",
+	}
+
+	for _, response := range responses {
+		if err := ch.session.write(response); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// handleXDEBUGMemory shows memory usage statistics
+func (ch *CommandHandler) handleXDEBUGMemory(ctx context.Context) error {
+	responses := []string{
+		"214-=== XDEBUG MEMORY ===",
+		fmt.Sprintf("214-  Goroutines: %d", runtime.NumGoroutine()),
+	}
+
+	// Get current memory stats directly from runtime (non-blocking)
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	responses = append(responses, fmt.Sprintf("214-  Memory Usage: %d bytes", m.Alloc))
+	responses = append(responses, fmt.Sprintf("214-  Memory System: %d bytes", m.Sys))
+	responses = append(responses, fmt.Sprintf("214-  Memory Heap: %d bytes", m.HeapAlloc))
+	responses = append(responses, fmt.Sprintf("214-  Memory Stack: %d bytes", m.StackInuse))
+	responses = append(responses, fmt.Sprintf("214-  GC Collections: %d", m.NumGC))
+	responses = append(responses, fmt.Sprintf("214-  Last GC: %s", time.Unix(0, int64(m.LastGC)).Format("2006-01-02 15:04:05")))
+
+	// Try to get memory manager config safely (non-blocking)
+	if ch.session.resourceManager != nil && ch.session.resourceManager.memoryManager != nil {
+		// Access config directly without calling methods that might lock
+		mm := ch.session.resourceManager.memoryManager
+		responses = append(responses, fmt.Sprintf("214-  Memory Limit: %d bytes", mm.config.MaxMemoryUsage))
+		responses = append(responses, fmt.Sprintf("214-  Warning Threshold: %.2f%%", mm.config.MemoryWarningThreshold*100))
+		responses = append(responses, fmt.Sprintf("214-  Critical Threshold: %.2f%%", mm.config.MemoryCriticalThreshold*100))
+		responses = append(responses, fmt.Sprintf("214-  Max Goroutines: %d", mm.config.MaxGoroutines))
+	}
+
+	responses = append(responses, "214-=== END MEMORY ===")
+
+	for _, response := range responses {
+		if err := ch.session.write(response); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// handleXDEBUGResources shows resource usage
+func (ch *CommandHandler) handleXDEBUGResources(ctx context.Context) error {
+	responses := []string{
+		"214-=== XDEBUG RESOURCES ===",
+	}
+
+	// Get basic resource information safely
+	responses = append(responses, fmt.Sprintf("214-  Goroutines: %d", runtime.NumGoroutine()))
+
+	// Try to get resource manager info safely (non-blocking)
+	if ch.session.resourceManager != nil {
+		rm := ch.session.resourceManager
+
+		// Access atomic values directly (non-blocking)
+		responses = append(responses, fmt.Sprintf("214-  Active Connections: %d", atomic.LoadInt32(&rm.activeConnections)))
+		responses = append(responses, fmt.Sprintf("214-  Total Requests: %d", atomic.LoadInt64(&rm.totalRequests)))
+		responses = append(responses, fmt.Sprintf("214-  Rejected Requests: %d", atomic.LoadInt64(&rm.rejectedRequests)))
+
+		// Calculate rejection rate safely
+		total := atomic.LoadInt64(&rm.totalRequests)
+		rejected := atomic.LoadInt64(&rm.rejectedRequests)
+		if total > 0 {
+			rejectionRate := float64(rejected) / float64(total) * 100
+			responses = append(responses, fmt.Sprintf("214-  Rejection Rate: %.2f%%", rejectionRate))
+		} else {
+			responses = append(responses, "214-  Rejection Rate: 0.00%")
+		}
+
+		// Get pool stats safely
+		if rm.goroutinePool != nil {
+			pool := rm.goroutinePool
+			availableWorkers := len(pool.workers)
+			pendingTasks := len(pool.tasks)
+			utilization := float64(pool.maxWorkers-availableWorkers) / float64(pool.maxWorkers) * 100
+
+			responses = append(responses, fmt.Sprintf("214-  Max Workers: %d", pool.maxWorkers))
+			responses = append(responses, fmt.Sprintf("214-  Available Workers: %d", availableWorkers))
+			responses = append(responses, fmt.Sprintf("214-  Pending Tasks: %d", pendingTasks))
+			responses = append(responses, fmt.Sprintf("214-  Pool Utilization: %.2f%%", utilization))
+		}
+
+		// Get connection limits safely
+		if rm.limits != nil {
+			responses = append(responses, fmt.Sprintf("214-  Max Connections: %d", rm.limits.MaxConnections))
+			responses = append(responses, fmt.Sprintf("214-  Max Connections Per IP: %d", rm.limits.MaxConnectionsPerIP))
+			responses = append(responses, fmt.Sprintf("214-  Connection Timeout: %v", rm.limits.ConnectionTimeout))
+			responses = append(responses, fmt.Sprintf("214-  Session Timeout: %v", rm.limits.SessionTimeout))
+		}
+	}
+
+	responses = append(responses, "214-=== END RESOURCES ===")
+
+	for _, response := range responses {
+		if err := ch.session.write(response); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// handleXDEBUGAuth shows authentication details
+func (ch *CommandHandler) handleXDEBUGAuth(ctx context.Context) error {
+	responses := []string{
+		"214-=== XDEBUG AUTH ===",
+		fmt.Sprintf("214-  Authenticated: %t", ch.state.IsAuthenticated()),
+		fmt.Sprintf("214-  Username: %s", ch.state.GetUsername()),
+		fmt.Sprintf("214-  Auth Attempts: %d", ch.state.GetAuthAttempts()),
+		fmt.Sprintf("214-  Last Auth Attempt: %s", ch.state.GetLastAuthAttempt().Format("2006-01-02 15:04:05")),
+	}
+
+	if ch.config.Auth != nil {
+		responses = append(responses, fmt.Sprintf("214-  Auth Enabled: %t", ch.config.Auth.Enabled))
+		responses = append(responses, fmt.Sprintf("214-  Auth Required: %t", ch.config.Auth.Required))
+		responses = append(responses, fmt.Sprintf("214-  Auth DataSource Type: %s", ch.config.Auth.DataSourceType))
+		responses = append(responses, fmt.Sprintf("214-  Auth DataSource Host: %s", ch.config.Auth.DataSourceHost))
+		responses = append(responses, fmt.Sprintf("214-  Auth DataSource Port: %d", ch.config.Auth.DataSourcePort))
+	}
+
+	responses = append(responses, "214-=== END AUTH ===")
+
+	for _, response := range responses {
+		if err := ch.session.write(response); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// handleXDEBUGTLS shows TLS connection status
+func (ch *CommandHandler) handleXDEBUGTLS(ctx context.Context) error {
+	responses := []string{
+		"214-=== XDEBUG TLS ===",
+		fmt.Sprintf("214-  TLS Active: %t", ch.state.IsTLSActive()),
+	}
+
+	if ch.config.TLS != nil {
+		responses = append(responses, fmt.Sprintf("214-  TLS Enabled: %t", ch.config.TLS.Enabled))
+		responses = append(responses, fmt.Sprintf("214-  STARTTLS Enabled: %t", ch.config.TLS.EnableStartTLS))
+		responses = append(responses, fmt.Sprintf("214-  Cert File: %s", ch.config.TLS.CertFile))
+		responses = append(responses, fmt.Sprintf("214-  Key File: %s", ch.config.TLS.KeyFile))
+	}
+
+	responses = append(responses, "214-=== END TLS ===")
+
+	for _, response := range responses {
+		if err := ch.session.write(response); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// handleXDEBUGQueue shows queue information
+func (ch *CommandHandler) handleXDEBUGQueue(ctx context.Context) error {
+	responses := []string{
+		"214-=== XDEBUG QUEUE ===",
+		fmt.Sprintf("214-  Queue Directory: %s", ch.config.QueueDir),
+		fmt.Sprintf("214-  Queue Processor Enabled: %t", ch.config.QueueProcessorEnabled),
+		fmt.Sprintf("214-  Queue Process Interval: %d seconds", ch.config.QueueProcessInterval),
+		fmt.Sprintf("214-  Queue Workers: %d", ch.config.QueueWorkers),
+	}
+
+	if ch.config.Delivery != nil {
+		responses = append(responses, fmt.Sprintf("214-  Delivery Mode: %s", ch.config.Delivery.Mode))
+		responses = append(responses, fmt.Sprintf("214-  Delivery Host: %s", ch.config.Delivery.Host))
+		responses = append(responses, fmt.Sprintf("214-  Delivery Port: %d", ch.config.Delivery.Port))
+		responses = append(responses, fmt.Sprintf("214-  Delivery Timeout: %d seconds", ch.config.Delivery.Timeout))
+		responses = append(responses, fmt.Sprintf("214-  Max Retries: %d", ch.config.Delivery.MaxRetries))
+	}
+
+	responses = append(responses, "214-=== END QUEUE ===")
+
+	for _, response := range responses {
+		if err := ch.session.write(response); err != nil {
+			return err
+		}
+	}
+	return nil
 }

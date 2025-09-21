@@ -6,6 +6,7 @@ listen = ":2525"  # Internal SMTP port (non-privileged)
 listen_submission = ":587"  # Submission port for authenticated clients
 max_size = 26214400  # 25MB
 local_domains = ["example.com", "mail.example.com", "localhost"]
+dev_mode = true  # Enable development mode for XDEBUG command
 
 # TLS Configuration - Enable STARTTLS
 [tls]
@@ -52,6 +53,20 @@ port = 2424
 timeout = 30
 max_retries = 3
 retry_delay = 60
+
+[resources]
+max_connections = 1000
+max_connections_per_ip = 50
+max_goroutines = 2000
+connection_timeout = 30
+session_timeout = 300
+idle_timeout = 120
+rate_limit_window = 60
+max_requests_per_window = 1000  # Increased from 100 to 1000 for testing
+max_memory_usage = 2147483648  # 2GB
+goroutine_pool_size = 100
+circuit_breaker_enabled = true
+resource_monitoring_enabled = true
 
 [metrics]
 enabled = true

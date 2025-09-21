@@ -116,7 +116,7 @@ func startServer() {
 		MaxSize:      10 * 1024 * 1024,        // Use 10MB default if not specified
 		LocalDomains: cfg.Server.LocalDomains, // Map local domains from main config
 		TLS:          cfg.TLS,
-		DevMode:      devMode, // Pass dev mode flag to SMTP server
+		DevMode:      devMode || cfg.Server.DevMode, // Use command line flag or TOML config
 	}
 
 	// Map authentication config
