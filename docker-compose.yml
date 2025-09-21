@@ -21,7 +21,7 @@ services:
       - DEBUG=true
       - NODE_ID=0
       - TEST_MODE=true
-      - ELEMTA_CONFIG_PATH=/app/config/elemta.toml
+      - ELEMTA_CONFIG_PATH=/app/config/elemta-test.toml
       - API_PORT=8081  # Used internally only
       - DELIVERY_HOST=elemta-dovecot
       - DELIVERY_PORT=2424
