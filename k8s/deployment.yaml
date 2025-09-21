@@ -14,10 +14,28 @@ spec:
       labels:
         app: elemta
     spec:
+      # Security context for the pod
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: elemta
         image: elemta:latest
         imagePullPolicy: IfNotPresent
+        # Security context for the container
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # Set to false as we need to write to /app/queue and /app/logs
+          runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+          capabilities:
+            drop:
+              - ALL
         ports:
         - containerPort: 2525
           name: smtp
