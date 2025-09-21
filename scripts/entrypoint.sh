@@ -13,6 +13,7 @@ chmod 755 /app/logs 2>/dev/null || true
 # Workaround: copy TOML config to .conf if present
 if [ -f /app/config/elemta.toml ]; then
     cp /app/config/elemta.toml /app/config/elemta.conf
+    chmod 600 /app/config/elemta.conf
 fi
 
 # Create test messages in the queue if TEST_MODE is enabled

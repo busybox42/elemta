@@ -23,58 +23,58 @@ type MemoryManager struct {
 
 // MemoryConfig holds configuration for memory management
 type MemoryConfig struct {
-	MaxMemoryUsage           int64         `toml:"max_memory_usage" json:"max_memory_usage"`                     // Maximum memory usage in bytes
-	MemoryWarningThreshold   float64       `toml:"memory_warning_threshold" json:"memory_warning_threshold"`     // Warning threshold (0.0-1.0)
-	MemoryCriticalThreshold  float64       `toml:"memory_critical_threshold" json:"memory_critical_threshold"`   // Critical threshold (0.0-1.0)
-	GCThreshold              float64       `toml:"gc_threshold" json:"gc_threshold"`                             // Force GC threshold (0.0-1.0)
-	MonitoringInterval       time.Duration `toml:"monitoring_interval" json:"monitoring_interval"`               // Memory monitoring interval
-	PerConnectionMemoryLimit int64         `toml:"per_connection_memory_limit" json:"per_connection_memory_limit"` // Per-connection memory limit
-	MaxGoroutines            int           `toml:"max_goroutines" json:"max_goroutines"`                         // Maximum goroutines
-	GoroutineLeakDetection   bool          `toml:"goroutine_leak_detection" json:"goroutine_leak_detection"`     // Enable goroutine leak detection
-	MemoryExhaustionProtection bool        `toml:"memory_exhaustion_protection" json:"memory_exhaustion_protection"` // Enable memory exhaustion protection
+	MaxMemoryUsage             int64         `toml:"max_memory_usage" json:"max_memory_usage"`                         // Maximum memory usage in bytes
+	MemoryWarningThreshold     float64       `toml:"memory_warning_threshold" json:"memory_warning_threshold"`         // Warning threshold (0.0-1.0)
+	MemoryCriticalThreshold    float64       `toml:"memory_critical_threshold" json:"memory_critical_threshold"`       // Critical threshold (0.0-1.0)
+	GCThreshold                float64       `toml:"gc_threshold" json:"gc_threshold"`                                 // Force GC threshold (0.0-1.0)
+	MonitoringInterval         time.Duration `toml:"monitoring_interval" json:"monitoring_interval"`                   // Memory monitoring interval
+	PerConnectionMemoryLimit   int64         `toml:"per_connection_memory_limit" json:"per_connection_memory_limit"`   // Per-connection memory limit
+	MaxGoroutines              int           `toml:"max_goroutines" json:"max_goroutines"`                             // Maximum goroutines
+	GoroutineLeakDetection     bool          `toml:"goroutine_leak_detection" json:"goroutine_leak_detection"`         // Enable goroutine leak detection
+	MemoryExhaustionProtection bool          `toml:"memory_exhaustion_protection" json:"memory_exhaustion_protection"` // Enable memory exhaustion protection
 }
 
 // DefaultMemoryConfig returns sensible default memory configuration
 func DefaultMemoryConfig() *MemoryConfig {
 	return &MemoryConfig{
-		MaxMemoryUsage:            1024 * 1024 * 1024, // 1GB default
-		MemoryWarningThreshold:    0.75,               // 75% warning
-		MemoryCriticalThreshold:   0.90,               // 90% critical
-		GCThreshold:               0.80,               // 80% force GC
-		MonitoringInterval:        5 * time.Second,    // Monitor every 5 seconds
-		PerConnectionMemoryLimit:  10 * 1024 * 1024,   // 10MB per connection
-		MaxGoroutines:             2000,               // 2000 goroutines max
-		GoroutineLeakDetection:    true,               // Enable leak detection
-		MemoryExhaustionProtection: true,              // Enable exhaustion protection
+		MaxMemoryUsage:             1024 * 1024 * 1024, // 1GB default
+		MemoryWarningThreshold:     0.75,               // 75% warning
+		MemoryCriticalThreshold:    0.90,               // 90% critical
+		GCThreshold:                0.80,               // 80% force GC
+		MonitoringInterval:         5 * time.Second,    // Monitor every 5 seconds
+		PerConnectionMemoryLimit:   10 * 1024 * 1024,   // 10MB per connection
+		MaxGoroutines:              2000,               // 2000 goroutines max
+		GoroutineLeakDetection:     true,               // Enable leak detection
+		MemoryExhaustionProtection: true,               // Enable exhaustion protection
 	}
 }
 
 // MemoryStats tracks memory usage statistics
 type MemoryStats struct {
-	CurrentMemoryUsage    int64   `json:"current_memory_usage"`
-	PeakMemoryUsage       int64   `json:"peak_memory_usage"`
-	MemoryUtilization     float64 `json:"memory_utilization"`
-	GoroutineCount        int     `json:"goroutine_count"`
-	PeakGoroutineCount    int     `json:"peak_goroutine_count"`
-	GCCollections         int64   `json:"gc_collections"`
-	ForcedGCCollections   int64   `json:"forced_gc_collections"`
-	MemoryWarnings        int64   `json:"memory_warnings"`
-	MemoryCriticalAlerts  int64   `json:"memory_critical_alerts"`
-	ConnectionMemoryUsage int64   `json:"connection_memory_usage"`
+	CurrentMemoryUsage    int64     `json:"current_memory_usage"`
+	PeakMemoryUsage       int64     `json:"peak_memory_usage"`
+	MemoryUtilization     float64   `json:"memory_utilization"`
+	GoroutineCount        int       `json:"goroutine_count"`
+	PeakGoroutineCount    int       `json:"peak_goroutine_count"`
+	GCCollections         int64     `json:"gc_collections"`
+	ForcedGCCollections   int64     `json:"forced_gc_collections"`
+	MemoryWarnings        int64     `json:"memory_warnings"`
+	MemoryCriticalAlerts  int64     `json:"memory_critical_alerts"`
+	ConnectionMemoryUsage int64     `json:"connection_memory_usage"`
 	LastGC                time.Time `json:"last_gc"`
 	LastUpdate            time.Time `json:"last_update"`
 }
 
 // MemoryCircuitBreaker implements circuit breaker pattern for memory exhaustion protection
 type MemoryCircuitBreaker struct {
-	state           MemoryCircuitBreakerState
-	threshold       float64
-	timeout         time.Duration
-	lastTriggered   time.Time
-	triggerCount    int64
-	maxTriggers     int64
-	mu              sync.RWMutex
-	logger          *slog.Logger
+	state         MemoryCircuitBreakerState
+	threshold     float64
+	timeout       time.Duration
+	lastTriggered time.Time
+	triggerCount  int64
+	maxTriggers   int64
+	mu            sync.RWMutex
+	logger        *slog.Logger
 }
 
 // MemoryCircuitBreakerState represents the state of the memory circuit breaker
@@ -101,11 +101,11 @@ func NewMemoryManager(config *MemoryConfig, logger *slog.Logger) *MemoryManager 
 
 	// Initialize circuit breaker
 	mm.circuitBreaker = &MemoryCircuitBreaker{
-		state:      MemoryCircuitBreakerClosed,
-		threshold:  config.MemoryCriticalThreshold,
-		timeout:    30 * time.Second,
+		state:       MemoryCircuitBreakerClosed,
+		threshold:   config.MemoryCriticalThreshold,
+		timeout:     30 * time.Second,
 		maxTriggers: 5,
-		logger:     mm.logger,
+		logger:      mm.logger,
 	}
 
 	// Start monitoring if enabled
@@ -128,36 +128,39 @@ func NewMemoryManager(config *MemoryConfig, logger *slog.Logger) *MemoryManager 
 
 // CheckMemoryLimit checks if current memory usage is within limits
 func (mm *MemoryManager) CheckMemoryLimit() error {
-	mm.mu.RLock()
-	defer mm.mu.RUnlock()
-
-	// Check circuit breaker first
+	// Check circuit breaker first (without holding the main lock to avoid deadlock)
+	fmt.Printf("DEBUG: Checking circuit breaker state\n")
 	if !mm.circuitBreaker.AllowRequest() {
+		fmt.Printf("DEBUG: Circuit breaker is OPEN - rejecting connection\n")
 		return fmt.Errorf("memory circuit breaker is open - memory exhaustion protection active")
 	}
+	fmt.Printf("DEBUG: Circuit breaker is CLOSED - allowing connection\n")
 
-	// Get current memory stats
+	// Get current memory stats (this doesn't need the main lock)
 	stats := mm.getCurrentMemoryStats()
+	fmt.Printf("DEBUG: Memory stats - utilization: %.2f%%, current: %d, max: %d, critical_threshold: %.2f%%\n",
+		stats.MemoryUtilization*100, stats.CurrentMemoryUsage, mm.config.MaxMemoryUsage, mm.config.MemoryCriticalThreshold*100)
 
 	// Check if we're approaching memory limits
 	if stats.MemoryUtilization >= mm.config.MemoryCriticalThreshold {
+		// Record trigger (without holding the main lock to avoid deadlock)
 		mm.circuitBreaker.RecordTrigger()
 		atomic.AddInt64(&mm.stats.MemoryCriticalAlerts, 1)
-		
+
 		mm.logger.Error("Memory critical threshold exceeded",
 			"utilization", stats.MemoryUtilization,
 			"current_usage", stats.CurrentMemoryUsage,
 			"max_usage", mm.config.MaxMemoryUsage,
 			"threshold", mm.config.MemoryCriticalThreshold,
 		)
-		
+
 		return fmt.Errorf("memory critical threshold exceeded: %.2f%% utilization", stats.MemoryUtilization*100)
 	}
 
 	// Check warning threshold
 	if stats.MemoryUtilization >= mm.config.MemoryWarningThreshold {
 		atomic.AddInt64(&mm.stats.MemoryWarnings, 1)
-		
+
 		mm.logger.Warn("Memory warning threshold exceeded",
 			"utilization", stats.MemoryUtilization,
 			"current_usage", stats.CurrentMemoryUsage,
@@ -171,44 +174,58 @@ func (mm *MemoryManager) CheckMemoryLimit() error {
 
 // CheckConnectionMemoryLimit checks if a connection can consume additional memory
 func (mm *MemoryManager) CheckConnectionMemoryLimit(connectionID string, additionalMemory int64) error {
-	mm.mu.RLock()
-	defer mm.mu.RUnlock()
+	fmt.Printf("DEBUG: CheckConnectionMemoryLimit called for connection %s, memory %d\n", connectionID, additionalMemory)
 
-	// Check overall memory limit first
+	// Check overall memory limit first (this method doesn't hold locks)
+	fmt.Printf("DEBUG: Calling CheckMemoryLimit from CheckConnectionMemoryLimit\n")
 	if err := mm.CheckMemoryLimit(); err != nil {
+		fmt.Printf("DEBUG: CheckMemoryLimit failed: %v\n", err)
 		return err
 	}
+	fmt.Printf("DEBUG: CheckMemoryLimit passed\n")
 
-	// Check per-connection memory limit
-	if additionalMemory > mm.config.PerConnectionMemoryLimit {
+	// Check per-connection memory limit (use cached config to avoid lock contention)
+	perConnectionLimit := mm.config.PerConnectionMemoryLimit
+	fmt.Printf("DEBUG: Per-connection memory limit: %d, requested: %d\n", perConnectionLimit, additionalMemory)
+
+	if additionalMemory > perConnectionLimit {
+		fmt.Printf("DEBUG: Connection memory limit exceeded\n")
 		mm.logger.Warn("Connection memory limit exceeded",
 			"connection_id", connectionID,
 			"requested_memory", additionalMemory,
-			"per_connection_limit", mm.config.PerConnectionMemoryLimit,
+			"per_connection_limit", perConnectionLimit,
 		)
-		return fmt.Errorf("connection memory limit exceeded: %d bytes requested, %d bytes limit", 
-			additionalMemory, mm.config.PerConnectionMemoryLimit)
+		return fmt.Errorf("connection memory limit exceeded: %d bytes requested, %d bytes limit",
+			additionalMemory, perConnectionLimit)
 	}
 
+	fmt.Printf("DEBUG: CheckConnectionMemoryLimit passed\n")
 	return nil
 }
 
 // CheckGoroutineLimit checks if we can create additional goroutines
 func (mm *MemoryManager) CheckGoroutineLimit() error {
-	mm.mu.RLock()
-	defer mm.mu.RUnlock()
+	fmt.Printf("DEBUG: CheckGoroutineLimit called\n")
 
-	// Get current goroutine count
+	// Get current goroutine count (this is thread-safe)
 	numGoroutines := runtime.NumGoroutine()
+	fmt.Printf("DEBUG: Current goroutine count: %d\n", numGoroutines)
 
-	if numGoroutines >= mm.config.MaxGoroutines {
+	// Use cached config value to avoid lock contention
+	// The config is set during initialization and rarely changes
+	maxGoroutines := mm.config.MaxGoroutines
+	fmt.Printf("DEBUG: Max goroutines config: %d\n", maxGoroutines)
+
+	if numGoroutines >= maxGoroutines {
+		fmt.Printf("DEBUG: Goroutine limit exceeded: %d >= %d\n", numGoroutines, maxGoroutines)
 		mm.logger.Warn("Goroutine limit exceeded",
 			"current_goroutines", numGoroutines,
-			"max_goroutines", mm.config.MaxGoroutines,
+			"max_goroutines", maxGoroutines,
 		)
-		return fmt.Errorf("goroutine limit exceeded: %d current, %d max", numGoroutines, mm.config.MaxGoroutines)
+		return fmt.Errorf("goroutine limit exceeded: %d current, %d max", numGoroutines, maxGoroutines)
 	}
 
+	fmt.Printf("DEBUG: Goroutine limit check passed: %d < %d\n", numGoroutines, maxGoroutines)
 	return nil
 }
 
@@ -218,7 +235,7 @@ func (mm *MemoryManager) ForceGarbageCollection() {
 	defer mm.mu.Unlock()
 
 	stats := mm.getCurrentMemoryStats()
-	
+
 	if stats.MemoryUtilization >= mm.config.GCThreshold {
 		mm.logger.Info("Forcing garbage collection due to high memory usage",
 			"utilization", stats.MemoryUtilization,
@@ -228,13 +245,13 @@ func (mm *MemoryManager) ForceGarbageCollection() {
 		// Force garbage collection
 		runtime.GC()
 		debug.FreeOSMemory()
-		
+
 		atomic.AddInt64(&mm.stats.ForcedGCCollections, 1)
 		mm.stats.LastGC = time.Now()
 
 		// Update stats after GC
 		mm.updateMemoryStats()
-		
+
 		mm.logger.Info("Garbage collection completed",
 			"new_utilization", mm.stats.MemoryUtilization,
 			"new_usage", mm.stats.CurrentMemoryUsage,
@@ -246,10 +263,10 @@ func (mm *MemoryManager) ForceGarbageCollection() {
 func (mm *MemoryManager) GetMemoryStats() *MemoryStats {
 	mm.mu.RLock()
 	defer mm.mu.RUnlock()
-	
+
 	// Update stats before returning
 	mm.updateMemoryStats()
-	
+
 	// Return a copy to prevent race conditions
 	stats := *mm.stats
 	return &stats
@@ -338,7 +355,7 @@ func (mm *MemoryManager) getCurrentMemoryStats() *MemoryStats {
 // checkGoroutineLeaks checks for potential goroutine leaks
 func (mm *MemoryManager) checkGoroutineLeaks() {
 	currentGoroutines := runtime.NumGoroutine()
-	
+
 	// If goroutine count is significantly higher than expected, log a warning
 	expectedGoroutines := mm.config.MaxGoroutines / 2 // Expect to use about half of max
 	if currentGoroutines > expectedGoroutines {
@@ -353,11 +370,11 @@ func (mm *MemoryManager) checkGoroutineLeaks() {
 // Close shuts down the memory manager
 func (mm *MemoryManager) Close() {
 	close(mm.shutdownChan)
-	
+
 	if mm.monitoringTicker != nil {
 		mm.monitoringTicker.Stop()
 	}
-	
+
 	mm.logger.Info("Memory manager shut down")
 }
 

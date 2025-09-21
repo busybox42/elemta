@@ -32,6 +32,7 @@ type Server struct {
 	metricsServer   *http.Server
 	apiServer       *api.Server
 	queueManager    queue.QueueManager // Unified queue system
+	queueProcessor  *queue.Processor   // Queue processor for message delivery
 	tlsManager      TLSHandler
 	logger          *log.Logger
 	resourceManager *ResourceManager // Resource management and rate limiting
@@ -150,6 +151,45 @@ func NewServer(config *Config) (*Server, error) {
 	queueManager := queue.NewManager(config.QueueDir)
 	logger.Printf("Unified queue system initialized")
 
+	// Initialize queue processor if enabled
+	var queueProcessor *queue.Processor
+	if config.QueueProcessorEnabled {
+		logger.Printf("Queue processor enabled, initializing...")
+
+		// Create LMTP delivery handler
+		deliveryHost := "elemta-dovecot"
+		deliveryPort := 2424
+		if config.Delivery != nil {
+			if config.Delivery.Host != "" {
+				deliveryHost = config.Delivery.Host
+			}
+			if config.Delivery.Port != 0 {
+				deliveryPort = config.Delivery.Port
+			}
+		}
+
+		logger.Printf("Creating LMTP delivery handler: %s:%d", deliveryHost, deliveryPort)
+		lmtpHandler := queue.NewLMTPDeliveryHandler(deliveryHost, deliveryPort)
+
+		// Create processor configuration
+		processorConfig := queue.ProcessorConfig{
+			Enabled:       config.QueueProcessorEnabled,
+			Interval:      time.Duration(config.QueueProcessInterval) * time.Second,
+			MaxConcurrent: config.QueueWorkers,
+			MaxRetries:    config.MaxRetries,
+			RetrySchedule: config.RetrySchedule,
+			CleanupAge:    24 * time.Hour,
+		}
+
+		logger.Printf("Creating queue processor with config: enabled=%v, interval=%v, workers=%d",
+			processorConfig.Enabled, processorConfig.Interval, processorConfig.MaxConcurrent)
+
+		queueProcessor = queue.NewProcessor(queueManager, processorConfig, lmtpHandler)
+		logger.Printf("Queue processor initialized successfully")
+	} else {
+		logger.Printf("Queue processor disabled")
+	}
+
 	// Initialize resource manager with limits from config
 	var resourceLimits *ResourceLimits
 	if config.Resources != nil {
@@ -204,6 +244,7 @@ func NewServer(config *Config) (*Server, error) {
 		authenticator:   authenticator,
 		metrics:         metrics,
 		queueManager:    queueManager,
+		queueProcessor:  queueProcessor,
 		logger:          logger,
 		resourceManager: resourceManager,
 		slogger:         slogger,
@@ -277,6 +318,16 @@ func (s *Server) Start() error {
 		s.logger.Printf("Starting unified queue system")
 		// The new queue system doesn't need explicit startup
 		s.logger.Printf("Unified queue system started successfully")
+	}
+
+	// Start queue processor if available
+	if s.queueProcessor != nil {
+		s.logger.Printf("Starting queue processor")
+		if err := s.queueProcessor.Start(); err != nil {
+			s.logger.Printf("Warning: failed to start queue processor: %v", err)
+		} else {
+			s.logger.Printf("Queue processor started successfully")
+		}
 	}
 
 	// Start metrics server if enabled
@@ -371,6 +422,7 @@ func (s *Server) updateQueueMetricsWithRetry() {
 // acceptConnections accepts and handles incoming connections with standardized worker pool
 func (s *Server) acceptConnections() error {
 	s.logger.Printf("Starting connection acceptance loop")
+	fmt.Printf("DEBUG: acceptConnections goroutine started\n")
 
 	for {
 		select {
@@ -398,6 +450,8 @@ func (s *Server) acceptConnections() error {
 			continue
 		}
 
+		fmt.Printf("DEBUG: Connection accepted from %s\n", conn.RemoteAddr())
+
 		// Reset deadline after successful accept
 		if tcpListener, ok := s.listener.(*net.TCPListener); ok {
 			tcpListener.SetDeadline(time.Time{})
@@ -405,11 +459,13 @@ func (s *Server) acceptConnections() error {
 
 		// Check if connection can be accepted based on resource limits
 		clientAddr := conn.RemoteAddr().String()
+		fmt.Printf("DEBUG: Checking if connection can be accepted from %s\n", clientAddr)
 		if !s.resourceManager.CanAcceptConnection(clientAddr) {
 			s.logger.Printf("Connection rejected due to resource limits: %s", clientAddr)
 			conn.Close()
 			continue
 		}
+		fmt.Printf("DEBUG: Connection accepted by resource manager\n")
 
 		// Create connection job for worker pool
 		jobID := uuid.New().String()
@@ -422,6 +478,7 @@ func (s *Server) acceptConnections() error {
 		}
 
 		// Submit job to worker pool with timeout
+		fmt.Printf("DEBUG: Submitting connection job %s to worker pool\n", jobID)
 		if err := s.workerPool.SubmitWithTimeout(connectionJob, 5*time.Second); err != nil {
 			s.slogger.Warn("Failed to submit connection to worker pool, handling directly",
 				"remote_addr", clientAddr,
@@ -455,22 +512,31 @@ func (s *Server) acceptConnections() error {
 
 // handleConnectionWithContext processes a connection with proper context handling
 func (s *Server) handleConnectionWithContext(ctx context.Context, conn interface{}) error {
+	fmt.Printf("DEBUG: handleConnectionWithContext called\n")
 	netConn, ok := conn.(net.Conn)
 	if !ok {
+		fmt.Printf("DEBUG: Invalid connection type\n")
 		return fmt.Errorf("invalid connection type")
 	}
+	fmt.Printf("DEBUG: Connection type is valid, proceeding with session handling\n")
 
 	// Ensure connection is closed when done
-	defer netConn.Close()
+	defer func() {
+		fmt.Printf("DEBUG: Closing connection\n")
+		netConn.Close()
+	}()
 
 	// Handle the session with context
+	fmt.Printf("DEBUG: Calling handleAndCloseSession\n")
 	s.handleAndCloseSession(netConn)
+	fmt.Printf("DEBUG: handleAndCloseSession completed\n")
 	return nil
 }
 
 // handleAndCloseSession processes a connection and ensures it's properly closed with guaranteed cleanup
 func (s *Server) handleAndCloseSession(conn net.Conn) {
 	clientIP := conn.RemoteAddr().String()
+	fmt.Printf("DEBUG: handleAndCloseSession called for %s\n", clientIP)
 	var sessionID string
 	var cleanupDone bool
 
@@ -512,16 +578,24 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 	}()
 
 	// Register connection with resource manager
+	fmt.Printf("DEBUG: Registering connection with resource manager\n")
 	sessionID = s.resourceManager.AcceptConnection(conn)
+	fmt.Printf("DEBUG: Connection registered with session ID: %s\n", sessionID)
 	s.logger.Printf("new connection: %s (session: %s)", clientIP, sessionID)
 
 	// Set connection timeout
+	fmt.Printf("DEBUG: Setting connection deadline\n")
 	if err := conn.SetDeadline(time.Now().Add(s.resourceManager.GetConnectionTimeout())); err != nil {
+		fmt.Printf("DEBUG: Failed to set connection deadline: %v\n", err)
 		s.logger.Printf("failed to set connection deadline: %v, client: %s, session: %s", err, clientIP, sessionID)
+	} else {
+		fmt.Printf("DEBUG: Connection deadline set successfully\n")
 	}
 
 	// Create a new session with the current configuration and authentication
+	fmt.Printf("DEBUG: Creating new SMTP session for %s\n", clientIP)
 	session := NewSession(conn, s.config, s.authenticator)
+	fmt.Printf("DEBUG: SMTP session created successfully\n")
 
 	// Set the TLS manager from the server
 	session.SetTLSManager(s.tlsManager)
@@ -541,7 +615,9 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 		// Use context for timeout enforcement
 		done := make(chan error, 1)
 		go func() {
+			fmt.Printf("DEBUG: Starting session.Handle() for %s\n", clientIP)
 			done <- session.Handle()
+			fmt.Printf("DEBUG: session.Handle() completed for %s\n", clientIP)
 		}()
 
 		select {
@@ -667,6 +743,19 @@ func (s *Server) Close() error {
 			}
 		}
 
+		// Stop queue processor
+		if s.queueProcessor != nil {
+			s.logger.Printf("Stopping queue processor")
+			if err := s.queueProcessor.Stop(); err != nil {
+				s.logger.Printf("Error stopping queue processor: %v", err)
+				if shutdownErr == nil {
+					shutdownErr = err
+				}
+			} else {
+				s.logger.Printf("Queue processor stopped successfully")
+			}
+		}
+
 		// Stop queue manager
 		if s.queueManager != nil {
 			s.logger.Printf("Stopping queue manager")
@@ -687,6 +776,11 @@ func (s *Server) Close() error {
 	})
 
 	return shutdownErr
+}
+
+// Wait waits for all server goroutines to complete
+func (s *Server) Wait() error {
+	return s.errGroup.Wait()
 }
 
 // ... existing code ...

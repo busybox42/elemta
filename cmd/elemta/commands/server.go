@@ -201,8 +201,22 @@ func startServer() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Wait for shutdown signal
-	<-sigChan
+	// Wait for shutdown signal or server error
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- server.Wait()
+	}()
+	
+	select {
+	case <-sigChan:
+		fmt.Println("\nShutdown signal received, stopping server...")
+	case err := <-errChan:
+		if err != nil {
+			fmt.Printf("Server error occurred: %v\n", err)
+		} else {
+			fmt.Println("Server stopped normally")
+		}
+	}
 
 	// Perform graceful shutdown
 	fmt.Println("Shutting down server...")

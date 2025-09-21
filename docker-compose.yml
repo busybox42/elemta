@@ -44,7 +44,6 @@ services:
       retries: 3
     networks:
       - elemta_network
-      - monitoring_network
     depends_on:
       - elemta-clamav
       - elemta-rspamd
@@ -347,68 +346,12 @@ services:
       retries: 3
       start_period: 30s
 
-  # ELK Stack for Log Analysis
-  elemta-elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
-    container_name: elemta-elasticsearch
-    environment:
-      - node.name=elemta-elasticsearch
-      - cluster.name=elemta-cluster
-      - discovery.type=single-node
-      - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-      - xpack.security.enabled=false
-      - xpack.security.enrollment.enabled=false
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - elemta_elasticsearch_data:/usr/share/elasticsearch/data
-    ports:
-      - "9200:9200"
-    networks:
-      - elemta_network
-      - monitoring_network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
-  elemta-kibana:
-    image: docker.elastic.co/kibana/kibana:8.11.0
-    container_name: elemta-kibana
-    ports:
-      - "5601:5601"
-    environment:
-      ELASTICSEARCH_URL: http://elemta-elasticsearch:9200
-      ELASTICSEARCH_HOSTS: '["http://elemta-elasticsearch:9200"]'
-      SERVER_NAME: elemta-kibana
-      SERVER_HOST: "0.0.0.0"
-      XPACK_SECURITY_ENABLED: "false"
-      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: "elemta-kibana-encryption-key-32-chars"
-    volumes:
-      - elemta_kibana_data:/usr/share/kibana/data
-    networks:
-      - elemta_network
-      - monitoring_network
-    depends_on:
-      elemta-elasticsearch:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
 
 
   # Monitoring Stack
 
 networks:
   elemta_network:
-    driver: bridge
-  monitoring_network:
     driver: bridge
 
 volumes:
@@ -435,8 +378,4 @@ volumes:
   ldap_config:
     driver: local
   roundcube_data:
-    driver: local
-  elemta_elasticsearch_data:
-    driver: local
-  elemta_kibana_data:
     driver: local
