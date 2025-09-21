@@ -50,6 +50,8 @@ mode = "lmtp"
 host = "elemta-dovecot"
 port = 2424
 timeout = 30
+max_retries = 3
+retry_delay = 60
 
 [metrics]
 enabled = true
