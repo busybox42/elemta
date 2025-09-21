@@ -120,16 +120,10 @@ services:
       - elemta_network
     volumes:
       - clamav_data:/var/lib/clamav
-    # Security configuration for the container
-    security_opt:
-      - no-new-privileges:true
-    read_only: false  # ClamAV needs to write to /var/lib/clamav
-    tmpfs:
-      - /tmp
-      - /var/tmp
+    # ClamAV needs some capabilities for file operations
     cap_drop:
-      - ALL
-    cap_add: []
+      - NET_RAW
+      - NET_BIND_SERVICE
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "3310"]
       interval: 45s
@@ -154,16 +148,10 @@ services:
       # - ./docker/rspamd/override.d/actions.conf:/etc/rspamd/override.d/actions.conf
     ports:
       - "11334:11334"  # Web interface
-    # Security configuration for the container
-    security_opt:
-      - no-new-privileges:true
-    read_only: false  # Rspamd needs to write to /var/lib/rspamd
-    tmpfs:
-      - /tmp
-      - /var/tmp
+    # Rspamd needs some capabilities for network operations
     cap_drop:
-      - ALL
-    cap_add: []
+      - NET_RAW
+      - NET_BIND_SERVICE
     healthcheck:
       # Use pidof to check if rspamd is running
       test: ["CMD-SHELL", "pidof rspamd || exit 1"]
