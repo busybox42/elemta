@@ -21,7 +21,7 @@ var (
 Elemta is a high-performance, carrier-grade MTA with modular architecture and plugin system.`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			// Skip config loading for some commands
-			if cmd.Name() == "help" || cmd.Name() == "version" || cmd.Name() == "completion" {
+			if cmd.Name() == "help" || cmd.Name() == "version" || cmd.Name() == "completion" || cmd.Name() == "secure" {
 				return
 			}
 

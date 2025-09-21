@@ -135,12 +135,18 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Get default configuration
 	cfg := DefaultConfig()
 	securityValidator := NewSecurityValidator()
+	fileSecurity := NewConfigFileSecurity()
 
 	// Try to find the config file
 	configFile, err := FindConfigFile(configPath)
 	if err != nil {
 		fmt.Println("No config file found, using defaults")
 		return cfg, nil
+	}
+
+	// Perform comprehensive config file security validation
+	if err := fileSecurity.ValidateConfigFileSecurity(configFile); err != nil {
+		return nil, fmt.Errorf("config file security validation failed: %w", err)
 	}
 
 	// Validate config file size before reading
@@ -310,15 +316,18 @@ debug = %t
 		c.QueueProcessor.Debug,
 	)
 
-	// Make sure directory exists
-	configDir := filepath.Dir(configPath)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
+	// Use secure file creation
+	fileSecurity := NewConfigFileSecurity()
 
-	// Write to file
-	if err := os.WriteFile(configPath, []byte(tomlContent), 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+	// Check if config contains sensitive data (it might, depending on the content)
+	containsSensitiveData := strings.Contains(strings.ToLower(tomlContent), "password") ||
+		strings.Contains(strings.ToLower(tomlContent), "secret") ||
+		strings.Contains(strings.ToLower(tomlContent), "key") ||
+		strings.Contains(strings.ToLower(tomlContent), "token")
+
+	// Create secure config file
+	if err := fileSecurity.CreateSecureConfigFile(configPath, []byte(tomlContent), containsSensitiveData); err != nil {
+		return fmt.Errorf("failed to create secure config file: %w", err)
 	}
 
 	return nil
@@ -964,4 +973,42 @@ func CreateDefaultConfig(configPath string) error {
 
 	// Save to file
 	return cfg.SaveConfig(configPath)
+}
+
+// SecureAllConfigFiles secures all configuration files in a directory
+func SecureAllConfigFiles(configDir string) error {
+	fileSecurity := NewConfigFileSecurity()
+	
+	// Validate all config files (this will show warnings but not fail)
+	if err := fileSecurity.ValidateAllConfigFiles(configDir); err != nil {
+		// Don't fail on validation errors, just log them
+		fmt.Printf("WARNING: Config file security validation issues: %v\n", err)
+	}
+
+	// Read directory contents to secure individual files
+	entries, err := os.ReadDir(configDir)
+	if err != nil {
+		return fmt.Errorf("cannot read config directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue // Skip subdirectories
+		}
+
+		filePath := filepath.Join(configDir, entry.Name())
+
+		// Skip non-config files
+		ext := strings.ToLower(filepath.Ext(filePath))
+		if ext != ".toml" && ext != ".conf" && ext != ".txt" && ext != ".db" && ext != ".key" && ext != ".crt" {
+			continue
+		}
+
+		// Secure file permissions
+		if err := fileSecurity.SecureFilePermissions(filePath); err != nil {
+			fmt.Printf("WARNING: Failed to secure permissions for %s: %v\n", filePath, err)
+		}
+	}
+
+	return nil
 }

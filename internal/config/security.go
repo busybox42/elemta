@@ -37,6 +37,7 @@ func DefaultSecurityConfig() *SecurityConfig {
 			"/var/",
 			"/tmp/",
 			"/opt/",
+			"/etc/",
 			"./",
 			"../",
 		},
@@ -73,12 +74,12 @@ func (sv *SecurityValidator) ValidatePath(path, fieldName string) error {
 	}
 
 	// Check for path traversal attacks
-	if err := sv.checkPathTraversal(path); err != nil {
+	if err := sv.CheckPathTraversal(path); err != nil {
 		return fmt.Errorf("path traversal detected in %s: %w", fieldName, err)
 	}
 
 	// Check for blocked patterns
-	if err := sv.checkBlockedPatterns(path); err != nil {
+	if err := sv.CheckBlockedPatterns(path); err != nil {
 		return fmt.Errorf("blocked path pattern in %s: %w", fieldName, err)
 	}
 
@@ -88,7 +89,7 @@ func (sv *SecurityValidator) ValidatePath(path, fieldName string) error {
 	}
 
 	// Check for symlink attacks
-	if err := sv.checkSymlinkAttack(path); err != nil {
+	if err := sv.CheckSymlinkAttack(path); err != nil {
 		return fmt.Errorf("symlink attack detected in %s: %w", fieldName, err)
 	}
 
@@ -188,8 +189,8 @@ func (sv *SecurityValidator) ValidateFileSize(filePath, fieldName string) error 
 	return nil
 }
 
-// checkPathTraversal checks for directory traversal attacks
-func (sv *SecurityValidator) checkPathTraversal(path string) error {
+// CheckPathTraversal checks for directory traversal attacks
+func (sv *SecurityValidator) CheckPathTraversal(path string) error {
 	// Normalize the path
 	cleanPath := filepath.Clean(path)
 
@@ -206,8 +207,8 @@ func (sv *SecurityValidator) checkPathTraversal(path string) error {
 	return nil
 }
 
-// checkBlockedPatterns checks for blocked path patterns
-func (sv *SecurityValidator) checkBlockedPatterns(path string) error {
+// CheckBlockedPatterns checks for blocked path patterns
+func (sv *SecurityValidator) CheckBlockedPatterns(path string) error {
 	lowerPath := strings.ToLower(path)
 
 	for _, pattern := range sv.config.BlockedPathPatterns {
@@ -240,8 +241,8 @@ func (sv *SecurityValidator) checkAllowedPrefixes(path string) error {
 	return fmt.Errorf("path not in allowed prefixes: %s", path)
 }
 
-// checkSymlinkAttack checks for symlink attacks
-func (sv *SecurityValidator) checkSymlinkAttack(path string) error {
+// CheckSymlinkAttack checks for symlink attacks
+func (sv *SecurityValidator) CheckSymlinkAttack(path string) error {
 	// Check if path exists and is a symlink
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -256,16 +257,16 @@ func (sv *SecurityValidator) checkSymlinkAttack(path string) error {
 		}
 
 		// Validate the target path for security issues
-		if err := sv.checkPathTraversal(target); err != nil {
+		if err := sv.CheckPathTraversal(target); err != nil {
 			return fmt.Errorf("symlink target contains path traversal: %w", err)
 		}
 
-		if err := sv.checkBlockedPatterns(target); err != nil {
+		if err := sv.CheckBlockedPatterns(target); err != nil {
 			return fmt.Errorf("symlink target contains blocked pattern: %w", err)
 		}
 
 		// Recursively check the target for more symlinks
-		return sv.checkSymlinkAttack(target)
+		return sv.CheckSymlinkAttack(target)
 	}
 
 	return nil
