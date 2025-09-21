@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   elemta:
-    image: elemta:latest
+    image: elemta:config-security
     build:
       context: .
       dockerfile: Dockerfile
@@ -75,7 +75,7 @@ services:
   #     start_period: 15s
 
   elemta-web:
-    image: elemta:latest
+    image: elemta:config-security
     container_name: elemta-web
     restart: unless-stopped
     ports:
