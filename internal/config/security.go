@@ -13,12 +13,12 @@ import (
 
 // SecurityConfig holds security validation settings
 type SecurityConfig struct {
-	MaxFileSize        int64  // Maximum file size in bytes
-	MaxWorkers         int    // Maximum number of workers
-	MaxConnections     int    // Maximum connections
-	MaxQueueSize       int64  // Maximum queue size
-	MaxLogFileSize     int64  // Maximum log file size
-	MaxConfigFileSize  int64  // Maximum config file size
+	MaxFileSize         int64    // Maximum file size in bytes
+	MaxWorkers          int      // Maximum number of workers
+	MaxConnections      int      // Maximum connections
+	MaxQueueSize        int64    // Maximum queue size
+	MaxLogFileSize      int64    // Maximum log file size
+	MaxConfigFileSize   int64    // Maximum config file size
 	AllowedPathPrefixes []string // Allowed path prefixes for security
 	BlockedPathPatterns []string // Blocked path patterns
 }
@@ -26,12 +26,12 @@ type SecurityConfig struct {
 // DefaultSecurityConfig returns secure default security settings
 func DefaultSecurityConfig() *SecurityConfig {
 	return &SecurityConfig{
-		MaxFileSize:        100 * 1024 * 1024, // 100MB
-		MaxWorkers:         1000,
-		MaxConnections:     10000,
-		MaxQueueSize:       10 * 1024 * 1024 * 1024, // 10GB
-		MaxLogFileSize:     100 * 1024 * 1024,       // 100MB
-		MaxConfigFileSize:  1024 * 1024,             // 1MB
+		MaxFileSize:       100 * 1024 * 1024, // 100MB
+		MaxWorkers:        1000,
+		MaxConnections:    10000,
+		MaxQueueSize:      10 * 1024 * 1024 * 1024, // 10GB
+		MaxLogFileSize:    100 * 1024 * 1024,       // 100MB
+		MaxConfigFileSize: 1024 * 1024,             // 1MB
 		AllowedPathPrefixes: []string{
 			"/app/",
 			"/var/",
@@ -192,7 +192,7 @@ func (sv *SecurityValidator) ValidateFileSize(filePath, fieldName string) error 
 func (sv *SecurityValidator) checkPathTraversal(path string) error {
 	// Normalize the path
 	cleanPath := filepath.Clean(path)
-	
+
 	// Check for parent directory references
 	if strings.Contains(cleanPath, "..") {
 		return fmt.Errorf("parent directory reference detected: %s", path)
@@ -209,7 +209,7 @@ func (sv *SecurityValidator) checkPathTraversal(path string) error {
 // checkBlockedPatterns checks for blocked path patterns
 func (sv *SecurityValidator) checkBlockedPatterns(path string) error {
 	lowerPath := strings.ToLower(path)
-	
+
 	for _, pattern := range sv.config.BlockedPathPatterns {
 		if strings.Contains(lowerPath, strings.ToLower(pattern)) {
 			return fmt.Errorf("blocked pattern detected: %s", pattern)
@@ -381,15 +381,15 @@ func (sv *SecurityValidator) ValidateConfigFileSize(filePath string) error {
 func (sv *SecurityValidator) SanitizePath(path string) string {
 	// Remove any null bytes
 	path = strings.ReplaceAll(path, "\x00", "")
-	
+
 	// Normalize path separators
 	path = filepath.Clean(path)
-	
+
 	// Remove any trailing slashes (except root)
 	if len(path) > 1 && strings.HasSuffix(path, "/") {
 		path = path[:len(path)-1]
 	}
-	
+
 	return path
 }
 
@@ -397,7 +397,7 @@ func (sv *SecurityValidator) SanitizePath(path string) string {
 func (sv *SecurityValidator) SanitizeString(str string) string {
 	// Remove null bytes
 	str = strings.ReplaceAll(str, "\x00", "")
-	
+
 	// Remove control characters except newlines and tabs
 	var result strings.Builder
 	for _, r := range str {
@@ -405,6 +405,6 @@ func (sv *SecurityValidator) SanitizeString(str string) string {
 			result.WriteRune(r)
 		}
 	}
-	
+
 	return result.String()
 }

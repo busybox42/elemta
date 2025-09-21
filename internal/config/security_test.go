@@ -519,7 +519,7 @@ func TestSecurityValidator_SymlinkAttack(t *testing.T) {
 
 	// Create a temporary directory structure
 	tempDir := t.TempDir()
-	
+
 	// Create a target file
 	targetFile := filepath.Join(tempDir, "target.txt")
 	err := os.WriteFile(targetFile, []byte("sensitive data"), 0644)
@@ -541,7 +541,7 @@ func TestSecurityValidator_SymlinkAttack(t *testing.T) {
 	if err != nil {
 		t.Logf("Symlink validation error (expected for some cases): %v", err)
 	}
-	
+
 	// Test with a symlink pointing to a blocked path
 	blockedSymlink := filepath.Join(tempDir, "blocked_symlink")
 	err = os.Symlink("/etc/passwd", blockedSymlink)
@@ -554,7 +554,7 @@ func TestSecurityValidator_SymlinkAttack(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected error for symlink to blocked path, but got none")
 	}
-	
+
 	// Test with a symlink pointing to a path traversal
 	traversalSymlink := filepath.Join(tempDir, "traversal_symlink")
 	err = os.Symlink("../etc/passwd", traversalSymlink)

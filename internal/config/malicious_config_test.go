@@ -156,7 +156,7 @@ format = "text"`
 
 			// Try to load the configuration
 			_, err = LoadConfig(configFile)
-			
+
 			if tt.expectError && err == nil {
 				t.Errorf("Expected error for %s, but got none", tt.description)
 			}
@@ -359,7 +359,7 @@ listen = "localhost:65536"`,
 			}
 
 			_, err = LoadConfig(configFile)
-			
+
 			if tt.expectError && err == nil {
 				t.Errorf("Expected error for %s, but got none", tt.description)
 			}

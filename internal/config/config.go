@@ -38,7 +38,7 @@ type Config struct {
 
 	// Logging configuration
 	Logging struct {
-		Type    string                 `toml:"type"`    // "console", "file", "elastic"
+		Type    string                 `toml:"type"` // "console", "file", "elastic"
 		Level   string                 `toml:"level"`
 		Format  string                 `toml:"format"`
 		File    string                 `toml:"file"`
@@ -393,7 +393,7 @@ func (c *Config) validateServer(result *ValidationResult, sv *SecurityValidator)
 	} else {
 		// Sanitize hostname
 		c.Server.Hostname = sv.SanitizeString(c.Server.Hostname)
-		
+
 		// Validate hostname security
 		if err := sv.ValidateHostname(c.Server.Hostname, "server.hostname"); err != nil {
 			result.AddError("server.hostname", c.Server.Hostname, err.Error())
@@ -406,7 +406,7 @@ func (c *Config) validateServer(result *ValidationResult, sv *SecurityValidator)
 	} else {
 		// Sanitize listen address
 		c.Server.Listen = sv.SanitizeString(c.Server.Listen)
-		
+
 		// Validate network address security
 		if err := sv.ValidateNetworkAddress(c.Server.Listen, "server.listen"); err != nil {
 			result.AddError("server.listen", c.Server.Listen, err.Error())
@@ -417,7 +417,7 @@ func (c *Config) validateServer(result *ValidationResult, sv *SecurityValidator)
 	if c.Server.ListenSubmission != "" {
 		// Sanitize listen submission address
 		c.Server.ListenSubmission = sv.SanitizeString(c.Server.ListenSubmission)
-		
+
 		// Validate network address security
 		if err := sv.ValidateNetworkAddress(c.Server.ListenSubmission, "server.listen_submission"); err != nil {
 			result.AddError("server.listen_submission", c.Server.ListenSubmission, err.Error())
@@ -433,7 +433,7 @@ func (c *Config) validateServer(result *ValidationResult, sv *SecurityValidator)
 	for i, domain := range c.Server.LocalDomains {
 		// Sanitize domain
 		c.Server.LocalDomains[i] = sv.SanitizeString(domain)
-		
+
 		// Validate hostname security
 		if err := sv.ValidateHostname(domain, fmt.Sprintf("server.local_domains[%d]", i)); err != nil {
 			result.AddError(fmt.Sprintf("server.local_domains[%d]", i), domain, err.Error())
@@ -447,7 +447,7 @@ func (c *Config) validateServer(result *ValidationResult, sv *SecurityValidator)
 		} else {
 			// Sanitize cert file path
 			c.Server.CertFile = sv.SanitizePath(c.Server.CertFile)
-			
+
 			// Validate path security
 			if err := sv.ValidatePath(c.Server.CertFile, "server.cert_file"); err != nil {
 				result.AddError("server.cert_file", c.Server.CertFile, err.Error())
@@ -466,7 +466,7 @@ func (c *Config) validateServer(result *ValidationResult, sv *SecurityValidator)
 		} else {
 			// Sanitize key file path
 			c.Server.KeyFile = sv.SanitizePath(c.Server.KeyFile)
-			
+
 			// Validate path security
 			if err := sv.ValidatePath(c.Server.KeyFile, "server.key_file"); err != nil {
 				result.AddError("server.key_file", c.Server.KeyFile, err.Error())
@@ -492,7 +492,7 @@ func (c *Config) validateTLS(result *ValidationResult, sv *SecurityValidator) {
 	if c.TLS.ListenAddr != "" {
 		// Sanitize TLS listen address
 		c.TLS.ListenAddr = sv.SanitizeString(c.TLS.ListenAddr)
-		
+
 		// Validate network address security
 		if err := sv.ValidateNetworkAddress(c.TLS.ListenAddr, "tls.listen_addr"); err != nil {
 			result.AddError("tls.listen_addr", c.TLS.ListenAddr, err.Error())
@@ -503,7 +503,7 @@ func (c *Config) validateTLS(result *ValidationResult, sv *SecurityValidator) {
 	if c.TLS.CertFile != "" {
 		// Sanitize cert file path
 		c.TLS.CertFile = sv.SanitizePath(c.TLS.CertFile)
-		
+
 		// Validate path security
 		if err := sv.ValidatePath(c.TLS.CertFile, "tls.cert_file"); err != nil {
 			result.AddError("tls.cert_file", c.TLS.CertFile, err.Error())
@@ -520,7 +520,7 @@ func (c *Config) validateTLS(result *ValidationResult, sv *SecurityValidator) {
 	if c.TLS.KeyFile != "" {
 		// Sanitize key file path
 		c.TLS.KeyFile = sv.SanitizePath(c.TLS.KeyFile)
-		
+
 		// Validate path security
 		if err := sv.ValidatePath(c.TLS.KeyFile, "tls.key_file"); err != nil {
 			result.AddError("tls.key_file", c.TLS.KeyFile, err.Error())
@@ -541,7 +541,7 @@ func (c *Config) validateTLS(result *ValidationResult, sv *SecurityValidator) {
 		} else {
 			// Sanitize email
 			c.TLS.LetsEncrypt.Email = sv.SanitizeString(c.TLS.LetsEncrypt.Email)
-			
+
 			// Validate email format
 			if !isValidEmail(c.TLS.LetsEncrypt.Email) {
 				result.AddError("tls.letsencrypt.email", c.TLS.LetsEncrypt.Email, "invalid email format")
@@ -553,7 +553,7 @@ func (c *Config) validateTLS(result *ValidationResult, sv *SecurityValidator) {
 		} else {
 			// Sanitize domain
 			c.TLS.LetsEncrypt.Domain = sv.SanitizeString(c.TLS.LetsEncrypt.Domain)
-			
+
 			// Validate hostname security
 			if err := sv.ValidateHostname(c.TLS.LetsEncrypt.Domain, "tls.letsencrypt.domain"); err != nil {
 				result.AddError("tls.letsencrypt.domain", c.TLS.LetsEncrypt.Domain, err.Error())
@@ -563,7 +563,7 @@ func (c *Config) validateTLS(result *ValidationResult, sv *SecurityValidator) {
 		if c.TLS.LetsEncrypt.CacheDir != "" {
 			// Sanitize cache directory path
 			c.TLS.LetsEncrypt.CacheDir = sv.SanitizePath(c.TLS.LetsEncrypt.CacheDir)
-			
+
 			// Validate path security
 			if err := sv.ValidatePath(c.TLS.LetsEncrypt.CacheDir, "tls.letsencrypt.cache_dir"); err != nil {
 				result.AddError("tls.letsencrypt.cache_dir", c.TLS.LetsEncrypt.CacheDir, err.Error())
@@ -632,7 +632,7 @@ func (c *Config) validateLogging(result *ValidationResult, sv *SecurityValidator
 		if c.Logging.File != "" {
 			// Sanitize log file path
 			c.Logging.File = sv.SanitizePath(c.Logging.File)
-			
+
 			// Validate path security
 			if err := sv.ValidatePath(c.Logging.File, "logging.file"); err != nil {
 				result.AddError("logging.file", c.Logging.File, err.Error())
@@ -643,7 +643,7 @@ func (c *Config) validateLogging(result *ValidationResult, sv *SecurityValidator
 						result.AddError("logging.file", c.Logging.File, fmt.Sprintf("cannot create log directory: %v", err))
 					}
 				}
-				
+
 				// Validate file size if file exists
 				if err := sv.ValidateFileSize(c.Logging.File, "logging.file"); err != nil {
 					result.AddError("logging.file", c.Logging.File, err.Error())
@@ -656,7 +656,7 @@ func (c *Config) validateLogging(result *ValidationResult, sv *SecurityValidator
 		} else {
 			// Sanitize output URL
 			c.Logging.Output = sv.SanitizeString(c.Logging.Output)
-			
+
 			// Validate URL format (basic validation)
 			if !strings.HasPrefix(c.Logging.Output, "http://") && !strings.HasPrefix(c.Logging.Output, "https://") {
 				result.AddError("logging.output", c.Logging.Output, "Elasticsearch URL must start with http:// or https://")
@@ -690,7 +690,7 @@ func (c *Config) validatePlugins(result *ValidationResult, sv *SecurityValidator
 	for i, plugin := range c.Plugins.Enabled {
 		// Sanitize plugin name
 		c.Plugins.Enabled[i] = sv.SanitizeString(plugin)
-		
+
 		if plugin == "" {
 			result.AddError(fmt.Sprintf("plugins.enabled[%d]", i), plugin, "plugin name cannot be empty")
 		} else {
@@ -734,7 +734,7 @@ func (c *Config) validateAuth(result *ValidationResult, sv *SecurityValidator) {
 		} else {
 			// Sanitize datasource path
 			c.Auth.DataSourcePath = sv.SanitizePath(c.Auth.DataSourcePath)
-			
+
 			// Validate path security
 			if err := sv.ValidatePath(c.Auth.DataSourcePath, "auth.datasource_path"); err != nil {
 				result.AddError("auth.datasource_path", c.Auth.DataSourcePath, err.Error())
@@ -754,7 +754,7 @@ func (c *Config) validateAuth(result *ValidationResult, sv *SecurityValidator) {
 		} else {
 			// Sanitize hostname
 			c.Auth.DataSourceHost = sv.SanitizeString(c.Auth.DataSourceHost)
-			
+
 			// Validate hostname security
 			if err := sv.ValidateHostname(c.Auth.DataSourceHost, "auth.datasource_host"); err != nil {
 				result.AddError("auth.datasource_host", c.Auth.DataSourceHost, err.Error())
@@ -770,7 +770,7 @@ func (c *Config) validateAuth(result *ValidationResult, sv *SecurityValidator) {
 		} else {
 			// Sanitize hostname
 			c.Auth.DataSourceHost = sv.SanitizeString(c.Auth.DataSourceHost)
-			
+
 			// Validate hostname security
 			if err := sv.ValidateHostname(c.Auth.DataSourceHost, "auth.datasource_host"); err != nil {
 				result.AddError("auth.datasource_host", c.Auth.DataSourceHost, err.Error())
@@ -792,7 +792,7 @@ func (c *Config) validateAuth(result *ValidationResult, sv *SecurityValidator) {
 		} else {
 			// Sanitize datasource path
 			c.Auth.DataSourcePath = sv.SanitizePath(c.Auth.DataSourcePath)
-			
+
 			// Validate path security
 			if err := sv.ValidatePath(c.Auth.DataSourcePath, "auth.datasource_path"); err != nil {
 				result.AddError("auth.datasource_path", c.Auth.DataSourcePath, err.Error())
@@ -839,7 +839,7 @@ func (c *Config) validateDelivery(result *ValidationResult, sv *SecurityValidato
 	if c.Delivery.Host != "" {
 		// Sanitize hostname
 		c.Delivery.Host = sv.SanitizeString(c.Delivery.Host)
-		
+
 		// Validate hostname security
 		if err := sv.ValidateHostname(c.Delivery.Host, "delivery.host"); err != nil {
 			result.AddError("delivery.host", c.Delivery.Host, err.Error())
