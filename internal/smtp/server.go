@@ -449,11 +449,20 @@ func (s *Server) acceptConnections() error {
 				"worker_pool_stats", s.workerPool.GetStats(),
 			)
 			
-			// Fallback: handle connection directly in a goroutine
-			go func() {
-				defer conn.Close()
+			// Fallback: handle connection directly in a tracked goroutine
+			s.errGroup.Go(func() error {
+				defer func() {
+					if r := recover(); r != nil {
+						s.slogger.Error("panic in fallback connection handler",
+							"remote_addr", clientAddr,
+							"job_id", jobID,
+							"panic", r,
+						)
+					}
+				}()
 				s.handleAndCloseSession(conn)
-			}()
+				return nil
+			})
 		} else {
 			s.slogger.Debug("Connection submitted to worker pool",
 				"remote_addr", clientAddr,
@@ -478,20 +487,57 @@ func (s *Server) handleConnectionWithContext(ctx context.Context, conn interface
 	return nil
 }
 
-// handleAndCloseSession processes a connection and ensures it's properly closed
+// handleAndCloseSession processes a connection and ensures it's properly closed with guaranteed cleanup
 func (s *Server) handleAndCloseSession(conn net.Conn) {
 	clientIP := conn.RemoteAddr().String()
+	var sessionID string
+	var cleanupDone bool
 
 	// Initialize logger if it's nil
 	if s.logger == nil {
 		s.logger = log.New(os.Stdout, "SMTP: ", log.LstdFlags)
 	}
 
-	// Register connection with resource manager
-	sessionID := s.resourceManager.AcceptConnection(conn)
-	defer s.resourceManager.ReleaseConnection(sessionID)
+	// Create context with timeout enforcement
+	ctx, cancel := context.WithTimeout(context.Background(), s.resourceManager.GetSessionTimeout())
+	defer cancel()
 
+	// Guaranteed cleanup function that runs even on panic
+	cleanup := func() {
+		if cleanupDone {
+			return
+		}
+		cleanupDone = true
+		
+		// Release connection from resource manager
+		if sessionID != "" {
+			s.resourceManager.ReleaseConnection(sessionID)
+		}
+		
+		// Close the connection
+		if err := conn.Close(); err != nil {
+			s.logger.Printf("failed to close connection during cleanup: %v, client: %s, session: %s", err, clientIP, sessionID)
+		}
+	}
+
+	// Ensure cleanup happens even on panic
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Printf("panic in session handling: %v, client: %s, session: %s", r, clientIP, sessionID)
+			cleanup()
+			panic(r) // Re-panic to maintain panic behavior
+		}
+		cleanup()
+	}()
+
+	// Register connection with resource manager
+	sessionID = s.resourceManager.AcceptConnection(conn)
 	s.logger.Printf("new connection: %s (session: %s)", clientIP, sessionID)
+
+	// Set connection timeout
+	if err := conn.SetDeadline(time.Now().Add(s.resourceManager.GetConnectionTimeout())); err != nil {
+		s.logger.Printf("failed to set connection deadline: %v, client: %s, session: %s", err, clientIP, sessionID)
+	}
 
 	// Create a new session with the current configuration and authentication
 	session := NewSession(conn, s.config, s.authenticator)
@@ -509,21 +555,29 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 	session.SetResourceManager(s.resourceManager)
 	// Note: Builtin plugins would be set through plugin manager if needed
 
-	// Handle the SMTP session with circuit breaker protection for external services
+	// Handle the SMTP session with circuit breaker protection and timeout enforcement
 	smtpCircuitBreaker := s.resourceManager.GetCircuitBreaker("smtp-session")
 	err := smtpCircuitBreaker.Execute(func() error {
-		return session.Handle()
+		// Use context for timeout enforcement
+		done := make(chan error, 1)
+		go func() {
+			done <- session.Handle()
+		}()
+		
+		select {
+		case err := <-done:
+			return err
+		case <-ctx.Done():
+			// Timeout occurred, close connection
+			conn.Close()
+			return ctx.Err()
+		}
 	})
 
 	if err != nil {
-		if err != io.EOF {
+		if err != io.EOF && err != context.DeadlineExceeded {
 			s.logger.Printf("session error: %v, client: %s, session: %s", err, clientIP, sessionID)
 		}
-	}
-
-	// Close the connection
-	if err := conn.Close(); err != nil {
-		s.logger.Printf("failed to close connection: %v, client: %s, session: %s", err, clientIP, sessionID)
 	}
 }
 

@@ -539,7 +539,7 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 	return true
 }
 
-// AcceptConnection registers a new connection
+// AcceptConnection registers a new connection with atomic operations
 func (rm *ResourceManager) AcceptConnection(conn net.Conn) string {
 	remoteAddr := conn.RemoteAddr().String()
 	sessionID := fmt.Sprintf("session-%d-%s", time.Now().UnixNano(), remoteAddr)
@@ -550,8 +550,15 @@ func (rm *ResourceManager) AcceptConnection(conn net.Conn) string {
 		host = remoteAddr
 	}
 	
-	// Add IP connection tracking
-	rm.ipTracker.AddConnection(host)
+	// Atomic operation: Add IP connection tracking first
+	if !rm.ipTracker.AddConnection(host) {
+		// IP limit exceeded, reject connection
+		rm.logger.Warn("Connection rejected due to IP limit",
+			"remote_addr", remoteAddr,
+			"host", host,
+		)
+		return ""
+	}
 	
 	// Create connection info
 	connInfo := &ConnectionInfo{
@@ -561,7 +568,7 @@ func (rm *ResourceManager) AcceptConnection(conn net.Conn) string {
 		SessionID:    sessionID,
 	}
 	
-	// Register connection
+	// Atomic operation: Register connection and update counters
 	rm.connectionsMutex.Lock()
 	rm.connections[sessionID] = connInfo
 	rm.connectionsMutex.Unlock()
@@ -570,7 +577,16 @@ func (rm *ResourceManager) AcceptConnection(conn net.Conn) string {
 	atomic.AddInt64(&rm.totalRequests, 1)
 	
 	// Set connection timeouts
-	conn.SetDeadline(time.Now().Add(rm.limits.ConnectionTimeout))
+	if err := conn.SetDeadline(time.Now().Add(rm.limits.ConnectionTimeout)); err != nil {
+		rm.logger.Error("Failed to set connection deadline",
+			"session_id", sessionID,
+			"remote_addr", remoteAddr,
+			"error", err,
+		)
+		// Cleanup on error
+		rm.ReleaseConnection(sessionID)
+		return ""
+	}
 	
 	rm.logger.Info("Connection accepted",
 		"session_id", sessionID,
@@ -581,8 +597,12 @@ func (rm *ResourceManager) AcceptConnection(conn net.Conn) string {
 	return sessionID
 }
 
-// ReleaseConnection releases a connection and its resources
+// ReleaseConnection releases a connection and its resources with atomic cleanup
 func (rm *ResourceManager) ReleaseConnection(sessionID string) {
+	if sessionID == "" {
+		return // Nothing to release
+	}
+	
 	rm.connectionsMutex.Lock()
 	connInfo, exists := rm.connections[sessionID]
 	if exists {
@@ -597,9 +617,10 @@ func (rm *ResourceManager) ReleaseConnection(sessionID string) {
 			host = connInfo.RemoteAddr
 		}
 		
-		// Remove IP connection tracking
+		// Atomic operation: Remove IP connection tracking
 		rm.ipTracker.RemoveConnection(host)
 		
+		// Atomic operation: Decrement connection counter
 		atomic.AddInt32(&rm.activeConnections, -1)
 		
 		duration := time.Since(connInfo.ConnectedAt)
@@ -612,6 +633,10 @@ func (rm *ResourceManager) ReleaseConnection(sessionID string) {
 			"bytes_sent", connInfo.BytesSent,
 			"bytes_received", connInfo.BytesReceived,
 			"active_connections", atomic.LoadInt32(&rm.activeConnections),
+		)
+	} else {
+		rm.logger.Warn("Attempted to release non-existent connection",
+			"session_id", sessionID,
 		)
 	}
 }
@@ -747,6 +772,16 @@ func (rm *ResourceManager) cleanupOldRateLimiters() {
 			delete(rm.ipRateLimiters, ip)
 		}
 	}
+}
+
+// GetSessionTimeout returns the configured session timeout
+func (rm *ResourceManager) GetSessionTimeout() time.Duration {
+	return rm.limits.SessionTimeout
+}
+
+// GetConnectionTimeout returns the configured connection timeout
+func (rm *ResourceManager) GetConnectionTimeout() time.Duration {
+	return rm.limits.ConnectionTimeout
 }
 
 // GetStats returns comprehensive resource manager statistics
