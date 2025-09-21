@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   elemta:
-    image: elemta_node:latest
+    image: elemta:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -11,9 +11,6 @@ services:
     ports:
       - "2525:2525"  # SMTP server port
       - "8080:8080"  # Metrics endpoint
-      # Don't expose these ports to avoid conflicts
-      # - "8080:8080"
-      # - "8081:8081"
     volumes:
       - elemta_queue:/app/queue
       - elemta_logs:/app/logs
@@ -28,8 +25,17 @@ services:
       - API_PORT=8081  # Used internally only
       - DELIVERY_HOST=elemta-dovecot
       - DELIVERY_PORT=2424
-    tty: true
-    stdin_open: true
+    # Security configuration for the container
+    security_opt:
+      - no-new-privileges:true
+    user: "1001:1001"  # Run as non-root user (elemta)
+    read_only: false  # Set to false as we need to write to /app/queue and /app/logs
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    cap_drop:
+      - ALL
+    cap_add: []
     init: true
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "2525"]
@@ -69,7 +75,7 @@ services:
   #     start_period: 15s
 
   elemta-web:
-    image: elemta_node:latest
+    image: elemta:latest
     container_name: elemta-web
     restart: unless-stopped
     ports:
@@ -82,6 +88,17 @@ services:
       - TZ=UTC
       - NODE_ID=web
       - ELEMTA_CONFIG_PATH=/app/config/elemta.toml
+    # Security configuration for the container
+    security_opt:
+      - no-new-privileges:true
+    user: "1001:1001"  # Run as non-root user (elemta)
+    read_only: false  # Set to false as we need to write to /app/queue and /app/logs
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    cap_drop:
+      - ALL
+    cap_add: []
     entrypoint: []
     command: ["/app/elemta", "web", "--listen", "0.0.0.0:8025", "--auth-enabled", "--queue-dir", "/app/queue", "--web-root", "/app/web/static"]
     networks:
@@ -103,6 +120,16 @@ services:
       - elemta_network
     volumes:
       - clamav_data:/var/lib/clamav
+    # Security configuration for the container
+    security_opt:
+      - no-new-privileges:true
+    read_only: false  # ClamAV needs to write to /var/lib/clamav
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    cap_drop:
+      - ALL
+    cap_add: []
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "3310"]
       interval: 45s
@@ -127,6 +154,16 @@ services:
       # - ./docker/rspamd/override.d/actions.conf:/etc/rspamd/override.d/actions.conf
     ports:
       - "11334:11334"  # Web interface
+    # Security configuration for the container
+    security_opt:
+      - no-new-privileges:true
+    read_only: false  # Rspamd needs to write to /var/lib/rspamd
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    cap_drop:
+      - ALL
+    cap_add: []
     healthcheck:
       # Use pidof to check if rspamd is running
       test: ["CMD-SHELL", "pidof rspamd || exit 1"]
