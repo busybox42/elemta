@@ -23,26 +23,26 @@ import (
 
 // Server represents an SMTP server
 type Server struct {
-	config           *Config
-	listener         net.Listener
-	running          bool
-	pluginManager    *plugin.Manager
-	authenticator    Authenticator
-	metrics          *Metrics
-	metricsServer    *http.Server
-	apiServer        *api.Server
-	queueManager     queue.QueueManager // Unified queue system
-	tlsManager       TLSHandler
-	logger           *log.Logger
-	resourceManager  *ResourceManager // Resource management and rate limiting
-	slogger          *slog.Logger     // Structured logger for resource management
-	
+	config          *Config
+	listener        net.Listener
+	running         bool
+	pluginManager   *plugin.Manager
+	authenticator   Authenticator
+	metrics         *Metrics
+	metricsServer   *http.Server
+	apiServer       *api.Server
+	queueManager    queue.QueueManager // Unified queue system
+	tlsManager      TLSHandler
+	logger          *log.Logger
+	resourceManager *ResourceManager // Resource management and rate limiting
+	slogger         *slog.Logger     // Structured logger for resource management
+
 	// Concurrency management
-	workerPool       *WorkerPool      // Standardized worker pool for connection handling
-	ctx              context.Context  // Server context for graceful shutdown
-	cancel           context.CancelFunc
-	errGroup         *errgroup.Group  // Coordinated goroutine management
-	shutdownOnce     sync.Once        // Ensure shutdown is called only once
+	workerPool   *WorkerPool     // Standardized worker pool for connection handling
+	ctx          context.Context // Server context for graceful shutdown
+	cancel       context.CancelFunc
+	errGroup     *errgroup.Group // Coordinated goroutine management
+	shutdownOnce sync.Once       // Ensure shutdown is called only once
 }
 
 // NewServer creates a new SMTP server
@@ -68,7 +68,7 @@ func NewServer(config *Config) (*Server, error) {
 	// Set up logger
 	logger := log.New(os.Stdout, "SMTP: ", log.LstdFlags)
 	logger.Printf("Initializing SMTP server with hostname: %s", config.Hostname)
-	
+
 	// Set up structured logger for resource management
 	slogger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -155,14 +155,14 @@ func NewServer(config *Config) (*Server, error) {
 	if config.Resources != nil {
 		resourceLimits = &ResourceLimits{
 			MaxConnections:            config.Resources.MaxConnections,
-			MaxConnectionsPerIP:       config.Resources.MaxConcurrent, // Use MaxConcurrent as per-IP limit
+			MaxConnectionsPerIP:       config.Resources.MaxConcurrent,      // Use MaxConcurrent as per-IP limit
 			MaxGoroutines:             config.Resources.MaxConnections * 2, // Allow 2 goroutines per connection
 			ConnectionTimeout:         time.Duration(config.Resources.ConnectionTimeout) * time.Second,
 			SessionTimeout:            config.SessionTimeout,
 			IdleTimeout:               time.Duration(config.Resources.ReadTimeout) * time.Second,
 			RateLimitWindow:           time.Minute,
 			MaxRequestsPerWindow:      config.Resources.MaxConnections * 10, // 10 requests per connection per minute
-			MaxMemoryUsage:            500 * 1024 * 1024, // 500MB default
+			MaxMemoryUsage:            500 * 1024 * 1024,                    // 500MB default
 			GoroutinePoolSize:         config.MaxWorkers,
 			CircuitBreakerEnabled:     true,
 			ResourceMonitoringEnabled: true,
@@ -170,13 +170,13 @@ func NewServer(config *Config) (*Server, error) {
 	} else {
 		resourceLimits = DefaultResourceLimits()
 	}
-	
+
 	resourceManager := NewResourceManager(resourceLimits, slogger)
 
 	// Initialize concurrency management
 	ctx, cancel := context.WithCancel(context.Background())
 	errGroup, gctx := errgroup.WithContext(ctx)
-	
+
 	// Initialize worker pool for connection handling
 	workerPoolConfig := &WorkerPoolConfig{
 		Size:               20,  // Configurable worker pool size
@@ -194,25 +194,25 @@ func NewServer(config *Config) (*Server, error) {
 			)
 		},
 	}
-	
+
 	workerPool := NewWorkerPool(workerPoolConfig, slogger)
 
 	server := &Server{
-		config:           config,
-		running:          false,
-		pluginManager:    pluginManager,
-		authenticator:    authenticator,
-		metrics:          metrics,
-		queueManager:     queueManager,
-		logger:           logger,
-		resourceManager:  resourceManager,
-		slogger:          slogger,
-		
+		config:          config,
+		running:         false,
+		pluginManager:   pluginManager,
+		authenticator:   authenticator,
+		metrics:         metrics,
+		queueManager:    queueManager,
+		logger:          logger,
+		resourceManager: resourceManager,
+		slogger:         slogger,
+
 		// Concurrency management
-		workerPool:       workerPool,
-		ctx:              gctx,
-		cancel:           cancel,
-		errGroup:         errGroup,
+		workerPool: workerPool,
+		ctx:        gctx,
+		cancel:     cancel,
+		errGroup:   errGroup,
 	}
 
 	// Initialize TLS manager if TLS is enabled
@@ -371,7 +371,7 @@ func (s *Server) updateQueueMetricsWithRetry() {
 // acceptConnections accepts and handles incoming connections with standardized worker pool
 func (s *Server) acceptConnections() error {
 	s.logger.Printf("Starting connection acceptance loop")
-	
+
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -379,30 +379,30 @@ func (s *Server) acceptConnections() error {
 			return s.ctx.Err()
 		default:
 		}
-		
+
 		// Set a short timeout on accept to allow periodic context checking
 		if tcpListener, ok := s.listener.(*net.TCPListener); ok {
 			tcpListener.SetDeadline(time.Now().Add(1 * time.Second))
 		}
-		
+
 		conn, err := s.listener.Accept()
 		if err != nil {
 			// Check if it's a timeout error (expected)
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				continue
 			}
-			
+
 			if s.running {
 				s.logger.Printf("Failed to accept connection: %v", err)
 			}
 			continue
 		}
-		
+
 		// Reset deadline after successful accept
 		if tcpListener, ok := s.listener.(*net.TCPListener); ok {
 			tcpListener.SetDeadline(time.Time{})
 		}
-		
+
 		// Check if connection can be accepted based on resource limits
 		clientAddr := conn.RemoteAddr().String()
 		if !s.resourceManager.CanAcceptConnection(clientAddr) {
@@ -410,17 +410,17 @@ func (s *Server) acceptConnections() error {
 			conn.Close()
 			continue
 		}
-		
+
 		// Create connection job for worker pool
 		jobID := uuid.New().String()
 		connectionJob := &ConnectionJob{
-			id:       jobID,
-			conn:     conn,
-			handler:  s.handleConnectionWithContext,
-			priority: 1, // Normal priority
+			id:        jobID,
+			conn:      conn,
+			handler:   s.handleConnectionWithContext,
+			priority:  1, // Normal priority
 			createdAt: time.Now(),
 		}
-		
+
 		// Submit job to worker pool with timeout
 		if err := s.workerPool.SubmitWithTimeout(connectionJob, 5*time.Second); err != nil {
 			s.slogger.Warn("Failed to submit connection to worker pool, handling directly",
@@ -429,7 +429,7 @@ func (s *Server) acceptConnections() error {
 				"error", err,
 				"worker_pool_stats", s.workerPool.GetStats(),
 			)
-			
+
 			// Fallback: handle connection directly in a tracked goroutine
 			s.errGroup.Go(func() error {
 				defer func() {
@@ -459,10 +459,10 @@ func (s *Server) handleConnectionWithContext(ctx context.Context, conn interface
 	if !ok {
 		return fmt.Errorf("invalid connection type")
 	}
-	
+
 	// Ensure connection is closed when done
 	defer netConn.Close()
-	
+
 	// Handle the session with context
 	s.handleAndCloseSession(netConn)
 	return nil
@@ -489,12 +489,12 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 			return
 		}
 		cleanupDone = true
-		
+
 		// Release connection from resource manager
 		if sessionID != "" {
 			s.resourceManager.ReleaseConnection(sessionID)
 		}
-		
+
 		// Close the connection
 		if err := conn.Close(); err != nil {
 			s.logger.Printf("failed to close connection during cleanup: %v, client: %s, session: %s", err, clientIP, sessionID)
@@ -525,7 +525,7 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 
 	// Set the TLS manager from the server
 	session.SetTLSManager(s.tlsManager)
-	
+
 	// Set queue manager for message processing
 	if s.queueManager != nil {
 		session.SetQueueManager(s.queueManager)
@@ -543,7 +543,7 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 		go func() {
 			done <- session.Handle()
 		}()
-		
+
 		select {
 		case err := <-done:
 			return err
@@ -564,16 +564,16 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 // Close closes the server and all associated resources with graceful shutdown
 func (s *Server) Close() error {
 	var shutdownErr error
-	
+
 	s.shutdownOnce.Do(func() {
 		s.logger.Printf("Initiating graceful server shutdown")
 		s.running = false
-		
+
 		// Cancel context to signal all goroutines to stop
 		if s.cancel != nil {
 			s.cancel()
 		}
-		
+
 		// Close listener first to stop accepting new connections
 		if s.listener != nil {
 			if err := s.listener.Close(); err != nil {
@@ -581,7 +581,7 @@ func (s *Server) Close() error {
 				shutdownErr = err
 			}
 		}
-		
+
 		// Stop worker pool gracefully
 		if s.workerPool != nil {
 			s.logger.Printf("Stopping worker pool...")
@@ -594,13 +594,13 @@ func (s *Server) Close() error {
 				s.logger.Printf("Worker pool stopped successfully")
 			}
 		}
-		
+
 		// Wait for all managed goroutines to complete with timeout
 		done := make(chan error, 1)
 		go func() {
 			done <- s.errGroup.Wait()
 		}()
-		
+
 		select {
 		case err := <-done:
 			if err != nil {
@@ -617,12 +617,12 @@ func (s *Server) Close() error {
 				shutdownErr = fmt.Errorf("shutdown timeout")
 			}
 		}
-		
+
 		// Close resource manager
 		if s.resourceManager != nil {
 			s.resourceManager.Close()
 		}
-		
+
 		// Close metrics server if it was started
 		if s.metricsServer != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -666,13 +666,12 @@ func (s *Server) Close() error {
 				}
 			}
 		}
-		
+
 		// Stop queue manager
 		if s.queueManager != nil {
 			s.logger.Printf("Stopping queue manager")
 			s.queueManager.Stop()
 		}
-
 
 		// Stop API server if running
 		if s.apiServer != nil {
@@ -683,13 +682,11 @@ func (s *Server) Close() error {
 				}
 			}
 		}
-		
+
 		s.logger.Printf("Graceful server shutdown completed")
 	})
-	
+
 	return shutdownErr
 }
 
 // ... existing code ...
-
-

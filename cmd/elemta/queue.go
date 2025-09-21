@@ -15,16 +15,16 @@ import (
 )
 
 type queueOperations struct {
-	config *smtp.Config
+	config       *smtp.Config
 	queueManager queue.QueueManager
-	out    io.Writer
+	out          io.Writer
 }
 
 func newQueueOperations(config *smtp.Config) *queueOperations {
 	return &queueOperations{
-		config: config,
+		config:       config,
 		queueManager: queue.NewManager(config.QueueDir),
-		out:    os.Stdout,
+		out:          os.Stdout,
 	}
 }
 

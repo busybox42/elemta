@@ -611,21 +611,39 @@ func (ch *CommandHandler) checkRelayPermissions(ctx context.Context, recipient s
 // isLocalDomain checks if a recipient is in a local domain
 func (ch *CommandHandler) isLocalDomain(recipient string) bool {
 	if ch.config.LocalDomains == nil {
+		ch.logger.Warn("Local domains configuration is nil", "recipient", recipient)
 		return false
 	}
 
 	parts := strings.Split(recipient, "@")
 	if len(parts) != 2 {
+		ch.logger.Warn("Invalid recipient format", "recipient", recipient)
 		return false
 	}
 
 	domain := strings.ToLower(parts[1])
+	ch.logger.Debug("Checking local domain", 
+		"recipient", recipient,
+		"domain", domain,
+		"local_domains", ch.config.LocalDomains,
+	)
+	
 	for _, localDomain := range ch.config.LocalDomains {
 		if strings.ToLower(localDomain) == domain {
+			ch.logger.Debug("Domain matches local domain", 
+				"recipient", recipient,
+				"domain", domain,
+				"local_domain", localDomain,
+			)
 			return true
 		}
 	}
 
+	ch.logger.Debug("Domain not in local domains", 
+		"recipient", recipient,
+		"domain", domain,
+		"local_domains", ch.config.LocalDomains,
+	)
 	return false
 }
 
