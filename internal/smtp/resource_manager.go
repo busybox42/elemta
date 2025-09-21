@@ -36,7 +36,7 @@ func DefaultResourceLimits() *ResourceLimits {
 		IdleTimeout:               2 * time.Minute,
 		RateLimitWindow:           time.Minute,
 		MaxRequestsPerWindow:      100,
-		MaxMemoryUsage:            500 * 1024 * 1024, // 500MB
+		MaxMemoryUsage:            2 * 1024 * 1024 * 1024, // 2GB - more production appropriate
 		GoroutinePoolSize:         100,
 		CircuitBreakerEnabled:     true,
 		ResourceMonitoringEnabled: true,
@@ -443,6 +443,7 @@ type ResourceManager struct {
 	goroutinePool      *GoroutinePool
 	circuitBreakers    map[string]*CircuitBreaker
 	circuitBreakersMutex sync.RWMutex
+	memoryManager      *MemoryManager
 	activeConnections  int32
 	totalRequests      int64
 	rejectedRequests   int64
@@ -469,6 +470,20 @@ func NewResourceManager(limits *ResourceLimits, logger *slog.Logger) *ResourceMa
 		monitoringEnabled: limits.ResourceMonitoringEnabled,
 	}
 	
+	// Initialize memory manager with resource limits
+	memoryConfig := &MemoryConfig{
+		MaxMemoryUsage:             limits.MaxMemoryUsage,
+		MemoryWarningThreshold:     0.75, // 75% warning
+		MemoryCriticalThreshold:    0.90, // 90% critical
+		GCThreshold:                0.80, // 80% force GC
+		MonitoringInterval:         5 * time.Second,
+		PerConnectionMemoryLimit:   limits.MaxMemoryUsage / int64(limits.MaxConnections), // Distribute memory across connections
+		MaxGoroutines:              limits.MaxGoroutines,
+		GoroutineLeakDetection:     true,
+		MemoryExhaustionProtection: true,
+	}
+	rm.memoryManager = NewMemoryManager(memoryConfig, logger)
+	
 	// Initialize goroutine pool
 	rm.goroutinePool = NewGoroutinePool(limits.GoroutinePoolSize, logger)
 	
@@ -481,6 +496,7 @@ func NewResourceManager(limits *ResourceLimits, logger *slog.Logger) *ResourceMa
 		"max_connections", limits.MaxConnections,
 		"max_connections_per_ip", limits.MaxConnectionsPerIP,
 		"goroutine_pool_size", limits.GoroutinePoolSize,
+		"max_memory_usage", limits.MaxMemoryUsage,
 		"monitoring_enabled", rm.monitoringEnabled,
 	)
 	
@@ -489,6 +505,28 @@ func NewResourceManager(limits *ResourceLimits, logger *slog.Logger) *ResourceMa
 
 // CanAcceptConnection checks if a new connection can be accepted
 func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
+	// Check memory limits first (most critical)
+	if rm.memoryManager != nil {
+		if err := rm.memoryManager.CheckMemoryLimit(); err != nil {
+			atomic.AddInt64(&rm.rejectedRequests, 1)
+			rm.logger.Warn("Connection rejected: memory limit exceeded",
+				"remote_addr", remoteAddr,
+				"error", err,
+			)
+			return false
+		}
+		
+		// Check goroutine limits
+		if err := rm.memoryManager.CheckGoroutineLimit(); err != nil {
+			atomic.AddInt64(&rm.rejectedRequests, 1)
+			rm.logger.Warn("Connection rejected: goroutine limit exceeded",
+				"remote_addr", remoteAddr,
+				"error", err,
+			)
+			return false
+		}
+	}
+	
 	// Check global connection limit
 	if atomic.LoadInt32(&rm.activeConnections) >= int32(rm.limits.MaxConnections) {
 		atomic.AddInt64(&rm.rejectedRequests, 1)
@@ -548,6 +586,20 @@ func (rm *ResourceManager) AcceptConnection(conn net.Conn) string {
 	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
 		host = remoteAddr
+	}
+	
+	// Check memory limits for new connection
+	if rm.memoryManager != nil {
+		// Estimate memory usage for new connection (connection info + buffers)
+		estimatedMemory := int64(1024 * 1024) // 1MB estimate per connection
+		if err := rm.memoryManager.CheckConnectionMemoryLimit(sessionID, estimatedMemory); err != nil {
+			rm.logger.Warn("Connection rejected due to memory limit",
+				"remote_addr", remoteAddr,
+				"session_id", sessionID,
+				"error", err,
+			)
+			return ""
+		}
 	}
 	
 	// Atomic operation: Add IP connection tracking first
@@ -784,6 +836,11 @@ func (rm *ResourceManager) GetConnectionTimeout() time.Duration {
 	return rm.limits.ConnectionTimeout
 }
 
+// GetMemoryManager returns the memory manager instance
+func (rm *ResourceManager) GetMemoryManager() *MemoryManager {
+	return rm.memoryManager
+}
+
 // GetStats returns comprehensive resource manager statistics
 func (rm *ResourceManager) GetStats() map[string]interface{} {
 	activeConnections := atomic.LoadInt32(&rm.activeConnections)
@@ -800,6 +857,25 @@ func (rm *ResourceManager) GetStats() map[string]interface{} {
 	}
 	rm.circuitBreakersMutex.RUnlock()
 	
+	// Get memory statistics
+	var memoryStats map[string]interface{}
+	if rm.memoryManager != nil {
+		memStats := rm.memoryManager.GetMemoryStats()
+		memoryStats = map[string]interface{}{
+			"current_usage":        memStats.CurrentMemoryUsage,
+			"peak_usage":          memStats.PeakMemoryUsage,
+			"utilization":         memStats.MemoryUtilization,
+			"goroutine_count":     memStats.GoroutineCount,
+			"peak_goroutines":     memStats.PeakGoroutineCount,
+			"gc_collections":      memStats.GCCollections,
+			"forced_gc":           memStats.ForcedGCCollections,
+			"memory_warnings":     memStats.MemoryWarnings,
+			"critical_alerts":     memStats.MemoryCriticalAlerts,
+			"last_gc":             memStats.LastGC,
+			"last_update":         memStats.LastUpdate,
+		}
+	}
+	
 	return map[string]interface{}{
 		"active_connections":    activeConnections,
 		"max_connections":       rm.limits.MaxConnections,
@@ -809,6 +885,7 @@ func (rm *ResourceManager) GetStats() map[string]interface{} {
 		"connection_utilization": float64(activeConnections) / float64(rm.limits.MaxConnections) * 100,
 		"goroutine_pool":        poolStats,
 		"circuit_breakers":      circuitBreakerStats,
+		"memory_manager":        memoryStats,
 		"rate_limiters": map[string]interface{}{
 			"global_tokens":    rm.globalRateLimiter.GetTokens(),
 			"ip_limiters":      len(rm.ipRateLimiters),
@@ -820,6 +897,11 @@ func (rm *ResourceManager) GetStats() map[string]interface{} {
 func (rm *ResourceManager) Close() {
 	close(rm.shutdownChan)
 	rm.goroutinePool.Close()
+	
+	// Close memory manager
+	if rm.memoryManager != nil {
+		rm.memoryManager.Close()
+	}
 	
 	rm.logger.Info("Resource manager shut down")
 }
