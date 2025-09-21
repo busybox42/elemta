@@ -1,3 +1,4 @@
+# Multi-stage build for secure container deployment
 FROM golang:1.23-alpine AS builder
 
 WORKDIR /build
@@ -28,19 +29,21 @@ RUN CGO_ENABLED=1 go build -buildmode=plugin -o clamav.so ./clamav
 RUN CGO_ENABLED=1 go build -buildmode=plugin -o rspamd.so ./rspamd
 WORKDIR /build
 
-# Final image
+# Security-hardened final image
 FROM debian:bookworm-slim
 
-# Create a non-root user for security
+# Create a non-root user with specific UID/GID for security
 RUN groupadd -r elemta -g 1001 && \
     useradd -r -g elemta -u 1001 -d /app -s /bin/sh elemta
 
-# Install required packages
+# Install required packages (no gosu - we don't need privilege dropping)
 RUN apt-get update && apt-get install -y python3 python3-pip curl netcat-openbsd dos2unix libc6 && rm -rf /var/lib/apt/lists/*
 
-# Create directories with proper ownership
+# Create directories with proper ownership from the start
 RUN mkdir -p /app/config /app/queue /app/logs /app/plugins /app/certs && \
-    chown -R elemta:elemta /app
+    chown -R elemta:elemta /app && \
+    chmod 755 /app/config /app/logs /app/plugins /app/certs && \
+    chmod 700 /app/queue
 
 # Set working directory
 WORKDIR /app
@@ -78,26 +81,21 @@ COPY --chown=elemta:elemta web /app/web
 # Set proper permissions for executables
 RUN chmod +x /app/elemta /app/elemta-queue /app/elemta-cli
 
-# Set proper permissions for directories
-RUN chmod 755 /app/config /app/queue /app/logs /app/plugins /app/certs && \
-    chmod 700 /app/queue  # Queue directory should be private
-
-# Create a startup script that fixes permissions as root, then drops privileges
-RUN echo '#!/bin/sh' > /app/startup.sh && \
-    echo 'echo "Fixing permissions for volume-mounted directories..."' >> /app/startup.sh && \
-    echo 'chown -R elemta:elemta /app/queue /app/logs 2>/dev/null || true' >> /app/startup.sh && \
-    echo 'chmod 700 /app/queue 2>/dev/null || true' >> /app/startup.sh && \
-    echo 'chmod 755 /app/logs 2>/dev/null || true' >> /app/startup.sh && \
-    echo 'echo "Dropping privileges to elemta user..."' >> /app/startup.sh && \
-    echo 'exec gosu elemta /app/entrypoint.sh "$@"' >> /app/startup.sh && \
-    chmod +x /app/startup.sh && \
-    chown elemta:elemta /app/startup.sh
-
-# Install gosu for privilege dropping
-RUN apt-get update && apt-get install -y gosu && rm -rf /var/lib/apt/lists/*
+# Create secure volume initialization script (runs as non-root)
+RUN echo '#!/bin/sh' > /app/init-volumes.sh && \
+    echo 'echo "Initializing volume directories as non-root user..."' >> /app/init-volumes.sh && \
+    echo 'mkdir -p /app/queue/active /app/queue/deferred /app/queue/hold /app/queue/failed /app/logs' >> /app/init-volumes.sh && \
+    echo 'chmod 700 /app/queue 2>/dev/null || true' >> /app/init-volumes.sh && \
+    echo 'chmod 755 /app/logs 2>/dev/null || true' >> /app/init-volumes.sh && \
+    echo 'echo "Volume initialization complete"' >> /app/init-volumes.sh && \
+    chmod +x /app/init-volumes.sh && \
+    chown elemta:elemta /app/init-volumes.sh
 
 # Expose ports
 EXPOSE 2525 8080 8081
 
-# Set entrypoint to the startup script
-ENTRYPOINT ["/app/startup.sh"] 
+# Switch to non-root user - NO PRIVILEGE ESCALATION
+USER elemta
+
+# Set entrypoint to the secure entrypoint script (runs as elemta user)
+ENTRYPOINT ["/app/entrypoint.sh"]

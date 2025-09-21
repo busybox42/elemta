@@ -1,13 +1,12 @@
 #!/bin/sh
 
-# Entrypoint script for Elemta
+# Secure entrypoint script for Elemta (runs as non-root user)
 
 echo "Starting Elemta SMTP server..."
 
-# Fix permissions for volume-mounted directories
-# Docker volumes are mounted with root ownership, but we need elemta user access
-echo "Fixing permissions for volume-mounted directories..."
-chown -R elemta:elemta /app/queue /app/logs 2>/dev/null || true
+# Initialize volume directories as non-root user
+echo "Initializing volume directories as non-root user..."
+mkdir -p /app/queue/active /app/queue/deferred /app/queue/hold /app/queue/failed /app/logs 2>/dev/null || true
 chmod 700 /app/queue 2>/dev/null || true
 chmod 755 /app/logs 2>/dev/null || true
 
