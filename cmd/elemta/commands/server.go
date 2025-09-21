@@ -113,7 +113,7 @@ func startServer() {
 		Hostname:     cfg.Server.Hostname,
 		ListenAddr:   cfg.Server.Listen,
 		QueueDir:     cfg.Queue.Dir,
-		MaxSize:      10 * 1024 * 1024, // Use 10MB default if not specified
+		MaxSize:      10 * 1024 * 1024,        // Use 10MB default if not specified
 		LocalDomains: cfg.Server.LocalDomains, // Map local domains from main config
 		TLS:          cfg.TLS,
 		DevMode:      devMode, // Pass dev mode flag to SMTP server

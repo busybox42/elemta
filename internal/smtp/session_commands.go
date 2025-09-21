@@ -14,27 +14,27 @@ import (
 
 // CommandResult represents the result of a command execution
 type CommandResult struct {
-	Success   bool
-	Response  string
-	Error     error
-	Duration  time.Duration
-	Command   string
+	Success  bool
+	Response string
+	Error    error
+	Duration time.Duration
+	Command  string
 }
 
 // CommandHandler manages SMTP command processing for a session
 type CommandHandler struct {
-	session         *Session
-	state           *SessionState
-	authHandler     *AuthHandler
-	logger          *slog.Logger
-	conn            net.Conn
-	config          *Config
-	tlsManager      TLSHandler
+	session     *Session
+	state       *SessionState
+	authHandler *AuthHandler
+	logger      *slog.Logger
+	conn        net.Conn
+	config      *Config
+	tlsManager  TLSHandler
 	// enhancedValidator would be added here if needed
 }
 
 // NewCommandHandler creates a new command handler
-func NewCommandHandler(session *Session, state *SessionState, authHandler *AuthHandler, 
+func NewCommandHandler(session *Session, state *SessionState, authHandler *AuthHandler,
 	conn net.Conn, config *Config, tlsManager TLSHandler, logger *slog.Logger) *CommandHandler {
 	return &CommandHandler{
 		session:     session,
@@ -51,10 +51,10 @@ func NewCommandHandler(session *Session, state *SessionState, authHandler *AuthH
 // ProcessCommand processes an SMTP command with comprehensive validation and logging
 func (ch *CommandHandler) ProcessCommand(ctx context.Context, line string) error {
 	startTime := time.Now()
-	
+
 	// Update activity
 	ch.state.UpdateActivity(ctx)
-	
+
 	// Validate input
 	if err := ch.validateCommandInput(ctx, line); err != nil {
 		ch.logCommandResult(ctx, line, false, err.Error(), time.Since(startTime))
@@ -63,7 +63,7 @@ func (ch *CommandHandler) ProcessCommand(ctx context.Context, line string) error
 
 	// Parse command
 	cmd, args := ch.parseCommand(line)
-	
+
 	// Check if command is allowed in current phase
 	if !ch.state.CanAcceptCommand(ctx, cmd) {
 		err := fmt.Errorf("503 5.5.1 Bad sequence of commands")
@@ -393,7 +393,7 @@ func (ch *CommandHandler) HandleHELP(ctx context.Context, args string) error {
 // HandleVRFY processes the VRFY command
 func (ch *CommandHandler) HandleVRFY(ctx context.Context, args string) error {
 	ch.logger.DebugContext(ctx, "Processing VRFY command", "args", args)
-	
+
 	// VRFY is typically disabled for security reasons
 	return ch.session.write("252 2.5.2 Cannot VRFY user, but will accept message")
 }
@@ -401,7 +401,7 @@ func (ch *CommandHandler) HandleVRFY(ctx context.Context, args string) error {
 // HandleEXPN processes the EXPN command
 func (ch *CommandHandler) HandleEXPN(ctx context.Context, args string) error {
 	ch.logger.DebugContext(ctx, "Processing EXPN command", "args", args)
-	
+
 	// EXPN is typically disabled for security reasons
 	return ch.session.write("502 5.5.1 EXPN not supported")
 }
@@ -448,9 +448,9 @@ func (ch *CommandHandler) validateCommandInput(ctx context.Context, line string)
 
 	// Basic command validation
 	// Enhanced validation would be implemented here
-	if strings.Contains(strings.ToUpper(line), "DROP") || 
-	   strings.Contains(strings.ToUpper(line), "DELETE") ||
-	   strings.Contains(line, ";") {
+	if strings.Contains(strings.ToUpper(line), "DROP") ||
+		strings.Contains(strings.ToUpper(line), "DELETE") ||
+		strings.Contains(line, ";") {
 		ch.logger.WarnContext(ctx, "Command validation failed",
 			"line", line,
 			"reason", "suspicious_content",
@@ -465,13 +465,13 @@ func (ch *CommandHandler) validateCommandInput(ctx context.Context, line string)
 func (ch *CommandHandler) parseCommand(line string) (string, string) {
 	line = strings.TrimSpace(line)
 	parts := strings.SplitN(line, " ", 2)
-	
+
 	cmd := strings.ToUpper(parts[0])
 	args := ""
 	if len(parts) > 1 {
 		args = strings.TrimSpace(parts[1])
 	}
-	
+
 	return cmd, args
 }
 
@@ -611,39 +611,21 @@ func (ch *CommandHandler) checkRelayPermissions(ctx context.Context, recipient s
 // isLocalDomain checks if a recipient is in a local domain
 func (ch *CommandHandler) isLocalDomain(recipient string) bool {
 	if ch.config.LocalDomains == nil {
-		ch.logger.Warn("Local domains configuration is nil", "recipient", recipient)
 		return false
 	}
 
 	parts := strings.Split(recipient, "@")
 	if len(parts) != 2 {
-		ch.logger.Warn("Invalid recipient format", "recipient", recipient)
 		return false
 	}
 
 	domain := strings.ToLower(parts[1])
-	ch.logger.Debug("Checking local domain", 
-		"recipient", recipient,
-		"domain", domain,
-		"local_domains", ch.config.LocalDomains,
-	)
-	
 	for _, localDomain := range ch.config.LocalDomains {
 		if strings.ToLower(localDomain) == domain {
-			ch.logger.Debug("Domain matches local domain", 
-				"recipient", recipient,
-				"domain", domain,
-				"local_domain", localDomain,
-			)
 			return true
 		}
 	}
 
-	ch.logger.Debug("Domain not in local domains", 
-		"recipient", recipient,
-		"domain", domain,
-		"local_domains", ch.config.LocalDomains,
-	)
 	return false
 }
 
