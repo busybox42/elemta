@@ -339,26 +339,26 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// setupQueueDirectories ensures all needed queue directories exist
+// setupQueueDirectories ensures all needed queue directories exist with secure permissions
 func (s *Server) setupQueueDirectories() error {
 	if s.config.QueueDir == "" {
 		return fmt.Errorf("queue directory not configured")
 	}
 
-	// Ensure main queue directory exists
-	if err := os.MkdirAll(s.config.QueueDir, 0755); err != nil {
+	// Ensure main queue directory exists with secure permissions (0700)
+	if err := os.MkdirAll(s.config.QueueDir, 0700); err != nil {
 		return fmt.Errorf("failed to create queue directory: %w", err)
 	}
 
-	// Create subdirectories for different queue types
+	// Create subdirectories for different queue types with secure permissions
 	queueTypes := []string{"active", "deferred", "held", "failed", "data", "tmp", "quarantine"}
 
 	for _, qType := range queueTypes {
 		qDir := filepath.Join(s.config.QueueDir, qType)
-		if err := os.MkdirAll(qDir, 0755); err != nil {
+		if err := os.MkdirAll(qDir, 0700); err != nil {
 			return fmt.Errorf("failed to create %s queue directory: %w", qType, err)
 		}
-		s.logger.Printf("Created queue directory: %s", qDir)
+		s.logger.Printf("Created secure queue directory: %s (0700)", qDir)
 	}
 
 	return nil

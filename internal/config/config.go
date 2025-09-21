@@ -190,18 +190,18 @@ func LoadConfig(configPath string) (*Config, error) {
 	return cfg, nil
 }
 
-// EnsureQueueDirectory ensures that the queue directories exist
+// EnsureQueueDirectory ensures that the queue directories exist with secure permissions
 func (c *Config) EnsureQueueDirectory() error {
-	// Make sure the main queue directory exists
-	if err := os.MkdirAll(c.Queue.Dir, 0755); err != nil {
+	// Make sure the main queue directory exists with secure permissions (0700)
+	if err := os.MkdirAll(c.Queue.Dir, 0700); err != nil {
 		return fmt.Errorf("failed to create queue directory: %w", err)
 	}
 
-	// Create subdirectories for different queue types
-	queueTypes := []string{"active", "deferred", "hold", "failed"}
+	// Create subdirectories for different queue types with secure permissions
+	queueTypes := []string{"active", "deferred", "hold", "failed", "data", "tmp", "quarantine"}
 	for _, qType := range queueTypes {
 		qDir := filepath.Join(c.Queue.Dir, qType)
-		if err := os.MkdirAll(qDir, 0755); err != nil {
+		if err := os.MkdirAll(qDir, 0700); err != nil {
 			return fmt.Errorf("failed to create %s queue directory: %w", qType, err)
 		}
 	}

@@ -20,11 +20,11 @@ func NewFileStorageBackend(queueDir string) *FileStorageBackend {
 	}
 }
 
-// Store saves a message to the storage backend
+// Store saves a message to the storage backend with secure permissions and atomic operations
 func (fs *FileStorageBackend) Store(msg Message) error {
-	// Ensure queue directory exists
+	// Ensure queue directory exists with secure permissions
 	queuePath := filepath.Join(fs.queueDir, string(msg.QueueType))
-	if err := os.MkdirAll(queuePath, 0755); err != nil {
+	if err := os.MkdirAll(queuePath, 0700); err != nil {
 		return fmt.Errorf("failed to create queue directory: %w", err)
 	}
 
@@ -34,9 +34,9 @@ func (fs *FileStorageBackend) Store(msg Message) error {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	// Write to file
+	// Write to file atomically with secure permissions
 	filePath := filepath.Join(queuePath, msg.ID+".json")
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := fs.writeFileAtomic(filePath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write message file: %w", err)
 	}
 
@@ -70,7 +70,7 @@ func (fs *FileStorageBackend) Retrieve(id string) (Message, error) {
 	return Message{}, fmt.Errorf("message not found: %s", id)
 }
 
-// Update saves changes to an existing message
+// Update saves changes to an existing message with atomic operations
 func (fs *FileStorageBackend) Update(msg Message) error {
 	// Marshal message to JSON
 	data, err := json.Marshal(msg)
@@ -78,9 +78,9 @@ func (fs *FileStorageBackend) Update(msg Message) error {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	// Write to file
+	// Write to file atomically with secure permissions
 	filePath := filepath.Join(fs.queueDir, string(msg.QueueType), msg.ID+".json")
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := fs.writeFileAtomic(filePath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write message file: %w", err)
 	}
 
@@ -199,14 +199,14 @@ func (fs *FileStorageBackend) DeleteAll(queueType QueueType) error {
 	return nil
 }
 
-// Move transfers a message between queues
+// Move transfers a message between queues with atomic operations
 func (fs *FileStorageBackend) Move(id string, fromQueue, toQueue QueueType) error {
 	// Construct file paths
 	fromPath := filepath.Join(fs.queueDir, string(fromQueue), id+".json")
 	toPath := filepath.Join(fs.queueDir, string(toQueue), id+".json")
 
-	// Ensure destination directory exists
-	if err := os.MkdirAll(filepath.Dir(toPath), 0755); err != nil {
+	// Ensure destination directory exists with secure permissions
+	if err := os.MkdirAll(filepath.Dir(toPath), 0700); err != nil {
 		return fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
@@ -231,8 +231,8 @@ func (fs *FileStorageBackend) Move(id string, fromQueue, toQueue QueueType) erro
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	// Write to destination
-	if err := os.WriteFile(toPath, data, 0644); err != nil {
+	// Write to destination atomically with secure permissions
+	if err := fs.writeFileAtomic(toPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write message file: %w", err)
 	}
 
@@ -244,17 +244,17 @@ func (fs *FileStorageBackend) Move(id string, fromQueue, toQueue QueueType) erro
 	return nil
 }
 
-// StoreContent saves message content data
+// StoreContent saves message content data with secure permissions and atomic operations
 func (fs *FileStorageBackend) StoreContent(id string, data []byte) error {
-	// Ensure data directory exists
+	// Ensure data directory exists with secure permissions
 	dataDir := filepath.Join(fs.queueDir, "data")
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	// Write content to file
+	// Write content to file atomically with secure permissions
 	contentPath := filepath.Join(dataDir, id)
-	if err := os.WriteFile(contentPath, data, 0644); err != nil {
+	if err := fs.writeFileAtomic(contentPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write content file: %w", err)
 	}
 
@@ -316,32 +316,106 @@ func (fs *FileStorageBackend) Cleanup(retentionHours int) (int, error) {
 	return deletedCount, nil
 }
 
-// EnsureDirectories creates necessary queue directories
+// EnsureDirectories creates necessary queue directories with secure permissions
 func (fs *FileStorageBackend) EnsureDirectories() error {
-	// Create base directory
-	if err := os.MkdirAll(fs.queueDir, 0755); err != nil {
+	// Create base directory with secure permissions
+	if err := os.MkdirAll(fs.queueDir, 0700); err != nil {
 		return fmt.Errorf("failed to create base queue directory: %w", err)
 	}
 
-	// Create queue subdirectories
+	// Create queue subdirectories with secure permissions
 	queueTypes := []QueueType{Active, Deferred, Hold, Failed}
 	for _, qType := range queueTypes {
 		qDir := filepath.Join(fs.queueDir, string(qType))
-		if err := os.MkdirAll(qDir, 0755); err != nil {
+		if err := os.MkdirAll(qDir, 0700); err != nil {
 			return fmt.Errorf("failed to create queue directory %s: %w", qDir, err)
 		}
 	}
 
-	// Create data directory for message contents
+	// Create data directory for message contents with secure permissions
 	dataDir := filepath.Join(fs.queueDir, "data")
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	// Create temporary directory for staging
+	// Create temporary directory for staging with secure permissions
 	tmpDir := filepath.Join(fs.queueDir, "tmp")
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+	if err := os.MkdirAll(tmpDir, 0700); err != nil {
 		return fmt.Errorf("failed to create tmp directory: %w", err)
+	}
+
+	return nil
+}
+
+// writeFileAtomic writes data to a file atomically with secure permissions and symlink protection
+func (fs *FileStorageBackend) writeFileAtomic(filePath string, data []byte, perm os.FileMode) error {
+	// Create temporary file in the same directory to ensure atomic operation
+	dir := filepath.Dir(filePath)
+	tmpFile, err := os.CreateTemp(dir, ".tmp_")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name()) // Clean up temp file on error
+
+	// Write data to temporary file
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to write to temporary file: %w", err)
+	}
+
+	// Set secure permissions on temporary file
+	if err := tmpFile.Chmod(perm); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to set permissions on temporary file: %w", err)
+	}
+
+	// Sync to ensure data is written to disk
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to sync temporary file: %w", err)
+	}
+
+	// Close temporary file
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temporary file: %w", err)
+	}
+
+	// Check for symlink attacks before atomic rename
+	if err := fs.checkSymlinkAttack(filePath); err != nil {
+		return fmt.Errorf("symlink attack detected: %w", err)
+	}
+
+	// Atomically rename temporary file to final destination
+	if err := os.Rename(tmpFile.Name(), filePath); err != nil {
+		return fmt.Errorf("failed to rename temporary file: %w", err)
+	}
+
+	return nil
+}
+
+// checkSymlinkAttack checks for symlink attacks in the file path
+func (fs *FileStorageBackend) checkSymlinkAttack(filePath string) error {
+	// Check if the target file is a symlink
+	if info, err := os.Lstat(filePath); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("target file is a symlink: %s", filePath)
+		}
+	}
+
+	// Check each component of the path for symlinks
+	dir := filepath.Dir(filePath)
+	for {
+		if info, err := os.Lstat(dir); err == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("directory component is a symlink: %s", dir)
+			}
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break // Reached root
+		}
+		dir = parent
 	}
 
 	return nil
