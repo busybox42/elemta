@@ -27,7 +27,7 @@ options = { index = "elemta-logs", bufferSize = 50, flushInterval = "5s" }
 
 [plugins]
 directory = "/app/plugins"
-enabled = []
+enabled = ["rspamd", "clamav"]
 
 [queue_processor]
 enabled = true

@@ -25,26 +25,26 @@ type Session struct {
 	writer *bufio.Writer
 
 	// Modular handlers
-	state           *SessionState
-	commandHandler  *CommandHandler
-	authHandler     *AuthHandler
-	dataHandler     *DataHandler
+	state          *SessionState
+	commandHandler *CommandHandler
+	authHandler    *AuthHandler
+	dataHandler    *DataHandler
 
 	// Configuration and dependencies
-	config            *Config
-	logger            *slog.Logger
-	context           *Context
-	authenticator     Authenticator
-	queueManager      queue.QueueManager
-	tlsManager        TLSHandler
-	builtinPlugins    *plugin.BuiltinPlugins
-	resourceManager   *ResourceManager
+	config          *Config
+	logger          *slog.Logger
+	context         *Context
+	authenticator   Authenticator
+	queueManager    queue.QueueManager
+	tlsManager      TLSHandler
+	builtinPlugins  *plugin.BuiltinPlugins
+	resourceManager *ResourceManager
 	// enhancedValidator would be added here if needed
 
 	// Session metadata
-	sessionID    string
-	remoteAddr   string
-	startTime    time.Time
+	sessionID  string
+	remoteAddr string
+	startTime  time.Time
 
 	// Thread safety
 	mu sync.RWMutex
@@ -72,17 +72,17 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Ses
 
 	// Create core session
 	session := &Session{
-		conn:              conn,
-		reader:            bufio.NewReader(conn),
-		writer:            bufio.NewWriter(conn),
-		config:            config,
-		logger:            logger,
-		authenticator:     authenticator,
-		sessionID:         sessionID,
-		remoteAddr:        remoteAddr,
-		startTime:         startTime,
-		shutdownCh:        make(chan struct{}),
-		done:              make(chan struct{}),
+		conn:          conn,
+		reader:        bufio.NewReader(conn),
+		writer:        bufio.NewWriter(conn),
+		config:        config,
+		logger:        logger,
+		authenticator: authenticator,
+		sessionID:     sessionID,
+		remoteAddr:    remoteAddr,
+		startTime:     startTime,
+		shutdownCh:    make(chan struct{}),
+		done:          make(chan struct{}),
 		// enhancedValidator would be initialized here if needed
 	}
 
@@ -108,7 +108,7 @@ func (s *Session) initializeComponents() {
 	s.authHandler = NewAuthHandler(s, s.state, s.authenticator, s.conn, s.logger)
 
 	// Create command handler
-	s.commandHandler = NewCommandHandler(s, s.state, s.authHandler, s.conn, 
+	s.commandHandler = NewCommandHandler(s, s.state, s.authHandler, s.conn,
 		s.config, s.tlsManager, s.logger)
 
 	// Create data handler
@@ -122,7 +122,7 @@ func (s *Session) initializeComponents() {
 func (s *Session) SetTLSManager(tlsManager TLSHandler) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.tlsManager = tlsManager
 	if s.commandHandler != nil {
 		s.commandHandler.tlsManager = tlsManager
@@ -133,7 +133,7 @@ func (s *Session) SetTLSManager(tlsManager TLSHandler) {
 func (s *Session) SetQueueManager(queueManager queue.QueueManager) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.queueManager = queueManager
 	if s.dataHandler != nil {
 		s.dataHandler.queueManager = queueManager
@@ -146,7 +146,7 @@ func (s *Session) SetQueueManager(queueManager queue.QueueManager) {
 func (s *Session) SetBuiltinPlugins(builtinPlugins *plugin.BuiltinPlugins) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.builtinPlugins = builtinPlugins
 	if s.dataHandler != nil {
 		s.dataHandler.builtinPlugins = builtinPlugins
@@ -194,12 +194,17 @@ func (s *Session) Handle() error {
 // sendGreeting sends the initial SMTP greeting
 func (s *Session) sendGreeting(ctx context.Context) error {
 	greeting := fmt.Sprintf("220 %s ESMTP Elemta MTA ready", s.config.Hostname)
-	
+
 	if err := s.write(greeting); err != nil {
 		return fmt.Errorf("failed to write greeting: %w", err)
 	}
 
-	s.logger.InfoContext(ctx, "SMTP greeting sent", "greeting", greeting)
+	s.logger.InfoContext(ctx, "SMTP greeting sent",
+		"greeting", greeting,
+		"client_ip", s.remoteAddr,
+		"server_ip", s.config.Hostname,
+		"connection_id", s.sessionID,
+	)
 	return nil
 }
 
@@ -230,7 +235,7 @@ func (s *Session) processCommands(ctx context.Context) error {
 				s.write("421 4.4.2 Timeout")
 				return fmt.Errorf("session timeout")
 			}
-			
+
 			s.logger.InfoContext(ctx, "Client disconnected", "error", err)
 			return nil // Normal disconnection
 		}
@@ -243,10 +248,20 @@ func (s *Session) processCommands(ctx context.Context) error {
 			if err := s.handleDataPhase(ctx); err != nil {
 				s.logger.ErrorContext(ctx, "Data phase handling failed", "error", err)
 				s.writeError(ctx, err)
+
+				// Reset to INIT phase after DATA error so client can send QUIT or other commands
+				if resetErr := s.state.SetPhase(ctx, PhaseInit); resetErr != nil {
+					s.logger.WarnContext(ctx, "Failed to reset phase after DATA error", "error", resetErr)
+				}
 				continue
 			}
 			// Send success response
 			s.write("250 2.0.0 Message accepted for delivery")
+
+			// Reset to INIT phase after successful DATA processing
+			if resetErr := s.state.SetPhase(ctx, PhaseInit); resetErr != nil {
+				s.logger.WarnContext(ctx, "Failed to reset phase after successful DATA", "error", resetErr)
+			}
 			continue
 		}
 
@@ -275,6 +290,8 @@ func (s *Session) processCommands(ctx context.Context) error {
 
 // handleDataPhase handles the DATA phase of message transmission
 func (s *Session) handleDataPhase(ctx context.Context) error {
+	startTime := time.Now()
+
 	s.logger.InfoContext(ctx, "Entering DATA phase",
 		"mail_from", s.state.GetMailFrom(),
 		"recipients", s.state.GetRecipientCount(),
@@ -293,10 +310,19 @@ func (s *Session) handleDataPhase(ctx context.Context) error {
 		return err
 	}
 
-	s.logger.InfoContext(ctx, "Message processed successfully",
-		"size", len(data),
-		"mail_from", s.state.GetMailFrom(),
-		"recipients", s.state.GetRecipientCount(),
+	s.logger.InfoContext(ctx, "message_received",
+		"event_type", "message_received",
+		"from_envelope", s.state.GetMailFrom(),
+		"to_envelope", s.state.GetRecipients(),
+		"message_size", len(data),
+		"recipient_count", s.state.GetRecipientCount(),
+		"client_ip", s.remoteAddr,
+		"server_ip", s.config.Hostname,
+		"connection_id", s.sessionID,
+		"authenticated", s.state.IsAuthenticated(),
+		"username", s.state.GetUsername(),
+		"tls_active", s.state.IsTLSActive(),
+		"processing_time_ms", time.Since(startTime).Milliseconds(),
 	)
 
 	return nil
@@ -336,7 +362,7 @@ func (s *Session) writeWithLog(msg string) {
 // writeError writes an error response to the client
 func (s *Session) writeError(ctx context.Context, err error) {
 	errorMsg := err.Error()
-	
+
 	// Extract SMTP error code if present, otherwise use generic error
 	if len(errorMsg) >= 3 && errorMsg[0] >= '4' && errorMsg[0] <= '5' {
 		s.writeWithLog(errorMsg)

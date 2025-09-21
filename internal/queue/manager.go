@@ -239,12 +239,17 @@ func (m *Manager) EnqueueMessage(from string, to []string, subject string, data 
 	// Generate a unique ID for the message
 	id := generateUniqueID()
 
-	m.logger.Info("enqueueing message",
+	m.logger.Info("message_accepted",
+		"event_type", "message_accepted",
 		"message_id", id,
-		"from", from,
+		"from_envelope", from,
+		"to_envelope", to,
 		"to_count", len(to),
-		"size", len(data),
-		"priority", priority)
+		"message_size", len(data),
+		"priority", priority,
+		"queue_type", "active",
+		"enqueue_time", time.Now().Format(time.RFC3339),
+	)
 
 	// Create message metadata
 	msg := Message{

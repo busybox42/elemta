@@ -231,10 +231,14 @@ func (ch *CommandHandler) HandleMAIL(ctx context.Context, args string) error {
 		return fmt.Errorf("451 4.3.0 Internal server error")
 	}
 
-	ch.logger.InfoContext(ctx, "MAIL FROM accepted",
+	ch.logger.InfoContext(ctx, "mail_from_accepted",
+		"event_type", "mail_from_accepted",
 		"mail_from", mailFrom,
 		"authenticated", ch.state.IsAuthenticated(),
 		"username", ch.state.GetUsername(),
+		"client_ip", ch.session.remoteAddr,
+		"connection_id", ch.session.sessionID,
+		"tls_active", ch.state.IsTLSActive(),
 	)
 
 	return ch.session.write("250 2.1.0 Sender OK")
@@ -265,10 +269,15 @@ func (ch *CommandHandler) HandleRCPT(ctx context.Context, args string) error {
 		return fmt.Errorf("503 5.5.1 %s", err.Error())
 	}
 
-	ch.logger.InfoContext(ctx, "RCPT TO accepted",
+	ch.logger.InfoContext(ctx, "rcpt_to_accepted",
+		"event_type", "rcpt_to_accepted",
 		"rcpt_to", rcptTo,
+		"mail_from", ch.state.GetMailFrom(),
 		"total_recipients", ch.state.GetRecipientCount(),
 		"authenticated", ch.state.IsAuthenticated(),
+		"username", ch.state.GetUsername(),
+		"client_ip", ch.session.remoteAddr,
+		"connection_id", ch.session.sessionID,
 	)
 
 	return ch.session.write("250 2.1.5 Recipient OK")

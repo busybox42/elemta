@@ -252,6 +252,7 @@ func (p *Processor) processMessage(msg Message) {
 	)
 
 	logger.Debug("Processing message")
+	startTime := time.Now()
 
 	// Get message content
 	content, err := p.manager.GetMessageContent(msg.ID)
@@ -274,12 +275,17 @@ func (p *Processor) processMessage(msg Message) {
 			"message_id", msg.ID,
 			"from_envelope", msg.From,
 			"to_envelope", msg.To,
-			"delivery_method", "smtp", // TODO: make this dynamic based on handler
+			"message_subject", msg.Subject,
+			"message_size", msg.Size,
+			"delivery_method", "lmtp",
+			"delivery_host", p.handler.(*LMTPDeliveryHandler).host,
+			"delivery_port", p.handler.(*LMTPDeliveryHandler).port,
 			"retry_count", msg.RetryCount,
 			"delivery_time", time.Now().Format(time.RFC3339),
 			"status", "delivered",
+			"processing_time_ms", time.Since(startTime).Milliseconds(),
 		)
-		
+
 		p.metricsLock.Lock()
 		p.deliveredCount++
 		p.metricsLock.Unlock()
@@ -299,7 +305,7 @@ func (p *Processor) processMessage(msg Message) {
 
 	// Delivery failed - determine if it's a tempfail or permanent failure
 	isTemporary := p.isTemporaryFailure(deliveryErr)
-	
+
 	if isTemporary {
 		// Log temporary failure (will retry)
 		logger.Warn("message_tempfail",
@@ -307,24 +313,36 @@ func (p *Processor) processMessage(msg Message) {
 			"message_id", msg.ID,
 			"from_envelope", msg.From,
 			"to_envelope", msg.To,
+			"message_subject", msg.Subject,
+			"message_size", msg.Size,
+			"delivery_method", "lmtp",
+			"delivery_host", p.handler.(*LMTPDeliveryHandler).host,
+			"delivery_port", p.handler.(*LMTPDeliveryHandler).port,
 			"retry_count", msg.RetryCount,
 			"max_retries", p.config.MaxRetries,
 			"error", deliveryErr.Error(),
 			"status", "temporary_failure",
+			"processing_time_ms", time.Since(startTime).Milliseconds(),
 		)
 	} else {
 		// Log delivery failure
-		logger.Error("message_delivery_failed",
-			"event_type", "message_delivery_failed",
+		logger.Error("message_bounced",
+			"event_type", "message_bounced",
 			"message_id", msg.ID,
 			"from_envelope", msg.From,
 			"to_envelope", msg.To,
+			"message_subject", msg.Subject,
+			"message_size", msg.Size,
+			"delivery_method", "lmtp",
+			"delivery_host", p.handler.(*LMTPDeliveryHandler).host,
+			"delivery_port", p.handler.(*LMTPDeliveryHandler).port,
 			"retry_count", msg.RetryCount,
 			"error", deliveryErr.Error(),
-			"status", "failed",
+			"status", "permanent_failure",
+			"processing_time_ms", time.Since(startTime).Milliseconds(),
 		)
 	}
-	
+
 	p.metricsLock.Lock()
 	p.retryCount++
 	p.metricsLock.Unlock()
@@ -413,9 +431,9 @@ func (p *Processor) isTemporaryFailure(err error) bool {
 	if err == nil {
 		return false
 	}
-	
+
 	errStr := err.Error()
-	
+
 	// Check for common temporary failure patterns
 	tempPatterns := []string{
 		"4.", // 4xx SMTP codes
@@ -428,13 +446,13 @@ func (p *Processor) isTemporaryFailure(err error) bool {
 		"network error",
 		"dns",
 	}
-	
+
 	for _, pattern := range tempPatterns {
 		if strings.Contains(strings.ToLower(errStr), pattern) {
 			return true
 		}
 	}
-	
+
 	// Default to permanent failure for unknown errors
 	return false
 }

@@ -27,6 +27,7 @@ type Server struct {
 	listener        net.Listener
 	running         bool
 	pluginManager   *plugin.Manager
+	builtinPlugins  *plugin.BuiltinPlugins // Built-in plugins for spam/antivirus scanning
 	authenticator   Authenticator
 	metrics         *Metrics
 	metricsServer   *http.Server
@@ -80,6 +81,7 @@ func NewServer(config *Config) (*Server, error) {
 
 	// Initialize plugin manager if enabled
 	var pluginManager *plugin.Manager
+	var builtinPlugins *plugin.BuiltinPlugins
 	if config.Plugins != nil && config.Plugins.Enabled {
 		pluginManager = plugin.NewManager(config.Plugins.PluginPath)
 		logger.Printf("Plugin system enabled, using path: %s", config.Plugins.PluginPath)
@@ -99,6 +101,52 @@ func NewServer(config *Config) (*Server, error) {
 					logger.Printf("Successfully loaded plugin: %s", pluginName)
 				}
 			}
+		}
+	}
+
+	// Initialize builtin plugins for basic spam/antivirus scanning
+	builtinPlugins = plugin.NewBuiltinPlugins()
+	if config.Plugins != nil && len(config.Plugins.Plugins) > 0 {
+		// Initialize builtin plugins with configuration
+		pluginConfig := make(map[string]map[string]interface{})
+		// Add default configurations for builtin plugins
+		pluginConfig["clamav"] = map[string]interface{}{
+			"host":    "elemta-clamav",
+			"port":    3310,
+			"timeout": 30,
+		}
+		pluginConfig["rspamd"] = map[string]interface{}{
+			"host":      "elemta-rspamd",
+			"port":      11334,
+			"timeout":   30,
+			"threshold": 5.0,
+		}
+
+		if err := builtinPlugins.InitBuiltinPlugins(config.Plugins.Plugins, pluginConfig); err != nil {
+			logger.Printf("Warning: failed to initialize builtin plugins: %v", err)
+		} else {
+			logger.Printf("Builtin plugins initialized successfully")
+		}
+	} else {
+		// Initialize with basic builtin scanning even if no plugins specified
+		basicPlugins := []string{"clamav", "rspamd"}
+		pluginConfig := make(map[string]map[string]interface{})
+		pluginConfig["clamav"] = map[string]interface{}{
+			"host":    "elemta-clamav",
+			"port":    3310,
+			"timeout": 30,
+		}
+		pluginConfig["rspamd"] = map[string]interface{}{
+			"host":      "elemta-rspamd",
+			"port":      11334,
+			"timeout":   30,
+			"threshold": 5.0,
+		}
+
+		if err := builtinPlugins.InitBuiltinPlugins(basicPlugins, pluginConfig); err != nil {
+			logger.Printf("Warning: failed to initialize basic builtin plugins: %v", err)
+		} else {
+			logger.Printf("Basic builtin plugins initialized successfully")
 		}
 	}
 
@@ -241,6 +289,7 @@ func NewServer(config *Config) (*Server, error) {
 		config:          config,
 		running:         false,
 		pluginManager:   pluginManager,
+		builtinPlugins:  builtinPlugins,
 		authenticator:   authenticator,
 		metrics:         metrics,
 		queueManager:    queueManager,
@@ -599,6 +648,9 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 
 	// Set the TLS manager from the server
 	session.SetTLSManager(s.tlsManager)
+
+	// Set the builtin plugins from the server
+	session.SetBuiltinPlugins(s.builtinPlugins)
 
 	// Set queue manager for message processing
 	if s.queueManager != nil {

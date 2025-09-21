@@ -31,14 +31,14 @@ type DataReaderState struct {
 
 // MessageMetadata contains metadata about a message
 type MessageMetadata struct {
-	MessageID    string
-	From         string
-	To           []string
-	Subject      string
-	Date         time.Time
-	Size         int64
-	Headers      map[string]string
-	Checksum     string
+	MessageID string
+	From      string
+	To        []string
+	Subject   string
+	Date      time.Time
+	Size      int64
+	Headers   map[string]string
+	Checksum  string
 }
 
 // SecurityScanResult represents the result of security scanning
@@ -52,30 +52,30 @@ type SecurityScanResult struct {
 
 // DataHandler manages message data processing for a session
 type DataHandler struct {
-	session           *Session
-	state             *SessionState
-	logger            *slog.Logger
-	conn              net.Conn
-	reader            *bufio.Reader
-	config            *Config
-	queueManager      queue.QueueManager
-	builtinPlugins    *plugin.BuiltinPlugins
+	session        *Session
+	state          *SessionState
+	logger         *slog.Logger
+	conn           net.Conn
+	reader         *bufio.Reader
+	config         *Config
+	queueManager   queue.QueueManager
+	builtinPlugins *plugin.BuiltinPlugins
 	// enhancedValidator would be added here if needed
-	mu                sync.RWMutex
+	mu sync.RWMutex
 }
 
 // NewDataHandler creates a new data handler
 func NewDataHandler(session *Session, state *SessionState, conn net.Conn, reader *bufio.Reader,
 	config *Config, queueManager queue.QueueManager, builtinPlugins *plugin.BuiltinPlugins, logger *slog.Logger) *DataHandler {
 	return &DataHandler{
-		session:           session,
-		state:             state,
-		logger:            logger.With("component", "session-data"),
-		conn:              conn,
-		reader:            reader,
-		config:            config,
-		queueManager:      queueManager,
-		builtinPlugins:    builtinPlugins,
+		session:        session,
+		state:          state,
+		logger:         logger.With("component", "session-data"),
+		conn:           conn,
+		reader:         reader,
+		config:         config,
+		queueManager:   queueManager,
+		builtinPlugins: builtinPlugins,
 		// enhancedValidator would be initialized here if needed
 	}
 }
@@ -255,7 +255,7 @@ func (dh *DataHandler) isValidEndOfData(line string, state *DataReaderState, sus
 	// Check for suspicious patterns that could indicate SMTP smuggling
 	if strings.HasPrefix(line, ".") {
 		*suspiciousPatterns++
-		
+
 		// Log suspicious patterns for security monitoring
 		if line != ".\r\n" && line != ".\n" {
 			dh.logger.WarnContext(context.Background(), "Suspicious dot-prefixed line detected",
@@ -280,9 +280,9 @@ func (dh *DataHandler) validateLineContent(ctx context.Context, line string, sta
 	// Allow semicolons in headers (common in Content-Type, etc.)
 	// Allow "DROP" and "DELETE" in email content (they're legitimate words)
 	if strings.Contains(line, "'; DROP TABLE") ||
-	   strings.Contains(line, "\"; DROP TABLE") ||
-	   strings.Contains(line, "UNION SELECT") ||
-	   strings.Contains(line, "<script") {
+		strings.Contains(line, "\"; DROP TABLE") ||
+		strings.Contains(line, "UNION SELECT") ||
+		strings.Contains(line, "<script") {
 		return fmt.Errorf("security violation detected")
 	}
 
@@ -294,7 +294,7 @@ func (dh *DataHandler) validateLineContent(ctx context.Context, line string, sta
 		"remote_addr", dh.conn.RemoteAddr().String(),
 		"in_headers", state.InHeaders,
 	)
-	
+
 	if state.InHeaders && !isInternal {
 		dh.logger.DebugContext(ctx, "Applying strict header validation for external connection")
 		return dh.validateHeaderLine(ctx, line)
@@ -308,7 +308,7 @@ func (dh *DataHandler) validateLineContent(ctx context.Context, line string, sta
 // addServerHeaders adds server-generated headers to the message
 func (dh *DataHandler) addServerHeaders(ctx context.Context, data []byte, metadata *MessageMetadata, scanResult *SecurityScanResult) ([]byte, error) {
 	dataStr := string(data)
-	
+
 	// Find the end of headers
 	headerEnd := strings.Index(dataStr, "\r\n\r\n")
 	if headerEnd == -1 {
@@ -319,7 +319,7 @@ func (dh *DataHandler) addServerHeaders(ctx context.Context, data []byte, metada
 			headerEnd = 0
 		}
 	}
-	
+
 	var headers, body string
 	if headerEnd > 0 {
 		headers = dataStr[:headerEnd]
@@ -328,10 +328,10 @@ func (dh *DataHandler) addServerHeaders(ctx context.Context, data []byte, metada
 		headers = ""
 		body = dataStr
 	}
-	
+
 	// Build additional headers
 	var additionalHeaders []string
-	
+
 	// Add Received header (most important for email tracing)
 	receivedTime := time.Now().Format(time.RFC1123Z)
 	receivedHeader := fmt.Sprintf("Received: from %s (%s)\r\n\tby %s with ESMTP id %s\r\n\t(envelope-from <%s>)\r\n\tfor <%s>; %s",
@@ -344,7 +344,7 @@ func (dh *DataHandler) addServerHeaders(ctx context.Context, data []byte, metada
 		receivedTime,
 	)
 	additionalHeaders = append(additionalHeaders, receivedHeader)
-	
+
 	// Add security scan headers
 	if scanResult != nil {
 		if scanResult.VirusFound {
@@ -353,7 +353,7 @@ func (dh *DataHandler) addServerHeaders(ctx context.Context, data []byte, metada
 		} else {
 			additionalHeaders = append(additionalHeaders, "X-Virus-Scanned: Clean (Elemta)")
 		}
-		
+
 		spamStatus := "No"
 		if scanResult.SpamScore > 5.0 {
 			spamStatus = "Yes"
@@ -362,12 +362,12 @@ func (dh *DataHandler) addServerHeaders(ctx context.Context, data []byte, metada
 		additionalHeaders = append(additionalHeaders, fmt.Sprintf("X-Spam-Status: %s, score=%.1f/10.0", spamStatus, scanResult.SpamScore))
 		additionalHeaders = append(additionalHeaders, fmt.Sprintf("X-Spam-Score: %.1f", scanResult.SpamScore))
 	}
-	
+
 	// Add server identification headers
 	additionalHeaders = append(additionalHeaders, "X-Elemta-Version: 1.0")
 	additionalHeaders = append(additionalHeaders, "X-Processed-By: Elemta MTA")
 	additionalHeaders = append(additionalHeaders, fmt.Sprintf("X-Message-ID: %s", metadata.MessageID))
-	
+
 	// Combine headers
 	var finalHeaders string
 	if headers != "" {
@@ -375,7 +375,7 @@ func (dh *DataHandler) addServerHeaders(ctx context.Context, data []byte, metada
 	} else {
 		finalHeaders = strings.Join(additionalHeaders, "\r\n")
 	}
-	
+
 	// Ensure proper header/body separation
 	if body != "" {
 		if !strings.HasPrefix(body, "\r\n\r\n") && !strings.HasPrefix(body, "\n\n") {
@@ -392,33 +392,33 @@ func (dh *DataHandler) isInternalConnection() bool {
 	if dh.conn == nil {
 		return false
 	}
-	
+
 	remoteAddr := dh.conn.RemoteAddr().String()
-	
+
 	// Check for Docker internal networks (172.x.x.x range)
 	if strings.HasPrefix(remoteAddr, "172.") {
 		return true
 	}
-	
+
 	// Check for localhost connections (IPv4 and IPv6)
-	if strings.HasPrefix(remoteAddr, "127.") || 
-	   strings.HasPrefix(remoteAddr, "[::1]") ||
-	   strings.Contains(remoteAddr, "::1") {
+	if strings.HasPrefix(remoteAddr, "127.") ||
+		strings.HasPrefix(remoteAddr, "[::1]") ||
+		strings.Contains(remoteAddr, "::1") {
 		return true
 	}
-	
+
 	// Check for Docker bridge network (10.x.x.x range)
 	if strings.HasPrefix(remoteAddr, "10.") {
 		return true
 	}
-	
+
 	return false
 }
 
 // validateHeaderLine validates message header lines
 func (dh *DataHandler) validateHeaderLine(ctx context.Context, line string) error {
 	line = strings.TrimSpace(line)
-	
+
 	// Empty lines are allowed in headers
 	if line == "" {
 		return nil
@@ -446,10 +446,10 @@ func (dh *DataHandler) validateHeaderLine(ctx context.Context, line string) erro
 
 	// Check for valid header name characters (RFC 5322)
 	for _, char := range headerName {
-		if !((char >= 'A' && char <= 'Z') || 
-			 (char >= 'a' && char <= 'z') || 
-			 (char >= '0' && char <= '9') || 
-			 char == '-') {
+		if !((char >= 'A' && char <= 'Z') ||
+			(char >= 'a' && char <= 'z') ||
+			(char >= '0' && char <= '9') ||
+			char == '-') {
 			return fmt.Errorf("invalid header name character")
 		}
 	}
@@ -562,13 +562,13 @@ func (dh *DataHandler) extractMessageMetadata(ctx context.Context, data []byte) 
 func (dh *DataHandler) extractHeaders(data []byte) map[string]string {
 	headers := make(map[string]string)
 	lines := strings.Split(string(data), "\n")
-	
+
 	var currentHeader string
 	var currentValue strings.Builder
 
 	for _, line := range lines {
 		line = strings.TrimRight(line, "\r")
-		
+
 		// Empty line indicates end of headers
 		if line == "" {
 			if currentHeader != "" {
@@ -610,7 +610,7 @@ func (dh *DataHandler) validateMessageHeaders(ctx context.Context, metadata *Mes
 	// Skip strict header requirements for internal connections (like Roundcube) or if auth is not required
 	isInternal := dh.isInternalConnection()
 	authNotRequired := dh.config.Auth != nil && dh.config.Auth.Enabled && !dh.config.Auth.Required
-	
+
 	if !isInternal && !authNotRequired {
 		// Check required headers only for external connections when auth is required
 		requiredHeaders := []string{"from", "date"}
@@ -643,7 +643,7 @@ func (dh *DataHandler) validateFromHeader(ctx context.Context, fromHeader, mailF
 	// Extract email from From header (may contain display name)
 	emailRegex := regexp.MustCompile(`<([^>]+)>|([^\s<>]+@[^\s<>]+)`)
 	matches := emailRegex.FindStringSubmatch(fromHeader)
-	
+
 	var headerEmail string
 	if len(matches) > 1 && matches[1] != "" {
 		headerEmail = matches[1]
@@ -668,8 +668,8 @@ func (dh *DataHandler) validateFromHeader(ctx context.Context, fromHeader, mailF
 // performSecurityScan performs comprehensive security scanning
 func (dh *DataHandler) performSecurityScan(ctx context.Context, data []byte, metadata *MessageMetadata) (*SecurityScanResult, error) {
 	result := &SecurityScanResult{
-		Passed:   true,
-		Threats:  make([]string, 0),
+		Passed:  true,
+		Threats: make([]string, 0),
 	}
 
 	// Perform antivirus scan if plugins are available
@@ -682,7 +682,7 @@ func (dh *DataHandler) performSecurityScan(ctx context.Context, data []byte, met
 
 	// Perform spam scan if plugins are available
 	if dh.builtinPlugins != nil {
-		if err := dh.performSpamScan(ctx, data, result); err != nil {
+		if err := dh.performSpamScan(ctx, data, metadata, result); err != nil {
 			dh.logger.ErrorContext(ctx, "Spam scan failed", "error", err)
 			return nil, err
 		}
@@ -708,7 +708,7 @@ func (dh *DataHandler) performSecurityScan(ctx context.Context, data []byte, met
 func (dh *DataHandler) performAntivirusScan(ctx context.Context, data []byte, result *SecurityScanResult) error {
 	// This would integrate with actual antivirus plugins
 	// For now, perform basic threat detection
-	
+
 	threatPatterns := []string{
 		"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*", // EICAR test
 		"malware", "virus", "trojan", // Basic patterns
@@ -720,7 +720,7 @@ func (dh *DataHandler) performAntivirusScan(ctx context.Context, data []byte, re
 			result.Passed = false
 			result.VirusFound = true
 			result.Threats = append(result.Threats, "Virus detected: "+pattern)
-			
+
 			dh.logger.WarnContext(ctx, "Virus detected in message",
 				"pattern", pattern,
 				"message_id", "unknown",
@@ -732,26 +732,57 @@ func (dh *DataHandler) performAntivirusScan(ctx context.Context, data []byte, re
 }
 
 // performSpamScan performs spam detection
-func (dh *DataHandler) performSpamScan(ctx context.Context, data []byte, result *SecurityScanResult) error {
+func (dh *DataHandler) performSpamScan(ctx context.Context, data []byte, metadata *MessageMetadata, result *SecurityScanResult) error {
 	// Basic spam scoring
 	spamScore := 0.0
 	content := strings.ToLower(string(data))
 
+	// Debug: Log the content being scanned
+	previewLength := 200
+	if len(content) < previewLength {
+		previewLength = len(content)
+	}
+	dh.logger.DebugContext(ctx, "Spam scan content",
+		"content_length", len(content),
+		"content_preview", content[:previewLength],
+		"gtube_in_content", strings.Contains(content, "xjs*c4jdbqadn1.nsbn3*2idnen*gtube-standard-anti-ube-test-email*c.34x"),
+	)
+
 	// Check for spam indicators
 	spamPatterns := map[string]float64{
-		"viagra":        5.0,
-		"cialis":        5.0,
-		"lottery":       3.0,
-		"winner":        2.0,
+		// GTUBE test string (should always trigger spam detection)
+		"XJS*C4JDBQADN1.NSBN3*2IDNEN*GTUBE-STANDARD-ANTI-UBE-TEST-EMAIL*C.34X": 100.0,
+		// EICAR test string (should trigger virus detection)
+		"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*": 100.0,
+		// Common spam patterns
+		"viagra":          5.0,
+		"cialis":          5.0,
+		"lottery":         3.0,
+		"winner":          2.0,
 		"congratulations": 1.0,
-		"urgent":        1.5,
-		"act now":       2.0,
-		"limited time":  1.5,
+		"urgent":          1.5,
+		"act now":         2.0,
+		"limited time":    1.5,
 	}
 
 	for pattern, score := range spamPatterns {
-		if strings.Contains(content, pattern) {
+		// Convert pattern to lowercase for case-insensitive matching
+		lowerPattern := strings.ToLower(pattern)
+		if strings.Contains(content, lowerPattern) {
 			spamScore += score
+
+			// Log specific pattern detection
+			if pattern == "XJS*C4JDBQADN1.NSBN3*2IDNEN*GTUBE-STANDARD-ANTI-UBE-TEST-EMAIL*C.34X" {
+				dh.logger.InfoContext(ctx, "spam_detected",
+					"event_type", "spam_detected",
+					"pattern", "GTUBE",
+					"spam_score", spamScore,
+					"message_id", metadata.MessageID,
+					"from_envelope", metadata.From,
+					"to_envelope", metadata.To,
+					"message_subject", metadata.Subject,
+				)
+			}
 		}
 	}
 
@@ -761,9 +792,13 @@ func (dh *DataHandler) performSpamScan(ctx context.Context, data []byte, result 
 	if spamScore >= 5.0 {
 		result.Passed = false
 		result.Threats = append(result.Threats, fmt.Sprintf("High spam score: %.1f", spamScore))
-		
+
 		dh.logger.WarnContext(ctx, "Message flagged as spam",
 			"spam_score", spamScore,
+			"message_id", metadata.MessageID,
+			"from_envelope", metadata.From,
+			"to_envelope", metadata.To,
+			"message_subject", metadata.Subject,
 		)
 	}
 
@@ -778,7 +813,7 @@ func (dh *DataHandler) performContentAnalysis(ctx context.Context, data []byte, 
 	// Check for executable attachments (basic check)
 	if strings.Contains(content, "Content-Type: application/") {
 		if strings.Contains(content, "application/x-msdownload") ||
-		   strings.Contains(content, "application/octet-stream") {
+			strings.Contains(content, "application/octet-stream") {
 			result.Threats = append(result.Threats, "Suspicious attachment type detected")
 			dh.logger.WarnContext(ctx, "Suspicious attachment detected")
 		}
@@ -832,10 +867,16 @@ func (dh *DataHandler) saveMessage(ctx context.Context, data []byte, metadata *M
 			dh.logger.ErrorContext(ctx, "Failed to enqueue message", "error", err)
 			return fmt.Errorf("failed to save message: %w", err)
 		}
-		
-		dh.logger.InfoContext(ctx, "Message enqueued successfully",
+
+		dh.logger.InfoContext(ctx, "message_enqueued",
+			"event_type", "message_enqueued",
 			"message_id", messageID,
-			"size", metadata.Size,
+			"from_envelope", metadata.From,
+			"to_envelope", metadata.To,
+			"message_subject", metadata.Subject,
+			"message_size", metadata.Size,
+			"message_id_header", metadata.MessageID,
+			"queue_time", time.Now().Format(time.RFC3339),
 		)
 	}
 
