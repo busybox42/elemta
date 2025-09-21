@@ -30,7 +30,7 @@ type CommandHandler struct {
 	conn        net.Conn
 	config      *Config
 	tlsManager  TLSHandler
-	// enhancedValidator would be added here if needed
+	securityManager *CommandSecurityManager
 }
 
 // NewCommandHandler creates a new command handler
@@ -44,7 +44,7 @@ func NewCommandHandler(session *Session, state *SessionState, authHandler *AuthH
 		conn:        conn,
 		config:      config,
 		tlsManager:  tlsManager,
-		// enhancedValidator would be initialized here if needed
+		securityManager: NewCommandSecurityManager(logger),
 	}
 }
 
@@ -55,8 +55,8 @@ func (ch *CommandHandler) ProcessCommand(ctx context.Context, line string) error
 	// Update activity
 	ch.state.UpdateActivity(ctx)
 
-	// Validate input
-	if err := ch.validateCommandInput(ctx, line); err != nil {
+	// Validate input with comprehensive security checks
+	if err := ch.securityManager.ValidateCommand(ctx, line); err != nil {
 		ch.logCommandResult(ctx, line, false, err.Error(), time.Since(startTime))
 		return err
 	}
@@ -438,28 +438,6 @@ func (ch *CommandHandler) HandleUnknown(ctx context.Context, cmd string) error {
 
 // Helper methods
 
-// validateCommandInput validates the command input for security
-func (ch *CommandHandler) validateCommandInput(ctx context.Context, line string) error {
-	// Basic length check
-	if len(line) > 1000 {
-		ch.logger.WarnContext(ctx, "Command line too long", "length", len(line))
-		return fmt.Errorf("500 5.5.2 Line too long")
-	}
-
-	// Basic command validation
-	// Enhanced validation would be implemented here
-	if strings.Contains(strings.ToUpper(line), "DROP") ||
-		strings.Contains(strings.ToUpper(line), "DELETE") ||
-		strings.Contains(line, ";") {
-		ch.logger.WarnContext(ctx, "Command validation failed",
-			"line", line,
-			"reason", "suspicious_content",
-		)
-		return fmt.Errorf("554 5.7.1 Command rejected: security violation")
-	}
-
-	return nil
-}
 
 // parseCommand parses a command line into command and arguments
 func (ch *CommandHandler) parseCommand(line string) (string, string) {
@@ -643,8 +621,11 @@ func (ch *CommandHandler) logCommandResult(ctx context.Context, command string, 
 		level = slog.LevelWarn
 	}
 
+	// Sanitize command for safe logging
+	sanitizedCommand := ch.securityManager.SanitizeCommand(command)
+
 	ch.logger.Log(ctx, level, "SMTP command processed",
-		"command", command,
+		"command", sanitizedCommand,
 		"success", success,
 		"response", response,
 		"duration", duration,
