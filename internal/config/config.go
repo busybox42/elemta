@@ -134,6 +134,7 @@ func FindConfigFile(configPath string) (string, error) {
 func LoadConfig(configPath string) (*Config, error) {
 	// Get default configuration
 	cfg := DefaultConfig()
+	securityValidator := NewSecurityValidator()
 
 	// Try to find the config file
 	configFile, err := FindConfigFile(configPath)
@@ -142,10 +143,20 @@ func LoadConfig(configPath string) (*Config, error) {
 		return cfg, nil
 	}
 
+	// Validate config file size before reading
+	if err := securityValidator.ValidateConfigFileSize(configFile); err != nil {
+		return nil, fmt.Errorf("config file security validation failed: %w", err)
+	}
+
 	// Read the file
 	data, err := os.ReadFile(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	// Validate config file content size
+	if len(data) > int(securityValidator.config.MaxConfigFileSize) {
+		return nil, fmt.Errorf("config file too large: %d bytes (max: %d)", len(data), securityValidator.config.MaxConfigFileSize)
 	}
 
 	fmt.Printf("[DEBUG] Raw config file contents:\n%s\n", string(data))
@@ -182,6 +193,24 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 	if cfg.TLS.RenewalConfig == nil {
 		cfg.TLS.RenewalConfig = &smtp.CertRenewalConfig{}
+	}
+
+	// Perform comprehensive security validation
+	validationResult := cfg.Validate()
+	if !validationResult.Valid {
+		var errorMessages []string
+		for _, err := range validationResult.Errors {
+			errorMessages = append(errorMessages, err.Error())
+		}
+		return nil, fmt.Errorf("configuration validation failed: %s", strings.Join(errorMessages, "; "))
+	}
+
+	// Log warnings if any
+	if len(validationResult.Warnings) > 0 {
+		fmt.Println("Configuration warnings:")
+		for _, warning := range validationResult.Warnings {
+			fmt.Printf("  WARNING: %s\n", warning.Error())
+		}
 	}
 
 	fmt.Printf("Configuration loaded successfully. Hostname: %s, Listen: %s\n",
@@ -327,43 +356,47 @@ func (vr *ValidationResult) AddWarning(field string, value interface{}, message 
 // Validate performs comprehensive validation of the configuration
 func (c *Config) Validate() *ValidationResult {
 	result := &ValidationResult{Valid: true}
+	securityValidator := NewSecurityValidator()
 
 	// Validate server configuration
-	c.validateServer(result)
+	c.validateServer(result, securityValidator)
 
 	// Validate TLS configuration
-	c.validateTLS(result)
+	c.validateTLS(result, securityValidator)
 
 	// Validate queue configuration
-	c.validateQueue(result)
+	c.validateQueue(result, securityValidator)
 
 	// Validate logging configuration
-	c.validateLogging(result)
+	c.validateLogging(result, securityValidator)
 
 	// Validate plugins configuration
-	c.validatePlugins(result)
+	c.validatePlugins(result, securityValidator)
 
 	// Validate authentication configuration
-	c.validateAuth(result)
+	c.validateAuth(result, securityValidator)
 
 	// Validate queue processor configuration
-	c.validateQueueProcessor(result)
+	c.validateQueueProcessor(result, securityValidator)
 
 	// Validate delivery configuration
-	c.validateDelivery(result)
+	c.validateDelivery(result, securityValidator)
 
 	return result
 }
 
 // validateServer validates server configuration
-func (c *Config) validateServer(result *ValidationResult) {
+func (c *Config) validateServer(result *ValidationResult, sv *SecurityValidator) {
 	// Validate hostname
 	if c.Server.Hostname == "" {
 		result.AddError("server.hostname", c.Server.Hostname, "hostname is required")
 	} else {
-		// Check if hostname is valid
-		if !isValidHostname(c.Server.Hostname) {
-			result.AddError("server.hostname", c.Server.Hostname, "invalid hostname format")
+		// Sanitize hostname
+		c.Server.Hostname = sv.SanitizeString(c.Server.Hostname)
+		
+		// Validate hostname security
+		if err := sv.ValidateHostname(c.Server.Hostname, "server.hostname"); err != nil {
+			result.AddError("server.hostname", c.Server.Hostname, err.Error())
 		}
 	}
 
@@ -371,8 +404,39 @@ func (c *Config) validateServer(result *ValidationResult) {
 	if c.Server.Listen == "" {
 		result.AddError("server.listen", c.Server.Listen, "listen address is required")
 	} else {
-		if !isValidListenAddress(c.Server.Listen) {
-			result.AddError("server.listen", c.Server.Listen, "invalid listen address format (expected :port or host:port)")
+		// Sanitize listen address
+		c.Server.Listen = sv.SanitizeString(c.Server.Listen)
+		
+		// Validate network address security
+		if err := sv.ValidateNetworkAddress(c.Server.Listen, "server.listen"); err != nil {
+			result.AddError("server.listen", c.Server.Listen, err.Error())
+		}
+	}
+
+	// Validate listen submission address if provided
+	if c.Server.ListenSubmission != "" {
+		// Sanitize listen submission address
+		c.Server.ListenSubmission = sv.SanitizeString(c.Server.ListenSubmission)
+		
+		// Validate network address security
+		if err := sv.ValidateNetworkAddress(c.Server.ListenSubmission, "server.listen_submission"); err != nil {
+			result.AddError("server.listen_submission", c.Server.ListenSubmission, err.Error())
+		}
+	}
+
+	// Validate max size
+	if err := sv.ValidateNumericBounds(c.Server.MaxSize, "server.max_size", 1024, sv.config.MaxFileSize); err != nil {
+		result.AddError("server.max_size", c.Server.MaxSize, err.Error())
+	}
+
+	// Validate local domains
+	for i, domain := range c.Server.LocalDomains {
+		// Sanitize domain
+		c.Server.LocalDomains[i] = sv.SanitizeString(domain)
+		
+		// Validate hostname security
+		if err := sv.ValidateHostname(domain, fmt.Sprintf("server.local_domains[%d]", i)); err != nil {
+			result.AddError(fmt.Sprintf("server.local_domains[%d]", i), domain, err.Error())
 		}
 	}
 
@@ -380,55 +444,156 @@ func (c *Config) validateServer(result *ValidationResult) {
 	if c.Server.TLS {
 		if c.Server.CertFile == "" {
 			result.AddError("server.cert_file", c.Server.CertFile, "cert_file is required when TLS is enabled")
-		} else if !fileExists(c.Server.CertFile) {
-			result.AddWarning("server.cert_file", c.Server.CertFile, "certificate file does not exist")
+		} else {
+			// Sanitize cert file path
+			c.Server.CertFile = sv.SanitizePath(c.Server.CertFile)
+			
+			// Validate path security
+			if err := sv.ValidatePath(c.Server.CertFile, "server.cert_file"); err != nil {
+				result.AddError("server.cert_file", c.Server.CertFile, err.Error())
+			} else if !fileExists(c.Server.CertFile) {
+				result.AddWarning("server.cert_file", c.Server.CertFile, "certificate file does not exist")
+			} else {
+				// Validate file size
+				if err := sv.ValidateFileSize(c.Server.CertFile, "server.cert_file"); err != nil {
+					result.AddError("server.cert_file", c.Server.CertFile, err.Error())
+				}
+			}
 		}
 
 		if c.Server.KeyFile == "" {
 			result.AddError("server.key_file", c.Server.KeyFile, "key_file is required when TLS is enabled")
-		} else if !fileExists(c.Server.KeyFile) {
-			result.AddWarning("server.key_file", c.Server.KeyFile, "private key file does not exist")
+		} else {
+			// Sanitize key file path
+			c.Server.KeyFile = sv.SanitizePath(c.Server.KeyFile)
+			
+			// Validate path security
+			if err := sv.ValidatePath(c.Server.KeyFile, "server.key_file"); err != nil {
+				result.AddError("server.key_file", c.Server.KeyFile, err.Error())
+			} else if !fileExists(c.Server.KeyFile) {
+				result.AddWarning("server.key_file", c.Server.KeyFile, "private key file does not exist")
+			} else {
+				// Validate file size
+				if err := sv.ValidateFileSize(c.Server.KeyFile, "server.key_file"); err != nil {
+					result.AddError("server.key_file", c.Server.KeyFile, err.Error())
+				}
+			}
 		}
 	}
 }
 
 // validateTLS validates TLS configuration
-func (c *Config) validateTLS(result *ValidationResult) {
+func (c *Config) validateTLS(result *ValidationResult, sv *SecurityValidator) {
 	if c.TLS == nil {
 		return // TLS config is optional
+	}
+
+	// Validate TLS listen address if provided
+	if c.TLS.ListenAddr != "" {
+		// Sanitize TLS listen address
+		c.TLS.ListenAddr = sv.SanitizeString(c.TLS.ListenAddr)
+		
+		// Validate network address security
+		if err := sv.ValidateNetworkAddress(c.TLS.ListenAddr, "tls.listen_addr"); err != nil {
+			result.AddError("tls.listen_addr", c.TLS.ListenAddr, err.Error())
+		}
+	}
+
+	// Validate TLS certificate files if provided
+	if c.TLS.CertFile != "" {
+		// Sanitize cert file path
+		c.TLS.CertFile = sv.SanitizePath(c.TLS.CertFile)
+		
+		// Validate path security
+		if err := sv.ValidatePath(c.TLS.CertFile, "tls.cert_file"); err != nil {
+			result.AddError("tls.cert_file", c.TLS.CertFile, err.Error())
+		} else if !fileExists(c.TLS.CertFile) {
+			result.AddWarning("tls.cert_file", c.TLS.CertFile, "certificate file does not exist")
+		} else {
+			// Validate file size
+			if err := sv.ValidateFileSize(c.TLS.CertFile, "tls.cert_file"); err != nil {
+				result.AddError("tls.cert_file", c.TLS.CertFile, err.Error())
+			}
+		}
+	}
+
+	if c.TLS.KeyFile != "" {
+		// Sanitize key file path
+		c.TLS.KeyFile = sv.SanitizePath(c.TLS.KeyFile)
+		
+		// Validate path security
+		if err := sv.ValidatePath(c.TLS.KeyFile, "tls.key_file"); err != nil {
+			result.AddError("tls.key_file", c.TLS.KeyFile, err.Error())
+		} else if !fileExists(c.TLS.KeyFile) {
+			result.AddWarning("tls.key_file", c.TLS.KeyFile, "private key file does not exist")
+		} else {
+			// Validate file size
+			if err := sv.ValidateFileSize(c.TLS.KeyFile, "tls.key_file"); err != nil {
+				result.AddError("tls.key_file", c.TLS.KeyFile, err.Error())
+			}
+		}
 	}
 
 	// If Let's Encrypt is configured, validate settings
 	if c.TLS.LetsEncrypt != nil && c.TLS.LetsEncrypt.Enabled {
 		if c.TLS.LetsEncrypt.Email == "" {
 			result.AddError("tls.letsencrypt.email", c.TLS.LetsEncrypt.Email, "email is required for Let's Encrypt")
-		} else if !isValidEmail(c.TLS.LetsEncrypt.Email) {
-			result.AddError("tls.letsencrypt.email", c.TLS.LetsEncrypt.Email, "invalid email format")
+		} else {
+			// Sanitize email
+			c.TLS.LetsEncrypt.Email = sv.SanitizeString(c.TLS.LetsEncrypt.Email)
+			
+			// Validate email format
+			if !isValidEmail(c.TLS.LetsEncrypt.Email) {
+				result.AddError("tls.letsencrypt.email", c.TLS.LetsEncrypt.Email, "invalid email format")
+			}
 		}
 
 		if c.TLS.LetsEncrypt.Domain == "" {
 			result.AddError("tls.letsencrypt.domain", c.TLS.LetsEncrypt.Domain, "domain is required for Let's Encrypt")
-		} else if !isValidHostname(c.TLS.LetsEncrypt.Domain) {
-			result.AddError("tls.letsencrypt.domain", c.TLS.LetsEncrypt.Domain, "invalid domain format")
+		} else {
+			// Sanitize domain
+			c.TLS.LetsEncrypt.Domain = sv.SanitizeString(c.TLS.LetsEncrypt.Domain)
+			
+			// Validate hostname security
+			if err := sv.ValidateHostname(c.TLS.LetsEncrypt.Domain, "tls.letsencrypt.domain"); err != nil {
+				result.AddError("tls.letsencrypt.domain", c.TLS.LetsEncrypt.Domain, err.Error())
+			}
 		}
 
-		if c.TLS.LetsEncrypt.CacheDir == "" {
+		if c.TLS.LetsEncrypt.CacheDir != "" {
+			// Sanitize cache directory path
+			c.TLS.LetsEncrypt.CacheDir = sv.SanitizePath(c.TLS.LetsEncrypt.CacheDir)
+			
+			// Validate path security
+			if err := sv.ValidatePath(c.TLS.LetsEncrypt.CacheDir, "tls.letsencrypt.cache_dir"); err != nil {
+				result.AddError("tls.letsencrypt.cache_dir", c.TLS.LetsEncrypt.CacheDir, err.Error())
+			}
+		} else {
 			result.AddWarning("tls.letsencrypt.cache_dir", c.TLS.LetsEncrypt.CacheDir, "cache_dir not set, using default")
 		}
 	}
 }
 
 // validateQueue validates queue configuration
-func (c *Config) validateQueue(result *ValidationResult) {
+func (c *Config) validateQueue(result *ValidationResult, sv *SecurityValidator) {
 	if c.Queue.Dir == "" {
 		result.AddError("queue.dir", c.Queue.Dir, "queue directory is required")
+		return
+	}
+
+	// Sanitize queue directory path
+	c.Queue.Dir = sv.SanitizePath(c.Queue.Dir)
+
+	// Validate path security
+	if err := sv.ValidatePath(c.Queue.Dir, "queue.dir"); err != nil {
+		result.AddError("queue.dir", c.Queue.Dir, err.Error())
 		return
 	}
 
 	// Check if queue directory exists or can be created
 	if !dirExists(c.Queue.Dir) {
 		// Try to create it
-		if err := os.MkdirAll(c.Queue.Dir, 0755); err != nil {
+		if err := os.MkdirAll(c.Queue.Dir, 0700); err != nil { // Use secure permissions
 			result.AddError("queue.dir", c.Queue.Dir, fmt.Sprintf("cannot create queue directory: %v", err))
 		} else {
 			result.AddWarning("queue.dir", c.Queue.Dir, "queue directory was created")
@@ -442,7 +607,7 @@ func (c *Config) validateQueue(result *ValidationResult) {
 }
 
 // validateLogging validates logging configuration
-func (c *Config) validateLogging(result *ValidationResult) {
+func (c *Config) validateLogging(result *ValidationResult, sv *SecurityValidator) {
 	// Validate log type
 	validTypes := []string{"console", "file", "elastic"}
 	if c.Logging.Type != "" && !contains(validTypes, c.Logging.Type) {
@@ -465,24 +630,54 @@ func (c *Config) validateLogging(result *ValidationResult) {
 	switch c.Logging.Type {
 	case "file":
 		if c.Logging.File != "" {
-			logDir := filepath.Dir(c.Logging.File)
-			if !dirExists(logDir) {
-				if err := os.MkdirAll(logDir, 0755); err != nil {
-					result.AddError("logging.file", c.Logging.File, fmt.Sprintf("cannot create log directory: %v", err))
+			// Sanitize log file path
+			c.Logging.File = sv.SanitizePath(c.Logging.File)
+			
+			// Validate path security
+			if err := sv.ValidatePath(c.Logging.File, "logging.file"); err != nil {
+				result.AddError("logging.file", c.Logging.File, err.Error())
+			} else {
+				logDir := filepath.Dir(c.Logging.File)
+				if !dirExists(logDir) {
+					if err := os.MkdirAll(logDir, 0755); err != nil {
+						result.AddError("logging.file", c.Logging.File, fmt.Sprintf("cannot create log directory: %v", err))
+					}
+				}
+				
+				// Validate file size if file exists
+				if err := sv.ValidateFileSize(c.Logging.File, "logging.file"); err != nil {
+					result.AddError("logging.file", c.Logging.File, err.Error())
 				}
 			}
 		}
 	case "elastic":
 		if c.Logging.Output == "" {
 			result.AddError("logging.output", c.Logging.Output, "Elasticsearch URL must be specified for elastic logging")
+		} else {
+			// Sanitize output URL
+			c.Logging.Output = sv.SanitizeString(c.Logging.Output)
+			
+			// Validate URL format (basic validation)
+			if !strings.HasPrefix(c.Logging.Output, "http://") && !strings.HasPrefix(c.Logging.Output, "https://") {
+				result.AddError("logging.output", c.Logging.Output, "Elasticsearch URL must start with http:// or https://")
+			}
 		}
 	}
 }
 
 // validatePlugins validates plugins configuration
-func (c *Config) validatePlugins(result *ValidationResult) {
+func (c *Config) validatePlugins(result *ValidationResult, sv *SecurityValidator) {
 	if c.Plugins.Directory == "" {
 		result.AddWarning("plugins.directory", c.Plugins.Directory, "plugins directory not set, plugins will be disabled")
+		return
+	}
+
+	// Sanitize plugins directory path
+	c.Plugins.Directory = sv.SanitizePath(c.Plugins.Directory)
+
+	// Validate path security
+	if err := sv.ValidatePath(c.Plugins.Directory, "plugins.directory"); err != nil {
+		result.AddError("plugins.directory", c.Plugins.Directory, err.Error())
 		return
 	}
 
@@ -493,20 +688,33 @@ func (c *Config) validatePlugins(result *ValidationResult) {
 
 	// Validate enabled plugins
 	for i, plugin := range c.Plugins.Enabled {
+		// Sanitize plugin name
+		c.Plugins.Enabled[i] = sv.SanitizeString(plugin)
+		
 		if plugin == "" {
 			result.AddError(fmt.Sprintf("plugins.enabled[%d]", i), plugin, "plugin name cannot be empty")
+		} else {
+			// Validate plugin name format (no path traversal, no special characters)
+			if strings.Contains(plugin, "/") || strings.Contains(plugin, "\\") || strings.Contains(plugin, "..") {
+				result.AddError(fmt.Sprintf("plugins.enabled[%d]", i), plugin, "plugin name contains invalid characters")
+			}
 		}
 
 		// Check if plugin file exists
 		pluginPath := filepath.Join(c.Plugins.Directory, plugin+".so")
 		if !fileExists(pluginPath) {
 			result.AddWarning(fmt.Sprintf("plugins.enabled[%d]", i), plugin, fmt.Sprintf("plugin file not found: %s", pluginPath))
+		} else {
+			// Validate plugin file size
+			if err := sv.ValidateFileSize(pluginPath, fmt.Sprintf("plugins.enabled[%d]", i)); err != nil {
+				result.AddError(fmt.Sprintf("plugins.enabled[%d]", i), plugin, err.Error())
+			}
 		}
 	}
 }
 
 // validateAuth validates authentication configuration
-func (c *Config) validateAuth(result *ValidationResult) {
+func (c *Config) validateAuth(result *ValidationResult, sv *SecurityValidator) {
 	if c.Auth == nil {
 		result.AddWarning("auth", nil, "authentication not configured, server will run without authentication")
 		return
@@ -523,53 +731,100 @@ func (c *Config) validateAuth(result *ValidationResult) {
 	case "file":
 		if c.Auth.DataSourcePath == "" {
 			result.AddError("auth.datasource_path", c.Auth.DataSourcePath, "datasource_path is required for file authentication")
-		} else if !fileExists(c.Auth.DataSourcePath) {
-			result.AddWarning("auth.datasource_path", c.Auth.DataSourcePath, "authentication file does not exist")
+		} else {
+			// Sanitize datasource path
+			c.Auth.DataSourcePath = sv.SanitizePath(c.Auth.DataSourcePath)
+			
+			// Validate path security
+			if err := sv.ValidatePath(c.Auth.DataSourcePath, "auth.datasource_path"); err != nil {
+				result.AddError("auth.datasource_path", c.Auth.DataSourcePath, err.Error())
+			} else if !fileExists(c.Auth.DataSourcePath) {
+				result.AddWarning("auth.datasource_path", c.Auth.DataSourcePath, "authentication file does not exist")
+			} else {
+				// Validate file size
+				if err := sv.ValidateFileSize(c.Auth.DataSourcePath, "auth.datasource_path"); err != nil {
+					result.AddError("auth.datasource_path", c.Auth.DataSourcePath, err.Error())
+				}
+			}
 		}
 
 	case "ldap":
 		if c.Auth.DataSourceHost == "" {
 			result.AddError("auth.datasource_host", c.Auth.DataSourceHost, "datasource_host is required for LDAP authentication")
+		} else {
+			// Sanitize hostname
+			c.Auth.DataSourceHost = sv.SanitizeString(c.Auth.DataSourceHost)
+			
+			// Validate hostname security
+			if err := sv.ValidateHostname(c.Auth.DataSourceHost, "auth.datasource_host"); err != nil {
+				result.AddError("auth.datasource_host", c.Auth.DataSourceHost, err.Error())
+			}
 		}
-		if c.Auth.DataSourcePort <= 0 || c.Auth.DataSourcePort > 65535 {
-			result.AddError("auth.datasource_port", c.Auth.DataSourcePort, "invalid LDAP port (must be 1-65535)")
+		if err := sv.ValidatePort(c.Auth.DataSourcePort, "auth.datasource_port"); err != nil {
+			result.AddError("auth.datasource_port", c.Auth.DataSourcePort, err.Error())
 		}
 
 	case "mysql", "postgres":
 		if c.Auth.DataSourceHost == "" {
 			result.AddError("auth.datasource_host", c.Auth.DataSourceHost, fmt.Sprintf("datasource_host is required for %s authentication", c.Auth.DataSourceType))
+		} else {
+			// Sanitize hostname
+			c.Auth.DataSourceHost = sv.SanitizeString(c.Auth.DataSourceHost)
+			
+			// Validate hostname security
+			if err := sv.ValidateHostname(c.Auth.DataSourceHost, "auth.datasource_host"); err != nil {
+				result.AddError("auth.datasource_host", c.Auth.DataSourceHost, err.Error())
+			}
 		}
-		if c.Auth.DataSourcePort <= 0 || c.Auth.DataSourcePort > 65535 {
-			result.AddError("auth.datasource_port", c.Auth.DataSourcePort, "invalid database port (must be 1-65535)")
+		if err := sv.ValidatePort(c.Auth.DataSourcePort, "auth.datasource_port"); err != nil {
+			result.AddError("auth.datasource_port", c.Auth.DataSourcePort, err.Error())
 		}
 		if c.Auth.DataSourceUser == "" {
 			result.AddError("auth.datasource_user", c.Auth.DataSourceUser, fmt.Sprintf("datasource_user is required for %s authentication", c.Auth.DataSourceType))
+		} else {
+			// Sanitize username
+			c.Auth.DataSourceUser = sv.SanitizeString(c.Auth.DataSourceUser)
 		}
 
 	case "sqlite":
 		if c.Auth.DataSourcePath == "" {
 			result.AddError("auth.datasource_path", c.Auth.DataSourcePath, "datasource_path is required for SQLite authentication")
+		} else {
+			// Sanitize datasource path
+			c.Auth.DataSourcePath = sv.SanitizePath(c.Auth.DataSourcePath)
+			
+			// Validate path security
+			if err := sv.ValidatePath(c.Auth.DataSourcePath, "auth.datasource_path"); err != nil {
+				result.AddError("auth.datasource_path", c.Auth.DataSourcePath, err.Error())
+			} else if !fileExists(c.Auth.DataSourcePath) {
+				result.AddWarning("auth.datasource_path", c.Auth.DataSourcePath, "SQLite database file does not exist")
+			} else {
+				// Validate file size
+				if err := sv.ValidateFileSize(c.Auth.DataSourcePath, "auth.datasource_path"); err != nil {
+					result.AddError("auth.datasource_path", c.Auth.DataSourcePath, err.Error())
+				}
+			}
 		}
 	}
 }
 
 // validateQueueProcessor validates queue processor configuration
-func (c *Config) validateQueueProcessor(result *ValidationResult) {
-	if c.QueueProcessor.Workers <= 0 {
-		result.AddError("queue_processor.workers", c.QueueProcessor.Workers, "workers must be greater than 0")
+func (c *Config) validateQueueProcessor(result *ValidationResult, sv *SecurityValidator) {
+	if err := sv.ValidateNumericBounds(int64(c.QueueProcessor.Workers), "queue_processor.workers", 1, int64(sv.config.MaxWorkers)); err != nil {
+		result.AddError("queue_processor.workers", c.QueueProcessor.Workers, err.Error())
 	} else if c.QueueProcessor.Workers > 100 {
 		result.AddWarning("queue_processor.workers", c.QueueProcessor.Workers, "high number of workers may impact performance")
 	}
 
-	if c.QueueProcessor.Interval <= 0 {
-		result.AddError("queue_processor.interval", c.QueueProcessor.Interval, "interval must be greater than 0")
+	if err := sv.ValidateNumericBounds(int64(c.QueueProcessor.Interval), "queue_processor.interval", 1, 3600); err != nil {
+		result.AddError("queue_processor.interval", c.QueueProcessor.Interval, err.Error())
 	} else if c.QueueProcessor.Interval < 5 {
 		result.AddWarning("queue_processor.interval", c.QueueProcessor.Interval, "very short interval may impact performance")
 	}
 }
 
 // validateDelivery validates delivery configuration
-func (c *Config) validateDelivery(result *ValidationResult) {
+func (c *Config) validateDelivery(result *ValidationResult, sv *SecurityValidator) {
 	if c.Delivery == nil {
 		return // Delivery config is optional
 	}
@@ -580,11 +835,39 @@ func (c *Config) validateDelivery(result *ValidationResult) {
 		result.AddError("delivery.mode", c.Delivery.Mode, fmt.Sprintf("invalid delivery mode, must be one of: %s", strings.Join(validModes, ", ")))
 	}
 
+	// Validate delivery host if provided
+	if c.Delivery.Host != "" {
+		// Sanitize hostname
+		c.Delivery.Host = sv.SanitizeString(c.Delivery.Host)
+		
+		// Validate hostname security
+		if err := sv.ValidateHostname(c.Delivery.Host, "delivery.host"); err != nil {
+			result.AddError("delivery.host", c.Delivery.Host, err.Error())
+		}
+	}
+
+	// Validate delivery port if provided
+	if c.Delivery.Port > 0 {
+		if err := sv.ValidatePort(c.Delivery.Port, "delivery.port"); err != nil {
+			result.AddError("delivery.port", c.Delivery.Port, err.Error())
+		}
+	}
+
 	// Validate timeout
-	if c.Delivery.Timeout <= 0 {
-		result.AddError("delivery.timeout", c.Delivery.Timeout, "timeout must be greater than 0")
+	if err := sv.ValidateNumericBounds(int64(c.Delivery.Timeout), "delivery.timeout", 1, 300); err != nil {
+		result.AddError("delivery.timeout", c.Delivery.Timeout, err.Error())
 	} else if c.Delivery.Timeout > 300 {
 		result.AddWarning("delivery.timeout", c.Delivery.Timeout, "very long timeout may cause delays")
+	}
+
+	// Validate max retries
+	if err := sv.ValidateNumericBounds(int64(c.Delivery.MaxRetries), "delivery.max_retries", 0, 100); err != nil {
+		result.AddError("delivery.max_retries", c.Delivery.MaxRetries, err.Error())
+	}
+
+	// Validate retry delay
+	if err := sv.ValidateNumericBounds(int64(c.Delivery.RetryDelay), "delivery.retry_delay", 1, 3600); err != nil {
+		result.AddError("delivery.retry_delay", c.Delivery.RetryDelay, err.Error())
 	}
 }
 
