@@ -6,22 +6,24 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"text/tabwriter"
 	"time"
 
+	"github.com/busybox42/elemta/internal/queue"
 	"github.com/busybox42/elemta/internal/smtp"
 	"github.com/spf13/cobra"
 )
 
 type queueOperations struct {
 	config *smtp.Config
+	queueManager queue.QueueManager
 	out    io.Writer
 }
 
 func newQueueOperations(config *smtp.Config) *queueOperations {
 	return &queueOperations{
 		config: config,
+		queueManager: queue.NewManager(config.QueueDir),
 		out:    os.Stdout,
 	}
 }
@@ -51,7 +53,7 @@ func (qo *queueOperations) listQueue(cmd *cobra.Command, args []string) error {
 			msg.ID,
 			msg.From,
 			msg.To[0], // Show first recipient
-			msg.Status,
+			msg.QueueType,
 			msg.QueueType,
 			nextRetry,
 			msg.RetryCount,
@@ -99,39 +101,21 @@ func (qo *queueOperations) deleteMessage(cmd *cobra.Command, args []string) erro
 }
 
 func (qo *queueOperations) flushQueue(cmd *cobra.Command, args []string) error {
-	queueTypes := []smtp.QueueType{
-		smtp.QueueTypeActive,
-		smtp.QueueTypeDeferred,
-		smtp.QueueTypeHeld,
-		smtp.QueueTypeFailed,
+	queueTypes := []queue.QueueType{
+		queue.Active,
+		queue.Deferred,
+		queue.Hold,
+		queue.Failed,
 	}
 
-	var totalDeleted int
 	for _, qType := range queueTypes {
-		dir := filepath.Join(qo.config.QueueDir, string(qType))
-		files, err := os.ReadDir(dir)
+		err := qo.queueManager.FlushQueue(qType)
 		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return fmt.Errorf("failed to read directory %s: %w", dir, err)
-		}
-
-		for _, file := range files {
-			if filepath.Ext(file.Name()) != ".json" {
-				continue
-			}
-
-			path := filepath.Join(dir, file.Name())
-			if err := os.Remove(path); err != nil {
-				fmt.Fprintf(cmd.OutOrStdout(), "Warning: failed to delete %s: %v\n", path, err)
-				continue
-			}
-			totalDeleted++
+			return fmt.Errorf("failed to flush queue %s: %w", qType, err)
 		}
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Successfully flushed queue: %d messages deleted\n", totalDeleted)
+	fmt.Fprintf(cmd.OutOrStdout(), "Successfully flushed all queues\n")
 	return nil
 }
 
@@ -161,13 +145,13 @@ func (qo *queueOperations) showStats(cmd *cobra.Command, args []string) error {
 		stats.Attempts += msg.RetryCount
 
 		switch msg.QueueType {
-		case smtp.QueueTypeActive:
+		case queue.Active:
 			stats.Active++
-		case smtp.QueueTypeDeferred:
+		case queue.Deferred:
 			stats.Deferred++
-		case smtp.QueueTypeHeld:
+		case queue.Hold:
 			stats.Held++
-		case smtp.QueueTypeFailed:
+		case queue.Failed:
 			stats.Failed++
 		}
 
@@ -201,66 +185,14 @@ func (qo *queueOperations) showStats(cmd *cobra.Command, args []string) error {
 	return w.Flush()
 }
 
-func (qo *queueOperations) getAllMessages() ([]*smtp.QueuedMessage, error) {
-	var messages []*smtp.QueuedMessage
-	queueTypes := []smtp.QueueType{
-		smtp.QueueTypeActive,
-		smtp.QueueTypeDeferred,
-		smtp.QueueTypeHeld,
-		smtp.QueueTypeFailed,
-	}
-
-	for _, qType := range queueTypes {
-		dir := filepath.Join(qo.config.QueueDir, string(qType))
-		files, err := os.ReadDir(dir)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, fmt.Errorf("failed to read directory %s: %w", dir, err)
-		}
-
-		for _, file := range files {
-			if filepath.Ext(file.Name()) != ".json" {
-				continue
-			}
-
-			path := filepath.Join(dir, file.Name())
-			data, err := os.ReadFile(path)
-			if err != nil {
-				fmt.Fprintf(qo.out, "Warning: failed to read %s: %v\n", path, err)
-				continue
-			}
-
-			var msg smtp.QueuedMessage
-			if err := json.Unmarshal(data, &msg); err != nil {
-				fmt.Fprintf(qo.out, "Warning: failed to parse %s: %v\n", path, err)
-				continue
-			}
-
-			messages = append(messages, &msg)
-		}
-	}
-
-	// Sort by creation time, newest first
-	sort.Slice(messages, func(i, j int) bool {
-		return messages[i].CreatedAt.After(messages[j].CreatedAt)
-	})
-
-	return messages, nil
+func (qo *queueOperations) getAllMessages() ([]queue.Message, error) {
+	return qo.queueManager.GetAllMessages()
 }
 
-func (qo *queueOperations) findMessage(id string) (*smtp.QueuedMessage, error) {
-	messages, err := qo.getAllMessages()
+func (qo *queueOperations) findMessage(id string) (queue.Message, error) {
+	msg, err := qo.queueManager.GetMessage(id)
 	if err != nil {
-		return nil, err
+		return queue.Message{}, fmt.Errorf("message %s not found: %w", id, err)
 	}
-
-	for _, msg := range messages {
-		if msg.ID == id {
-			return msg, nil
-		}
-	}
-
-	return nil, fmt.Errorf("message %s not found", id)
+	return msg, nil
 }

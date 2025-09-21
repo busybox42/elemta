@@ -361,6 +361,7 @@ func (m *Manager) MoveMessage(id string, targetQueue QueueType, reason string) e
 			msg.HoldReason = reason
 		} else if targetQueue == Deferred {
 			msg.LastError = reason
+			msg.RetryCount++ // Increment retry count when moving to deferred queue
 			msg.NextRetry = calculateNextRetry(msg.RetryCount)
 		}
 	}

@@ -15,6 +15,7 @@ import (
 
 	"github.com/busybox42/elemta/internal/api"
 	"github.com/busybox42/elemta/internal/plugin"
+	"github.com/busybox42/elemta/internal/queue"
 	"github.com/google/uuid"
 	"github.com/sony/gobreaker"
 	"golang.org/x/sync/errgroup"
@@ -30,8 +31,7 @@ type Server struct {
 	metrics          *Metrics
 	metricsServer    *http.Server
 	apiServer        *api.Server
-	queueManager     *QueueManager
-	queueIntegration *QueueProcessorIntegration // New queue system integration
+	queueManager     queue.QueueManager // Unified queue system
 	tlsManager       TLSHandler
 	logger           *log.Logger
 	resourceManager  *ResourceManager // Resource management and rate limiting
@@ -131,10 +131,6 @@ func NewServer(config *Config) (*Server, error) {
 	metrics := GetMetrics()
 	logger.Printf("Metrics system initialized")
 
-	// Initialize queue manager
-	logger.Printf("Initializing queue manager with directory: %s", config.QueueDir)
-	queueManager := NewQueueManager(config)
-
 	// Debug: print AuthConfig and TLSConfig
 	if config.Auth != nil {
 		logger.Printf("Auth config loaded: enabled=%v, required=%v, datasource=%s",
@@ -149,14 +145,10 @@ func NewServer(config *Config) (*Server, error) {
 			config.TLS.EnableStartTLS)
 	}
 
-	// Initialize new queue system integration
-	queueIntegration, err := NewQueueProcessorIntegration(config)
-	if err != nil {
-		logger.Printf("Warning: Failed to initialize new queue system: %v", err)
-		// Continue with old system for now
-	} else {
-		logger.Printf("New queue system with delivery handlers initialized")
-	}
+	// Initialize unified queue system
+	logger.Printf("Initializing unified queue system with directory: %s", config.QueueDir)
+	queueManager := queue.NewManager(config.QueueDir)
+	logger.Printf("Unified queue system initialized")
 
 	// Initialize resource manager with limits from config
 	var resourceLimits *ResourceLimits
@@ -212,7 +204,6 @@ func NewServer(config *Config) (*Server, error) {
 		authenticator:    authenticator,
 		metrics:          metrics,
 		queueManager:     queueManager,
-		queueIntegration: queueIntegration,
 		logger:           logger,
 		resourceManager:  resourceManager,
 		slogger:          slogger,
@@ -282,20 +273,10 @@ func (s *Server) Start() error {
 	s.logger.Printf("SMTP server running on %s", s.config.ListenAddr)
 
 	// Start the new queue system if available
-	if s.queueIntegration != nil {
-		s.logger.Printf("Starting new queue system with delivery handlers")
-		if err := s.queueIntegration.Start(); err != nil {
-			s.logger.Printf("Warning: Failed to start new queue system: %v", err)
-		} else {
-			s.logger.Printf("New queue system started successfully")
-		}
-	} else {
-		// Fallback to old queue manager if queue processor is enabled
-		if s.config.QueueProcessorEnabled {
-			s.logger.Printf("Starting old queue processor with interval %d seconds and %d workers",
-				s.config.QueueProcessInterval, s.config.QueueWorkers)
-			s.StartQueueProcessor()
-		}
+	if s.queueManager != nil {
+		s.logger.Printf("Starting unified queue system")
+		// The new queue system doesn't need explicit startup
+		s.logger.Printf("Unified queue system started successfully")
 	}
 
 	// Start metrics server if enabled
@@ -546,10 +527,9 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 	session.SetTLSManager(s.tlsManager)
 	
 	// Set queue manager for message processing
-	if s.queueIntegration != nil && s.queueIntegration.manager != nil {
-		session.SetQueueManager(s.queueIntegration.manager)
+	if s.queueManager != nil {
+		session.SetQueueManager(s.queueManager)
 	}
-	// Note: Old queue manager interface is not compatible with new interface
 
 	// Set additional components
 	session.SetResourceManager(s.resourceManager)
@@ -687,22 +667,12 @@ func (s *Server) Close() error {
 			}
 		}
 		
-		// Stop queue integration
-		if s.queueIntegration != nil {
-			s.logger.Printf("Stopping queue integration")
-			if err := s.queueIntegration.Stop(); err != nil {
-				s.logger.Printf("Error stopping queue integration: %v", err)
-				if shutdownErr == nil {
-					shutdownErr = err
-				}
-			}
-		}
-
 		// Stop queue manager
 		if s.queueManager != nil {
 			s.logger.Printf("Stopping queue manager")
 			s.queueManager.Stop()
 		}
+
 
 		// Stop API server if running
 		if s.apiServer != nil {
