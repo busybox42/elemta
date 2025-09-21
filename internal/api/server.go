@@ -117,10 +117,31 @@ func (s *Server) initializeAuth() error {
 func (s *Server) Start() error {
 	r := mux.NewRouter()
 
-	// Apply global middleware
+	// Apply CORS middleware first - before any other middleware
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Set CORS headers for all requests
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Max-Age", "86400")
+
+			// Handle preflight requests
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	})
+
+	// Apply other middleware
+	r.Use(LoggingMiddleware)
 	if s.authMiddleware != nil {
-		r.Use(s.authMiddleware.CORS)
-		r.Use(LoggingMiddleware)
+		// Note: Don't use s.authMiddleware.CORS since we handle CORS above
+		// Only apply auth-related middleware for protected routes
+		log.Printf("API Server: Auth middleware available")
 	}
 
 	// Serve static files for the web interface
