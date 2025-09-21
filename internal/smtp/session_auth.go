@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/busybox42/elemta/internal/auth"
 )
 
 // Note: AuthMethod and constants are defined in auth.go
@@ -83,6 +85,7 @@ type AuthHandler struct {
 	state           *SessionState
 	authenticator   Authenticator
 	securityManager *AuthenticationSecurityManager
+	sessionStateMachine *auth.SessionStateMachine
 	logger          *slog.Logger
 	conn            net.Conn
 }
@@ -98,11 +101,23 @@ func NewAuthHandler(session *Session, state *SessionState, authenticator Authent
 		EnabledMethods:         []AuthMethod{AuthMethodPlain, AuthMethodLogin},
 	}
 
+	securityManager := NewAuthenticationSecurityManager(securityConfig, logger)
+
+	// Create secure session state machine
+	ipAddress := conn.RemoteAddr().String()
+	userAgent := "SMTP-Client" // SMTP doesn't have user agents, use generic identifier
+	sessionStateMachine, err := auth.NewSessionStateMachine(nil, ipAddress, userAgent, logger)
+	if err != nil {
+		logger.Error("Failed to create session state machine", "error", err)
+		// Continue without state machine for backward compatibility
+	}
+
 	return &AuthHandler{
 		session:         session,
 		state:           state,
 		authenticator:   authenticator,
-		securityManager: NewAuthenticationSecurityManager(securityConfig, logger),
+		securityManager: securityManager,
+		sessionStateMachine: sessionStateMachine,
 		logger:          logger.With("component", "session-auth"),
 		conn:            conn,
 	}
@@ -112,9 +127,23 @@ func NewAuthHandler(session *Session, state *SessionState, authenticator Authent
 func (ah *AuthHandler) HandleAuth(ctx context.Context, cmd string) error {
 	ah.logger.DebugContext(ctx, "Processing AUTH command", "command", cmd)
 
-	// Check if already authenticated
-	if ah.state.IsAuthenticated() {
-		return fmt.Errorf("503 5.5.1 Already authenticated")
+	// Use session state machine if available
+	if ah.sessionStateMachine != nil {
+		// Check if already authenticated using state machine
+		if ah.sessionStateMachine.IsAuthenticated() {
+			return fmt.Errorf("503 5.5.1 Already authenticated")
+		}
+
+		// Transition to authenticating state
+		if err := ah.sessionStateMachine.TransitionTo(auth.SessionStateAuthenticating, "auth_command_received"); err != nil {
+			ah.logger.Error("Failed to transition to authenticating state", "error", err)
+			return fmt.Errorf("421 4.7.0 Authentication system error")
+		}
+	} else {
+		// Fallback to legacy state check
+		if ah.state.IsAuthenticated() {
+			return fmt.Errorf("503 5.5.1 Already authenticated")
+		}
 	}
 
 	// Parse AUTH command
@@ -317,12 +346,47 @@ func (ah *AuthHandler) performAuthentication(ctx context.Context, username, pass
 			"duration", duration,
 		)
 		ah.recordAuthFailure(ctx, username, method, err, duration)
+
+		// Update session state machine if available
+		if ah.sessionStateMachine != nil {
+			// Transition to failed state
+			if err := ah.sessionStateMachine.TransitionTo(auth.SessionStateFailed, "authentication_failed"); err != nil {
+				ah.logger.Error("Failed to transition to failed state", "error", err)
+			}
+		}
+
 		return fmt.Errorf("535 5.7.8 Authentication credentials invalid")
 	}
 
 	// Authentication successful
 	ah.state.SetAuthenticated(ctx, true, username)
 	ah.recordAuthSuccess(ctx, username, method, duration)
+
+	// Update session state machine if available
+	if ah.sessionStateMachine != nil {
+		// Set username in state machine
+		if err := ah.sessionStateMachine.SetUsername(username); err != nil {
+			ah.logger.Error("Failed to set username in state machine", "error", err)
+		}
+
+		// Transition to authenticated state
+		if err := ah.sessionStateMachine.TransitionTo(auth.SessionStateAuthenticated, "authentication_successful"); err != nil {
+			ah.logger.Error("Failed to transition to authenticated state", "error", err)
+			// Continue anyway, but log the error
+		}
+
+		// Regenerate session ID to prevent session fixation attacks
+		if err := ah.sessionStateMachine.RegenerateSessionID(); err != nil {
+			ah.logger.Error("Failed to regenerate session ID", "error", err)
+			// Continue anyway, but log the error
+		}
+
+		// Set up RBAC context for the authenticated user
+		if err := ah.setupRBACContext(ctx, username); err != nil {
+			ah.logger.Error("Failed to setup RBAC context", "error", err)
+			// Continue anyway, but log the error
+		}
+	}
 
 	ah.logger.InfoContext(ctx, "Authentication successful", 
 		"username", username,
@@ -337,6 +401,43 @@ func (ah *AuthHandler) performAuthentication(ctx context.Context, username, pass
 	}
 
 	return nil
+}
+
+// setupRBACContext sets up RBAC context for the authenticated user
+func (ah *AuthHandler) setupRBACContext(ctx context.Context, username string) error {
+	if ah.sessionStateMachine == nil {
+		return nil // No state machine available
+	}
+
+	// Create basic RBAC context (in a real implementation, this would query the user's roles)
+	rbacContext := &auth.RBACContext{
+		Username:   username,
+		Roles:      []string{"user"}, // Default role
+		Permissions: []auth.Permission{auth.PermissionSMTPAuth, auth.PermissionSMTPSend},
+		LastCheck:  time.Now(),
+	}
+
+	// Set RBAC context in session state machine
+	if err := ah.sessionStateMachine.SetRBACContext(rbacContext); err != nil {
+		return fmt.Errorf("failed to set RBAC context: %w", err)
+	}
+
+	ah.logger.Info("RBAC context setup for user",
+		"username", username,
+		"roles", rbacContext.Roles,
+		"permissions", rbacContext.Permissions,
+	)
+
+	return nil
+}
+
+// CheckPermission checks if the current session has a specific permission
+func (ah *AuthHandler) CheckPermission(permission auth.Permission) bool {
+	if ah.sessionStateMachine == nil {
+		return false // No state machine available
+	}
+
+	return ah.sessionStateMachine.HasPermission(permission)
 }
 
 // validateBase64Input validates base64 input data

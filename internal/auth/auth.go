@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"os"
@@ -206,7 +207,65 @@ func HashPassword(password string) (string, error) {
 	return string(hash), nil
 }
 
-// ComparePasswords compares a hashed password with a plain-text password
+// ComparePasswordsSecure compares a hashed password with a plain-text password using constant-time operations
+func ComparePasswordsSecure(hashedPassword, plainPassword string) error {
+	// Always perform the same operations to maintain constant time
+	var result error = ErrInvalidCredentials
+	
+	if strings.HasPrefix(hashedPassword, "$2") {
+		// bcrypt - already constant time
+		result = bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
+	} else if strings.HasPrefix(hashedPassword, "{SHA}") {
+		// OpenLDAP SHA-1 with constant-time comparison
+		hash := sha1.Sum([]byte(plainPassword))
+		b64 := base64.StdEncoding.EncodeToString(hash[:])
+		expected := "{SHA}" + b64
+		if subtle.ConstantTimeCompare([]byte(hashedPassword), []byte(expected)) == 1 {
+			result = nil
+		}
+	} else if strings.HasPrefix(hashedPassword, "{SHA256}") {
+		// OpenLDAP SHA-256 with constant-time comparison
+		hash := sha256.Sum256([]byte(plainPassword))
+		b64 := base64.StdEncoding.EncodeToString(hash[:])
+		expected := "{SHA256}" + b64
+		if subtle.ConstantTimeCompare([]byte(hashedPassword), []byte(expected)) == 1 {
+			result = nil
+		}
+	} else if strings.HasPrefix(hashedPassword, "{SHA512}") {
+		// OpenLDAP SHA-512 with constant-time comparison
+		hash := sha512.Sum512([]byte(plainPassword))
+		b64 := base64.StdEncoding.EncodeToString(hash[:])
+		expected := "{SHA512}" + b64
+		if subtle.ConstantTimeCompare([]byte(hashedPassword), []byte(expected)) == 1 {
+			result = nil
+		}
+	} else if strings.HasPrefix(hashedPassword, "{SSHA}") {
+		// OpenLDAP SSHA (SHA-1 + salt) with constant-time comparison
+		b, err := base64.StdEncoding.DecodeString(hashedPassword[6:])
+		if err != nil || len(b) < 20 {
+			result = ErrInvalidCredentials
+		} else {
+			hash := b[:20]
+			salt := b[20:]
+			h := sha1.New()
+			h.Write([]byte(plainPassword))
+			h.Write(salt)
+			computedHash := h.Sum(nil)
+			if subtle.ConstantTimeCompare(hash, computedHash) == 1 {
+				result = nil
+			}
+		}
+	} else {
+		// fallback: plain text with constant-time comparison
+		if subtle.ConstantTimeCompare([]byte(hashedPassword), []byte(plainPassword)) == 1 {
+			result = nil
+		}
+	}
+	
+	return result
+}
+
+// ComparePasswords compares a hashed password with a plain-text password (legacy function)
 func ComparePasswords(hashedPassword, plainPassword string) error {
 	if strings.HasPrefix(hashedPassword, "$2") {
 		// bcrypt
@@ -262,33 +321,53 @@ func ComparePasswords(hashedPassword, plainPassword string) error {
 	return ErrInvalidCredentials
 }
 
-// Authenticate verifies a username and password
+// Authenticate verifies a username and password with constant-time comparison
 func (a *Auth) Authenticate(ctx context.Context, username, password string) (bool, error) {
+	startTime := time.Now()
+	defer func() {
+		// Ensure constant-time execution regardless of success/failure
+		elapsed := time.Since(startTime)
+		minTime := 100 * time.Millisecond // Minimum authentication time
+		if elapsed < minTime {
+			time.Sleep(minTime - elapsed)
+		}
+	}()
+
 	if !a.ds.IsConnected() {
 		return false, ErrDataSourceNotConnected
 	}
 
-	// Get the user from the datasource
+	// Always perform the same operations to maintain constant time
+	// Get the user from the datasource (this may fail, but we continue)
 	user, err := a.ds.GetUser(ctx, username)
-	if err != nil {
-		if errors.Is(err, datasource.ErrNotFound) {
-			return false, ErrUserNotFound
-		}
-		return false, fmt.Errorf("failed to get user: %w", err)
-	}
+	userExists := err == nil && !errors.Is(err, datasource.ErrNotFound)
 
 	// For LDAP or file, we'll use the datasource's Authenticate method directly
 	if a.ds.Type() == "ldap" || a.ds.Type() == "file" {
+		if !userExists {
+			// Perform dummy authentication to maintain constant time
+			_, _ = a.ds.Authenticate(ctx, "dummy_user", "dummy_password")
+			return false, ErrUserNotFound
+		}
 		return a.ds.Authenticate(ctx, username, password)
 	}
 
-	// For other datasources, compare the provided password with the stored hash
-	err = ComparePasswords(user.Password, password)
-	if err != nil {
+	// For other datasources, always perform password comparison
+	var authSuccess bool
+	if userExists {
+		err = ComparePasswordsSecure(user.Password, password)
+		authSuccess = err == nil
+	} else {
+		// Perform dummy comparison to maintain constant time
+		_ = ComparePasswordsSecure("$2a$10$dummy.hash.for.constant.time", password)
+		authSuccess = false
+	}
+
+	if !authSuccess {
 		return false, ErrInvalidCredentials
 	}
 
-	// Update last login time
+	// Update last login time (only on successful authentication)
 	user.LastLoginAt = time.Now().Unix()
 	if err := a.ds.UpdateUser(ctx, user); err != nil {
 		// Non-critical error, just log it in a real application
