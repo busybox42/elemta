@@ -1033,7 +1033,30 @@ func (dh *DataHandler) performSpamScan(ctx context.Context, data []byte, metadat
 func (dh *DataHandler) performContentAnalysis(ctx context.Context, data []byte, result *SecurityScanResult) error {
 	content := string(data)
 
-	// Use enhanced validator for comprehensive content analysis
+	// Check if this is an internal connection - be more permissive for internal connections
+	isInternal := dh.isInternalConnection()
+
+	// For internal connections, only do basic content analysis
+	if isInternal {
+		dh.logger.DebugContext(ctx, "Using permissive content analysis for internal connection",
+			"remote_addr", dh.conn.RemoteAddr().String(),
+		)
+
+		// Only check for obvious security threats in internal connections
+		if strings.Contains(content, "'; DROP TABLE") ||
+			strings.Contains(content, "\"; DROP TABLE") ||
+			strings.Contains(content, "UNION SELECT") ||
+			strings.Contains(content, "<script") {
+			result.Passed = false
+			result.Threats = append(result.Threats, "Basic security violation detected")
+			dh.logger.WarnContext(ctx, "Basic security violation detected in internal connection",
+				"remote_addr", dh.conn.RemoteAddr().String(),
+			)
+		}
+		return nil
+	}
+
+	// For external connections, use enhanced validator for comprehensive content analysis
 	validationResult := dh.enhancedValidator.ValidateSMTPParameter("DATA_LINE", content)
 
 	if !validationResult.Valid {
