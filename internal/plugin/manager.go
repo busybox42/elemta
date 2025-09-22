@@ -38,6 +38,7 @@ type Manager struct {
 	stagePlugins     map[ProcessingStage][]StagePlugin
 	typePlugins      map[string][]Plugin
 	loadedPlugins    map[string]*plugin.Plugin
+	secureManager    *SecurePluginManager // Optional secure plugin manager
 	mu               sync.RWMutex
 }
 
@@ -686,12 +687,84 @@ func (m *Manager) ListPluginTypes() []string {
 	return types
 }
 
+// SetSecureManager sets the secure plugin manager
+func (m *Manager) SetSecureManager(secureManager *SecurePluginManager) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.secureManager = secureManager
+}
+
+// GetSecureManager returns the secure plugin manager
+func (m *Manager) GetSecureManager() *SecurePluginManager {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.secureManager
+}
+
+// IsSecureMode returns true if secure plugin management is enabled
+func (m *Manager) IsSecureMode() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.secureManager != nil
+}
+
+// LoadSecurePlugin loads a plugin with security controls if secure mode is enabled
+func (m *Manager) LoadSecurePlugin(pluginName string) error {
+	m.mu.RLock()
+	secureManager := m.secureManager
+	m.mu.RUnlock()
+
+	if secureManager != nil {
+		return secureManager.LoadSecurePlugin(pluginName)
+	}
+
+	// Fall back to regular loading
+	return m.LoadPlugin(pluginName)
+}
+
+// ExecuteSecurePlugin executes a plugin with security controls if secure mode is enabled
+func (m *Manager) ExecuteSecurePlugin(pluginName string, fn func() (*PluginResult, error)) (*PluginResult, error) {
+	m.mu.RLock()
+	secureManager := m.secureManager
+	m.mu.RUnlock()
+
+	if secureManager != nil {
+		return secureManager.ExecuteSecurePlugin(pluginName, fn)
+	}
+
+	// Fall back to direct execution
+	return fn()
+}
+
+// GetSecurityStatus returns security status if secure mode is enabled
+func (m *Manager) GetSecurityStatus() map[string]interface{} {
+	m.mu.RLock()
+	secureManager := m.secureManager
+	m.mu.RUnlock()
+
+	if secureManager != nil {
+		return secureManager.GetSecurityStatus()
+	}
+
+	return map[string]interface{}{
+		"secure_mode": false,
+		"message":     "Secure plugin management not enabled",
+	}
+}
+
 // Close closes all loaded plugins
 func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	var lastErr error
+
+	// Close secure manager if enabled
+	if m.secureManager != nil {
+		if err := m.secureManager.Close(); err != nil {
+			lastErr = err
+		}
+	}
 
 	// Close all plugins
 	for _, plugins := range m.typePlugins {
@@ -713,6 +786,7 @@ func (m *Manager) Close() error {
 	m.stagePlugins = make(map[ProcessingStage][]StagePlugin)
 	m.typePlugins = make(map[string][]Plugin)
 	m.loadedPlugins = make(map[string]*plugin.Plugin)
+	m.secureManager = nil
 
 	return lastErr
 }

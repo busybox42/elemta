@@ -84,10 +84,13 @@ internal/module/
 - Include context for cancellation and timeouts
 
 ## Docker and Deployment
-- Always test changes in Docker environment first
+- **MANDATORY**: Always test changes in Docker environment first
+- **MANDATORY**: Rebuild Docker deployment and verify all services start correctly
+- **MANDATORY**: Run end-to-end tests in Docker before committing any changes
 - Update Docker configurations when changing build process
 - Verify Kubernetes deployments work
 - Test all docker-compose services start correctly
+- **NO COMMITS** without successful Docker deployment testing
 
 ## Documentation Rules
 - Update `.notes/` documentation when making architectural changes

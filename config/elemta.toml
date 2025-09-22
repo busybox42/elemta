@@ -51,6 +51,51 @@ mode = "lmtp"
 host = "elemta-dovecot"
 port = 2424
 timeout = 30
+retry_delay = 60
+
+# Rate Limiting Configuration - More permissive for testing
+[rate_limiter]
+enabled = true
+
+# Connection limits - very permissive for testing
+max_connections_per_ip = 1000
+connection_rate_per_minute = 10000
+connection_burst_size = 1000
+connection_timeout = "30s"
+
+# Message limits - reasonable for testing
+max_messages_per_minute = 300
+max_messages_per_hour = 10000
+max_recipients_per_message = 100
+max_recipients_per_hour = 50000
+
+# Volume limits - generous for testing
+max_message_size = "100MB"
+max_data_per_hour = "10GB"
+volume_burst_size = "500MB"
+volume_rate_window = "5m"
+
+# Authentication limits - prevent brute force but allow testing
+max_auth_attempts_per_minute = 20
+auth_lockout_duration = "5m"
+auth_burst_size = 50
+
+# Access lists - empty for testing
+whitelist_ips = []
+whitelist_domains = []
+blacklist_ips = []
+blacklist_domains = []
+
+# Valkey backend - disabled for testing (use local rate limiting)
+valkey_url = ""
+valkey_key_prefix = "elemta:ratelimit:"
+
+# Advanced settings
+cache_size = 10000
+cache_ttl = "1h"
+cleanup_interval = "5m"
+metrics_enabled = true
+timeout = 30
 max_retries = 3
 retry_delay = 60
 
