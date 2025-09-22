@@ -52,31 +52,31 @@ type SecurityScanResult struct {
 
 // DataHandler manages message data processing for a session
 type DataHandler struct {
-	session        *Session
-	state          *SessionState
-	logger         *slog.Logger
-	conn           net.Conn
-	reader         *bufio.Reader
-	config         *Config
-	queueManager   queue.QueueManager
-	builtinPlugins *plugin.BuiltinPlugins
-	// enhancedValidator would be added here if needed
-	mu sync.RWMutex
+	session           *Session
+	state             *SessionState
+	logger            *slog.Logger
+	conn              net.Conn
+	reader            *bufio.Reader
+	config            *Config
+	queueManager      queue.QueueManager
+	builtinPlugins    *plugin.BuiltinPlugins
+	enhancedValidator *EnhancedValidator
+	mu                sync.RWMutex
 }
 
 // NewDataHandler creates a new data handler
 func NewDataHandler(session *Session, state *SessionState, conn net.Conn, reader *bufio.Reader,
 	config *Config, queueManager queue.QueueManager, builtinPlugins *plugin.BuiltinPlugins, logger *slog.Logger) *DataHandler {
 	return &DataHandler{
-		session:        session,
-		state:          state,
-		logger:         logger.With("component", "session-data"),
-		conn:           conn,
-		reader:         reader,
-		config:         config,
-		queueManager:   queueManager,
-		builtinPlugins: builtinPlugins,
-		// enhancedValidator would be initialized here if needed
+		session:           session,
+		state:             state,
+		logger:            logger.With("component", "session-data"),
+		conn:              conn,
+		reader:            reader,
+		config:            config,
+		queueManager:      queueManager,
+		builtinPlugins:    builtinPlugins,
+		enhancedValidator: NewEnhancedValidator(logger.With("component", "enhanced-validator")),
 	}
 }
 
@@ -346,37 +346,63 @@ func (dh *DataHandler) isValidEndOfData(line string, state *DataReaderState, sus
 	return false
 }
 
-// validateLineContent validates individual lines for security threats
+// validateLineContent validates individual lines for security threats using enhanced validation
 func (dh *DataHandler) validateLineContent(ctx context.Context, line string, state *DataReaderState) error {
-	// Check line length (RFC 5321 recommends 1000 character limit)
-	if len(line) > 1000 {
-		return fmt.Errorf("line too long")
-	}
-
-	// Basic line validation for security (only check for obvious SQL injection patterns)
-	// Allow semicolons in headers (common in Content-Type, etc.)
-	// Allow "DROP" and "DELETE" in email content (they're legitimate words)
-	if strings.Contains(line, "'; DROP TABLE") ||
-		strings.Contains(line, "\"; DROP TABLE") ||
-		strings.Contains(line, "UNION SELECT") ||
-		strings.Contains(line, "<script") {
-		return fmt.Errorf("security violation detected")
-	}
-
-	// Additional header-specific validation
-	// Skip strict header validation for internal Docker network connections (like Roundcube)
+	// Check if this is an internal connection - be more permissive for internal connections
 	isInternal := dh.isInternalConnection()
-	dh.logger.DebugContext(ctx, "Connection validation check",
-		"is_internal", isInternal,
+
+	// For internal connections, only do basic validation
+	if isInternal {
+		// Basic line length check
+		if len(line) > 1000 {
+			return fmt.Errorf("line too long")
+		}
+
+		// Only check for obvious security threats
+		if strings.Contains(line, "'; DROP TABLE") ||
+			strings.Contains(line, "\"; DROP TABLE") ||
+			strings.Contains(line, "UNION SELECT") ||
+			strings.Contains(line, "<script") {
+			return fmt.Errorf("security violation detected")
+		}
+
+		dh.logger.DebugContext(ctx, "Using permissive validation for internal connection",
+			"remote_addr", dh.conn.RemoteAddr().String(),
+			"in_headers", state.InHeaders,
+		)
+
+		return nil
+	}
+
+	// For external connections, use enhanced validator for comprehensive line validation
+	validationResult := dh.enhancedValidator.ValidateSMTPParameter("DATA_LINE", line)
+
+	if !validationResult.Valid {
+		// Log security event for failed validation
+		LogSecurityEvent(dh.logger, "line_validation_failed", validationResult.SecurityThreat,
+			validationResult.ErrorMessage, line, dh.conn.RemoteAddr().String())
+
+		dh.logger.WarnContext(ctx, "Line validation failed",
+			"error_type", validationResult.ErrorType,
+			"error_message", validationResult.ErrorMessage,
+			"security_threat", validationResult.SecurityThreat,
+			"security_score", validationResult.SecurityScore,
+			"line_number", state.LineCount,
+		)
+
+		return fmt.Errorf("security violation: %s", validationResult.ErrorMessage)
+	}
+
+	// Additional header-specific validation for external connections
+	dh.logger.DebugContext(ctx, "Using enhanced validation for external connection",
 		"remote_addr", dh.conn.RemoteAddr().String(),
 		"in_headers", state.InHeaders,
+		"security_score", validationResult.SecurityScore,
 	)
 
-	if state.InHeaders && !isInternal {
+	if state.InHeaders {
 		dh.logger.DebugContext(ctx, "Applying strict header validation for external connection")
 		return dh.validateHeaderLine(ctx, line)
-	} else if state.InHeaders {
-		dh.logger.DebugContext(ctx, "Skipping strict header validation for internal connection")
 	}
 
 	return nil
@@ -682,7 +708,7 @@ func (dh *DataHandler) extractHeaders(data []byte) map[string]string {
 	return headers
 }
 
-// validateMessageHeaders validates message headers
+// validateMessageHeaders validates message headers using enhanced validation
 func (dh *DataHandler) validateMessageHeaders(ctx context.Context, metadata *MessageMetadata) error {
 	// Skip strict header requirements for internal connections (like Roundcube) or if auth is not required
 	isInternal := dh.isInternalConnection()
@@ -705,10 +731,131 @@ func (dh *DataHandler) validateMessageHeaders(ctx context.Context, metadata *Mes
 		}
 	}
 
+	// Use enhanced validator to validate all headers comprehensively (only for external connections)
+	if !isInternal {
+		headersStr := dh.buildHeadersString(metadata.Headers)
+		headerValidationResult := dh.enhancedValidator.ValidateEmailHeaders(headersStr)
+
+		if !headerValidationResult.Valid {
+			// Log security event for failed header validation
+			LogSecurityEvent(dh.logger, "header_validation_failed", headerValidationResult.SecurityThreat,
+				headerValidationResult.ErrorMessage, headersStr, dh.conn.RemoteAddr().String())
+
+			dh.logger.WarnContext(ctx, "Header validation failed",
+				"error_type", headerValidationResult.ErrorType,
+				"error_message", headerValidationResult.ErrorMessage,
+				"security_threat", headerValidationResult.SecurityThreat,
+				"security_score", headerValidationResult.SecurityScore,
+			)
+
+			return fmt.Errorf("header validation failed: %s", headerValidationResult.ErrorMessage)
+		}
+
+		dh.logger.DebugContext(ctx, "Header validation completed successfully",
+			"security_score", headerValidationResult.SecurityScore,
+			"header_count", headerValidationResult.ValidationDetails["header_count"],
+		)
+	} else {
+		dh.logger.DebugContext(ctx, "Skipping enhanced header validation for internal connection")
+	}
+
 	// Validate From header matches MAIL FROM
 	if fromHeader, exists := metadata.Headers["from"]; exists {
 		if err := dh.validateFromHeader(ctx, fromHeader, metadata.From); err != nil {
 			return err
+		}
+	}
+
+	// Validate email addresses in headers (only for external connections)
+	if !isInternal {
+		if err := dh.validateEmailAddressesInHeaders(ctx, metadata.Headers); err != nil {
+			return err
+		}
+
+		// Validate content-type restrictions
+		if err := dh.validateContentTypeRestrictions(ctx, metadata.Headers); err != nil {
+			return err
+		}
+	} else {
+		dh.logger.DebugContext(ctx, "Skipping email address and content-type validation for internal connection")
+	}
+
+	return nil
+}
+
+// buildHeadersString builds a string representation of headers for validation
+func (dh *DataHandler) buildHeadersString(headers map[string]string) string {
+	var headerLines []string
+	for name, value := range headers {
+		headerLines = append(headerLines, fmt.Sprintf("%s: %s", name, value))
+	}
+	return strings.Join(headerLines, "\n")
+}
+
+// validateEmailAddressesInHeaders validates email addresses in headers
+func (dh *DataHandler) validateEmailAddressesInHeaders(ctx context.Context, headers map[string]string) error {
+	emailHeaders := []string{"from", "to", "cc", "bcc", "reply-to"}
+
+	for _, headerName := range emailHeaders {
+		if headerValue, exists := headers[headerName]; exists {
+			// Use enhanced validator to validate email addresses
+			validationResult := dh.enhancedValidator.ValidateSMTPParameter("MAIL_FROM", headerValue)
+
+			if !validationResult.Valid {
+				LogSecurityEvent(dh.logger, "email_header_validation_failed", validationResult.SecurityThreat,
+					validationResult.ErrorMessage, headerValue, dh.conn.RemoteAddr().String())
+
+				dh.logger.WarnContext(ctx, "Email header validation failed",
+					"header", headerName,
+					"error_type", validationResult.ErrorType,
+					"error_message", validationResult.ErrorMessage,
+					"security_threat", validationResult.SecurityThreat,
+				)
+
+				return fmt.Errorf("invalid email address in %s header: %s", headerName, validationResult.ErrorMessage)
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateContentTypeRestrictions validates content-type restrictions
+func (dh *DataHandler) validateContentTypeRestrictions(ctx context.Context, headers map[string]string) error {
+	if contentType, exists := headers["content-type"]; exists {
+		// Check for dangerous content types
+		dangerousContentTypes := []string{
+			"application/x-msdownload",    // Windows executables
+			"application/x-executable",    // Executables
+			"application/x-sh",            // Shell scripts
+			"application/x-bat",           // Batch files
+			"application/x-cmd",           // Command files
+			"application/x-msdos-program", // DOS programs
+			"application/x-winexe",        // Windows executables
+		}
+
+		contentTypeLower := strings.ToLower(contentType)
+		for _, dangerous := range dangerousContentTypes {
+			if strings.Contains(contentTypeLower, dangerous) {
+				LogSecurityEvent(dh.logger, "dangerous_content_type", "attachment_threat",
+					"Dangerous content type detected", contentType, dh.conn.RemoteAddr().String())
+
+				dh.logger.WarnContext(ctx, "Dangerous content type detected",
+					"content_type", contentType,
+					"threat_type", "executable_attachment",
+				)
+
+				return fmt.Errorf("dangerous content type not allowed: %s", contentType)
+			}
+		}
+
+		// Validate content-type format
+		validationResult := dh.enhancedValidator.validateHeaderSecurityPatterns("content-type", contentType)
+		if !validationResult.Valid {
+			LogSecurityEvent(dh.logger, "content_type_validation_failed", validationResult.SecurityThreat,
+				validationResult.ErrorMessage, contentType, dh.conn.RemoteAddr().String())
+
+			return fmt.Errorf("invalid content-type header: %s", validationResult.ErrorMessage)
 		}
 	}
 
@@ -882,21 +1029,101 @@ func (dh *DataHandler) performSpamScan(ctx context.Context, data []byte, metadat
 	return nil
 }
 
-// performContentAnalysis performs content analysis
+// performContentAnalysis performs comprehensive content analysis
 func (dh *DataHandler) performContentAnalysis(ctx context.Context, data []byte, result *SecurityScanResult) error {
-	// Check for suspicious content patterns
 	content := string(data)
 
-	// Check for executable attachments (basic check)
+	// Use enhanced validator for comprehensive content analysis
+	validationResult := dh.enhancedValidator.ValidateSMTPParameter("DATA_LINE", content)
+
+	if !validationResult.Valid {
+		result.Passed = false
+		result.Threats = append(result.Threats, fmt.Sprintf("Content validation failed: %s", validationResult.ErrorMessage))
+
+		LogSecurityEvent(dh.logger, "content_analysis_failed", validationResult.SecurityThreat,
+			validationResult.ErrorMessage, content[:min(200, len(content))], dh.conn.RemoteAddr().String())
+
+		dh.logger.WarnContext(ctx, "Content analysis failed",
+			"error_type", validationResult.ErrorType,
+			"security_threat", validationResult.SecurityThreat,
+			"security_score", validationResult.SecurityScore,
+		)
+	}
+
+	// Check for executable attachments (enhanced check)
 	if strings.Contains(content, "Content-Type: application/") {
-		if strings.Contains(content, "application/x-msdownload") ||
-			strings.Contains(content, "application/octet-stream") {
-			result.Threats = append(result.Threats, "Suspicious attachment type detected")
-			dh.logger.WarnContext(ctx, "Suspicious attachment detected")
+		dangerousTypes := []string{
+			"application/x-msdownload",
+			"application/x-executable",
+			"application/x-sh",
+			"application/x-bat",
+			"application/x-cmd",
+			"application/x-msdos-program",
+			"application/x-winexe",
+			"application/octet-stream",
+		}
+
+		for _, dangerousType := range dangerousTypes {
+			if strings.Contains(strings.ToLower(content), dangerousType) {
+				result.Passed = false
+				result.Threats = append(result.Threats, fmt.Sprintf("Dangerous attachment type: %s", dangerousType))
+
+				LogSecurityEvent(dh.logger, "dangerous_attachment", "attachment_threat",
+					"Dangerous attachment type detected", dangerousType, dh.conn.RemoteAddr().String())
+
+				dh.logger.WarnContext(ctx, "Dangerous attachment detected",
+					"attachment_type", dangerousType,
+					"threat_type", "executable_attachment",
+				)
+			}
+		}
+	}
+
+	// Check for embedded scripts and malicious content
+	maliciousPatterns := []string{
+		"<script",
+		"javascript:",
+		"vbscript:",
+		"data:text/html",
+		"eval(",
+		"expression(",
+	}
+
+	for _, pattern := range maliciousPatterns {
+		if strings.Contains(strings.ToLower(content), pattern) {
+			result.Threats = append(result.Threats, fmt.Sprintf("Malicious content pattern: %s", pattern))
+			dh.logger.WarnContext(ctx, "Malicious content pattern detected",
+				"pattern", pattern,
+				"threat_type", "malicious_content",
+			)
+		}
+	}
+
+	// Check for suspicious file extensions in attachments
+	suspiciousExtensions := []string{
+		".exe", ".bat", ".cmd", ".com", ".pif", ".scr", ".vbs", ".js",
+		".jar", ".app", ".deb", ".rpm", ".dmg", ".pkg", ".msi",
+	}
+
+	for _, ext := range suspiciousExtensions {
+		if strings.Contains(strings.ToLower(content), ext) {
+			result.Threats = append(result.Threats, fmt.Sprintf("Suspicious file extension: %s", ext))
+			dh.logger.WarnContext(ctx, "Suspicious file extension detected",
+				"extension", ext,
+				"threat_type", "suspicious_attachment",
+			)
 		}
 	}
 
 	return nil
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // handleSecurityThreat handles detected security threats

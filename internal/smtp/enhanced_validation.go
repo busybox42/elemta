@@ -10,34 +10,34 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
-	
+
 	"golang.org/x/text/unicode/norm"
 )
 
 // EnhancedValidationResult contains comprehensive validation results with security analysis
 type EnhancedValidationResult struct {
-	Valid              bool
-	ErrorType          string
-	ErrorMessage       string
-	SecurityThreat     string
-	SanitizedValue     string
-	NormalizedValue    string
-	ValidationDetails  map[string]interface{}
-	RFCCompliant       bool
-	SecurityScore      int // 0-100, higher is more secure
+	Valid             bool
+	ErrorType         string
+	ErrorMessage      string
+	SecurityThreat    string
+	SanitizedValue    string
+	NormalizedValue   string
+	ValidationDetails map[string]interface{}
+	RFCCompliant      bool
+	SecurityScore     int // 0-100, higher is more secure
 }
 
 // SMTPParameterLimits defines RFC 5321 parameter limits
 type SMTPParameterLimits struct {
-	MaxCommandLength    int // RFC 5321: 512 octets including CRLF
-	MaxLocalPartLength  int // RFC 5321: 64 octets
-	MaxDomainLength     int // RFC 5321: 255 octets
-	MaxPathLength       int // RFC 5321: 256 octets
-	MaxLineLength       int // RFC 5321: 1000 octets including CRLF
-	MaxHeaderLength     int // RFC 5322: 998 octets
-	MaxHeaderCount      int // Reasonable limit
-	MaxParameterLength  int // For SMTP extensions
-	MaxSizeValue        int64 // Maximum SIZE parameter value
+	MaxCommandLength   int   // RFC 5321: 512 octets including CRLF
+	MaxLocalPartLength int   // RFC 5321: 64 octets
+	MaxDomainLength    int   // RFC 5321: 255 octets
+	MaxPathLength      int   // RFC 5321: 256 octets
+	MaxLineLength      int   // RFC 5321: 1000 octets including CRLF
+	MaxHeaderLength    int   // RFC 5322: 998 octets
+	MaxHeaderCount     int   // Reasonable limit
+	MaxParameterLength int   // For SMTP extensions
+	MaxSizeValue       int64 // Maximum SIZE parameter value
 }
 
 // DefaultSMTPParameterLimits returns RFC-compliant parameter limits
@@ -57,11 +57,11 @@ func DefaultSMTPParameterLimits() *SMTPParameterLimits {
 
 // EnhancedValidator provides comprehensive input validation with security analysis
 type EnhancedValidator struct {
-	limits                *SMTPParameterLimits
-	logger                *slog.Logger
-	unicodeNormalizer     norm.Form
-	suspiciousPatterns    []*regexp.Regexp
-	sqlInjectionPatterns  []*regexp.Regexp
+	limits                   *SMTPParameterLimits
+	logger                   *slog.Logger
+	unicodeNormalizer        norm.Form
+	suspiciousPatterns       []*regexp.Regexp
+	sqlInjectionPatterns     []*regexp.Regexp
 	commandInjectionPatterns []*regexp.Regexp
 	headerInjectionPatterns  []*regexp.Regexp
 }
@@ -73,10 +73,10 @@ func NewEnhancedValidator(logger *slog.Logger) *EnhancedValidator {
 		logger:            logger,
 		unicodeNormalizer: norm.NFC, // Canonical decomposition followed by canonical composition
 	}
-	
+
 	// Initialize security patterns
 	validator.initializeSecurityPatterns()
-	
+
 	return validator
 }
 
@@ -92,7 +92,7 @@ func (v *EnhancedValidator) initializeSecurityPatterns() {
 		regexp.MustCompile(`(?i)expression\s*\(`),
 		regexp.MustCompile(`\x00|\x01|\x02|\x03|\x04|\x05|\x06|\x07|\x08|\x0B|\x0C|\x0E|\x0F`), // Control characters
 	}
-	
+
 	// SQL injection patterns
 	v.sqlInjectionPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\b(union\s+select|select\s+.*\s+from)\b`),
@@ -104,21 +104,21 @@ func (v *EnhancedValidator) initializeSecurityPatterns() {
 		regexp.MustCompile(`(?i)\b(information_schema|sys\.tables|sysobjects)\b`),
 		regexp.MustCompile(`(?i)('|\"|;|--|\|\|)`), // Basic SQL metacharacters
 	}
-	
+
 	// Command injection patterns
 	v.commandInjectionPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`[|&;`+"`"+`$]`), // Shell metacharacters
-		regexp.MustCompile(`\$\{.*\}`),     // Variable expansion
-		regexp.MustCompile(`\$\(.*\)`),     // Command substitution
-		regexp.MustCompile(`\.\.[\\/]`),    // Path traversal
+		regexp.MustCompile(`[|&;` + "`" + `$]`),                         // Shell metacharacters
+		regexp.MustCompile(`\$\{.*\}`),                                  // Variable expansion
+		regexp.MustCompile(`\$\(.*\)`),                                  // Command substitution
+		regexp.MustCompile(`\.\.[\\/]`),                                 // Path traversal
 		regexp.MustCompile(`(?i)\b(rm\s+|del\s+|format\s+|fdisk\s+)\b`), // Dangerous commands
 	}
-	
-	// Header injection patterns (CRLF injection)
+
+	// Header injection patterns (CRLF injection) - more specific to avoid false positives
 	v.headerInjectionPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`\r\n|\n\r|\r|\n`),                    // Line breaks
-		regexp.MustCompile(`\x00|\x01|\x02|\x03|\x04|\x05|\x06|\x07|\x08|\x0B|\x0C|\x0E|\x0F`), // Control chars
-		regexp.MustCompile(`(?i)\r?\n\s*(to|from|cc|bcc|subject):`), // Header injection
+		regexp.MustCompile(`\x00|\x01|\x02|\x03|\x04|\x05|\x06|\x07|\x08|\x0B|\x0C|\x0E|\x0F`),           // Control chars
+		regexp.MustCompile(`(?i)\r?\n\s*(to|from|cc|bcc|subject|reply-to|return-path|message-id|date):`), // Header injection
+		regexp.MustCompile(`(?i)\r?\n\s*x-`), // X- header injection
 	}
 }
 
@@ -128,7 +128,7 @@ func (v *EnhancedValidator) ValidateAndNormalizeUnicode(input string) *EnhancedV
 		ValidationDetails: make(map[string]interface{}),
 		SecurityScore:     100,
 	}
-	
+
 	// Check if input is valid UTF-8
 	if !utf8.ValidString(input) {
 		result.Valid = false
@@ -138,11 +138,11 @@ func (v *EnhancedValidator) ValidateAndNormalizeUnicode(input string) *EnhancedV
 		result.SecurityScore = 0
 		return result
 	}
-	
+
 	// Normalize Unicode using NFC (Canonical Decomposition followed by Canonical Composition)
 	normalized := v.unicodeNormalizer.String(input)
 	result.NormalizedValue = normalized
-	
+
 	// Check for Unicode security issues
 	if v.containsDangerousUnicode(normalized) {
 		result.Valid = false
@@ -152,7 +152,7 @@ func (v *EnhancedValidator) ValidateAndNormalizeUnicode(input string) *EnhancedV
 		result.SecurityScore = 10
 		return result
 	}
-	
+
 	// Check for homograph attacks
 	if v.containsHomographAttack(normalized) {
 		result.Valid = false
@@ -162,13 +162,13 @@ func (v *EnhancedValidator) ValidateAndNormalizeUnicode(input string) *EnhancedV
 		result.SecurityScore = 20
 		return result
 	}
-	
+
 	result.Valid = true
 	result.SanitizedValue = v.sanitizeUnicode(normalized)
 	result.ValidationDetails["original_length"] = len(input)
 	result.ValidationDetails["normalized_length"] = len(normalized)
 	result.ValidationDetails["sanitized_length"] = len(result.SanitizedValue)
-	
+
 	return result
 }
 
@@ -188,7 +188,7 @@ func (v *EnhancedValidator) containsDangerousUnicode(input string) bool {
 		if unicode.Is(unicode.Cs, r) {
 			return true // Surrogate characters
 		}
-		
+
 		// Check for specific dangerous characters
 		switch r {
 		case '\u200B', '\u200C', '\u200D', '\u200E', '\u200F': // Zero-width characters
@@ -208,7 +208,7 @@ func (v *EnhancedValidator) containsHomographAttack(input string) bool {
 	hasLatin := false
 	hasCyrillic := false
 	hasGreek := false
-	
+
 	for _, r := range input {
 		// Check for specific script ranges
 		if (r >= 0x0041 && r <= 0x005A) || (r >= 0x0061 && r <= 0x007A) {
@@ -219,19 +219,19 @@ func (v *EnhancedValidator) containsHomographAttack(input string) bool {
 			hasGreek = true
 		}
 	}
-	
+
 	// If we have Latin mixed with other potentially confusing scripts
 	if hasLatin && (hasCyrillic || hasGreek) {
 		return true
 	}
-	
+
 	return false
 }
 
 // sanitizeUnicode removes or replaces dangerous Unicode characters
 func (v *EnhancedValidator) sanitizeUnicode(input string) string {
 	var result strings.Builder
-	
+
 	for _, r := range input {
 		// Allow only safe characters
 		if unicode.IsPrint(r) || r == '\t' || r == '\n' || r == '\r' {
@@ -241,7 +241,7 @@ func (v *EnhancedValidator) sanitizeUnicode(input string) string {
 			}
 		}
 	}
-	
+
 	return result.String()
 }
 
@@ -268,16 +268,16 @@ func (v *EnhancedValidator) ValidateSMTPParameter(paramType, paramValue string) 
 		ValidationDetails: make(map[string]interface{}),
 		SecurityScore:     100,
 	}
-	
+
 	// First, perform Unicode normalization
 	unicodeResult := v.ValidateAndNormalizeUnicode(paramValue)
 	if !unicodeResult.Valid {
 		return unicodeResult
 	}
-	
+
 	normalizedValue := unicodeResult.NormalizedValue
 	result.NormalizedValue = normalizedValue
-	
+
 	// Parameter-specific validation
 	switch strings.ToUpper(paramType) {
 	case "MAIL_FROM", "RCPT_TO":
@@ -301,7 +301,7 @@ func (v *EnhancedValidator) validateEmailParameter(email string) *EnhancedValida
 		ValidationDetails: make(map[string]interface{}),
 		SecurityScore:     100,
 	}
-	
+
 	// Length validation according to RFC 5321
 	if len(email) > v.limits.MaxPathLength {
 		result.Valid = false
@@ -311,12 +311,12 @@ func (v *EnhancedValidator) validateEmailParameter(email string) *EnhancedValida
 		result.SecurityScore = 0
 		return result
 	}
-	
+
 	// Parse email address for detailed validation
 	if email != "" && email != "<>" { // Allow null sender
 		// Remove angle brackets if present
 		cleanEmail := strings.Trim(email, "<>")
-		
+
 		// Validate using Go's mail package
 		addr, err := mail.ParseAddress(cleanEmail)
 		if err != nil {
@@ -326,7 +326,7 @@ func (v *EnhancedValidator) validateEmailParameter(email string) *EnhancedValida
 			result.SecurityScore = 30
 			return result
 		}
-		
+
 		// Additional validation
 		parts := strings.Split(addr.Address, "@")
 		if len(parts) != 2 {
@@ -336,9 +336,9 @@ func (v *EnhancedValidator) validateEmailParameter(email string) *EnhancedValida
 			result.SecurityScore = 20
 			return result
 		}
-		
+
 		localPart, domain := parts[0], parts[1]
-		
+
 		// Validate local part length
 		if len(localPart) > v.limits.MaxLocalPartLength {
 			result.Valid = false
@@ -347,7 +347,7 @@ func (v *EnhancedValidator) validateEmailParameter(email string) *EnhancedValida
 			result.SecurityScore = 10
 			return result
 		}
-		
+
 		// Validate domain length
 		if len(domain) > v.limits.MaxDomainLength {
 			result.Valid = false
@@ -356,19 +356,19 @@ func (v *EnhancedValidator) validateEmailParameter(email string) *EnhancedValida
 			result.SecurityScore = 10
 			return result
 		}
-		
+
 		// Security pattern validation
 		if securityResult := v.validateSecurityPatterns(email); !securityResult.Valid {
 			return securityResult
 		}
 	}
-	
+
 	result.Valid = true
 	result.RFCCompliant = true
 	result.SanitizedValue = v.sanitizeEmailParameter(email)
 	result.ValidationDetails["local_part_length"] = len(strings.Split(email, "@")[0])
 	result.ValidationDetails["domain_length"] = len(strings.Split(email, "@")[1])
-	
+
 	return result
 }
 
@@ -378,7 +378,7 @@ func (v *EnhancedValidator) validateHostnameParameter(hostname string) *Enhanced
 		ValidationDetails: make(map[string]interface{}),
 		SecurityScore:     100,
 	}
-	
+
 	// Length validation
 	if len(hostname) > v.limits.MaxDomainLength {
 		result.Valid = false
@@ -388,7 +388,7 @@ func (v *EnhancedValidator) validateHostnameParameter(hostname string) *Enhanced
 		result.SecurityScore = 0
 		return result
 	}
-	
+
 	// Basic hostname format validation
 	if !v.isValidHostnameFormat(hostname) {
 		result.Valid = false
@@ -397,17 +397,17 @@ func (v *EnhancedValidator) validateHostnameParameter(hostname string) *Enhanced
 		result.SecurityScore = 30
 		return result
 	}
-	
+
 	// Security pattern validation
 	if securityResult := v.validateSecurityPatterns(hostname); !securityResult.Valid {
 		return securityResult
 	}
-	
+
 	result.Valid = true
 	result.RFCCompliant = true
 	result.SanitizedValue = v.sanitizeHostname(hostname)
 	result.ValidationDetails["label_count"] = len(strings.Split(hostname, "."))
-	
+
 	return result
 }
 
@@ -417,7 +417,7 @@ func (v *EnhancedValidator) validateAuthTypeParameter(authType string) *Enhanced
 		ValidationDetails: make(map[string]interface{}),
 		SecurityScore:     100,
 	}
-	
+
 	// Length validation
 	if len(authType) > v.limits.MaxParameterLength {
 		result.Valid = false
@@ -427,16 +427,16 @@ func (v *EnhancedValidator) validateAuthTypeParameter(authType string) *Enhanced
 		result.SecurityScore = 0
 		return result
 	}
-	
+
 	// Validate against known AUTH types
 	validAuthTypes := map[string]bool{
-		"PLAIN":     true,
-		"LOGIN":     true,
-		"CRAM-MD5":  false, // Disabled for security
+		"PLAIN":      true,
+		"LOGIN":      true,
+		"CRAM-MD5":   false, // Disabled for security
 		"DIGEST-MD5": false, // Disabled for security
-		"NTLM":      false, // Disabled for security
+		"NTLM":       false, // Disabled for security
 	}
-	
+
 	upperAuthType := strings.ToUpper(authType)
 	if allowed, exists := validAuthTypes[upperAuthType]; !exists {
 		result.Valid = false
@@ -452,12 +452,12 @@ func (v *EnhancedValidator) validateAuthTypeParameter(authType string) *Enhanced
 		result.SecurityScore = 20
 		return result
 	}
-	
+
 	result.Valid = true
 	result.RFCCompliant = true
 	result.SanitizedValue = upperAuthType
 	result.ValidationDetails["auth_type"] = upperAuthType
-	
+
 	return result
 }
 
@@ -467,7 +467,7 @@ func (v *EnhancedValidator) validateSizeParameter(sizeStr string) *EnhancedValid
 		ValidationDetails: make(map[string]interface{}),
 		SecurityScore:     100,
 	}
-	
+
 	// Length validation
 	if len(sizeStr) > 20 { // Reasonable limit for numeric values
 		result.Valid = false
@@ -477,7 +477,7 @@ func (v *EnhancedValidator) validateSizeParameter(sizeStr string) *EnhancedValid
 		result.SecurityScore = 0
 		return result
 	}
-	
+
 	// Numeric validation
 	size, err := strconv.ParseInt(sizeStr, 10, 64)
 	if err != nil {
@@ -487,7 +487,7 @@ func (v *EnhancedValidator) validateSizeParameter(sizeStr string) *EnhancedValid
 		result.SecurityScore = 30
 		return result
 	}
-	
+
 	// Range validation
 	if size < 0 {
 		result.Valid = false
@@ -496,7 +496,7 @@ func (v *EnhancedValidator) validateSizeParameter(sizeStr string) *EnhancedValid
 		result.SecurityScore = 20
 		return result
 	}
-	
+
 	if size > v.limits.MaxSizeValue {
 		result.Valid = false
 		result.ErrorType = "size_too_large"
@@ -505,12 +505,12 @@ func (v *EnhancedValidator) validateSizeParameter(sizeStr string) *EnhancedValid
 		result.SecurityScore = 10
 		return result
 	}
-	
+
 	result.Valid = true
 	result.RFCCompliant = true
 	result.SanitizedValue = sizeStr
 	result.ValidationDetails["size_bytes"] = size
-	
+
 	return result
 }
 
@@ -520,7 +520,7 @@ func (v *EnhancedValidator) validateDataLineParameter(line string) *EnhancedVali
 		ValidationDetails: make(map[string]interface{}),
 		SecurityScore:     100,
 	}
-	
+
 	// Length validation according to RFC 5321
 	if len(line) > v.limits.MaxLineLength {
 		result.Valid = false
@@ -530,9 +530,16 @@ func (v *EnhancedValidator) validateDataLineParameter(line string) *EnhancedVali
 		result.SecurityScore = 0
 		return result
 	}
-	
-	// Header injection validation
-	if v.containsHeaderInjection(line) {
+
+	// Check if this looks like a legitimate email header
+	if v.looksLikeHeader(line) {
+		// For legitimate headers, use more relaxed validation
+		return v.validateHeaderLineRelaxed(line)
+	}
+
+	// For non-header lines, check for header injection patterns
+	// But only if the line doesn't look like a legitimate email header
+	if !v.looksLikeHeader(line) && v.containsHeaderInjection(line) {
 		result.Valid = false
 		result.ErrorType = "header_injection"
 		result.ErrorMessage = "Line contains header injection patterns"
@@ -540,17 +547,17 @@ func (v *EnhancedValidator) validateDataLineParameter(line string) *EnhancedVali
 		result.SecurityScore = 0
 		return result
 	}
-	
-	// Security pattern validation
+
+	// Security pattern validation for non-header content
 	if securityResult := v.validateSecurityPatterns(line); !securityResult.Valid {
 		return securityResult
 	}
-	
+
 	result.Valid = true
 	result.SanitizedValue = v.sanitizeDataLine(line)
 	result.ValidationDetails["line_length"] = len(line)
 	result.ValidationDetails["contains_headers"] = v.looksLikeHeader(line)
-	
+
 	return result
 }
 
@@ -560,7 +567,7 @@ func (v *EnhancedValidator) validateGenericParameter(param string) *EnhancedVali
 		ValidationDetails: make(map[string]interface{}),
 		SecurityScore:     100,
 	}
-	
+
 	// Length validation
 	if len(param) > v.limits.MaxParameterLength {
 		result.Valid = false
@@ -570,16 +577,16 @@ func (v *EnhancedValidator) validateGenericParameter(param string) *EnhancedVali
 		result.SecurityScore = 0
 		return result
 	}
-	
+
 	// Security pattern validation
 	if securityResult := v.validateSecurityPatterns(param); !securityResult.Valid {
 		return securityResult
 	}
-	
+
 	result.Valid = true
 	result.SanitizedValue = v.sanitizeGenericParameter(param)
 	result.ValidationDetails["parameter_length"] = len(param)
-	
+
 	return result
 }
 
@@ -587,29 +594,29 @@ func (v *EnhancedValidator) validateGenericParameter(param string) *EnhancedVali
 func (v *EnhancedValidator) validateHeaderSecurityPatterns(headerName, headerValue string) *EnhancedValidationResult {
 	// Convert header name to lowercase for comparison
 	headerNameLower := strings.ToLower(headerName)
-	
+
 	// Headers that commonly contain semicolons and other characters that might trigger false positives
 	safeHeaders := map[string]bool{
-		"content-type":             true,
-		"content-disposition":      true,
-		"content-transfer-encoding": true,
-		"mime-version":             true,
-		"user-agent":               true,
-		"x-mailer":                 true,
-		"x-originating-ip":         true,
-		"received":                 true,
-		"authentication-results":   true,
-		"dkim-signature":           true,
-		"arc-seal":                 true,
-		"arc-message-signature":    true,
+		"content-type":               true,
+		"content-disposition":        true,
+		"content-transfer-encoding":  true,
+		"mime-version":               true,
+		"user-agent":                 true,
+		"x-mailer":                   true,
+		"x-originating-ip":           true,
+		"received":                   true,
+		"authentication-results":     true,
+		"dkim-signature":             true,
+		"arc-seal":                   true,
+		"arc-message-signature":      true,
 		"arc-authentication-results": true,
 	}
-	
+
 	// For safe headers, use relaxed validation (only check for actual injection patterns)
 	if safeHeaders[headerNameLower] {
 		return v.validateHeaderValueRelaxed(headerValue)
 	}
-	
+
 	// For other headers, use standard security validation
 	return v.validateSecurityPatterns(headerValue)
 }
@@ -620,18 +627,18 @@ func (v *EnhancedValidator) validateHeaderValueRelaxed(headerValue string) *Enha
 		ValidationDetails: make(map[string]interface{}),
 		SecurityScore:     100,
 	}
-	
+
 	// Only check for actual dangerous patterns, not legitimate header syntax
 	dangerousPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)\r\n|\n\r|\r|\n`),                    // Line breaks (header injection)
+		regexp.MustCompile(`(?i)\r\n|\n\r|\r|\n`),                                              // Line breaks (header injection)
 		regexp.MustCompile(`\x00|\x01|\x02|\x03|\x04|\x05|\x06|\x07|\x08|\x0B|\x0C|\x0E|\x0F`), // Control chars
-		regexp.MustCompile(`(?i)<script[^>]*>.*?</script>`),          // Script tags
-		regexp.MustCompile(`(?i)javascript:`),                        // JavaScript protocol
-		regexp.MustCompile(`(?i)eval\s*\(`),                         // eval() function
-		regexp.MustCompile(`(?i)\b(union\s+select.*from|drop\s+table|delete\s+from)\b`), // Obvious SQL injection
-		regexp.MustCompile(`[|&`+"`"+`$]\s*[a-zA-Z/]`),              // Command injection (but not legitimate syntax)
+		regexp.MustCompile(`(?i)<script[^>]*>.*?</script>`),                                    // Script tags
+		regexp.MustCompile(`(?i)javascript:`),                                                  // JavaScript protocol
+		regexp.MustCompile(`(?i)eval\s*\(`),                                                    // eval() function
+		regexp.MustCompile(`(?i)\b(union\s+select.*from|drop\s+table|delete\s+from)\b`),        // Obvious SQL injection
+		regexp.MustCompile(`[|&` + "`" + `$]\s*[a-zA-Z/]`),                                     // Command injection (but not legitimate syntax)
 	}
-	
+
 	for _, pattern := range dangerousPatterns {
 		if pattern.MatchString(headerValue) {
 			result.Valid = false
@@ -642,8 +649,76 @@ func (v *EnhancedValidator) validateHeaderValueRelaxed(headerValue string) *Enha
 			return result
 		}
 	}
-	
+
 	result.Valid = true
+	return result
+}
+
+// validateHeaderLineRelaxed performs relaxed validation for individual header lines
+func (v *EnhancedValidator) validateHeaderLineRelaxed(line string) *EnhancedValidationResult {
+	result := &EnhancedValidationResult{
+		ValidationDetails: make(map[string]interface{}),
+		SecurityScore:     100,
+	}
+
+	// Length validation
+	if len(line) > v.limits.MaxHeaderLength {
+		result.Valid = false
+		result.ErrorType = "header_too_long"
+		result.ErrorMessage = fmt.Sprintf("Header exceeds RFC 5322 limit (%d characters)", v.limits.MaxHeaderLength)
+		result.SecurityThreat = "buffer_overflow_attempt"
+		result.SecurityScore = 0
+		return result
+	}
+
+	// Check for header format: "Name: Value"
+	colonIndex := strings.Index(line, ":")
+	if colonIndex == -1 {
+		// Not a header line, treat as regular content
+		result.Valid = true
+		result.SanitizedValue = v.sanitizeDataLine(line)
+		return result
+	}
+
+	headerName := strings.TrimSpace(line[:colonIndex])
+	headerValue := strings.TrimSpace(line[colonIndex+1:])
+
+	// Validate header name
+	if len(headerName) == 0 {
+		result.Valid = false
+		result.ErrorType = "empty_header_name"
+		result.ErrorMessage = "Header name cannot be empty"
+		result.SecurityScore = 30
+		return result
+	}
+
+	// Check for valid header name characters
+	for _, r := range headerName {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_' {
+			result.Valid = false
+			result.ErrorType = "invalid_header_name"
+			result.ErrorMessage = "Header name contains invalid characters"
+			result.SecurityScore = 20
+			return result
+		}
+	}
+
+	// Use relaxed validation for header value
+	headerValueResult := v.validateHeaderValueRelaxed(headerValue)
+	if !headerValueResult.Valid {
+		result.Valid = false
+		result.ErrorType = headerValueResult.ErrorType
+		result.ErrorMessage = "Header value: " + headerValueResult.ErrorMessage
+		result.SecurityThreat = headerValueResult.SecurityThreat
+		result.SecurityScore = headerValueResult.SecurityScore
+		return result
+	}
+
+	result.Valid = true
+	result.SanitizedValue = line
+	result.ValidationDetails["header_name"] = headerName
+	result.ValidationDetails["header_value_length"] = len(headerValue)
+
 	return result
 }
 
@@ -653,7 +728,7 @@ func (v *EnhancedValidator) validateSecurityPatterns(input string) *EnhancedVali
 		ValidationDetails: make(map[string]interface{}),
 		SecurityScore:     100,
 	}
-	
+
 	// Check for suspicious patterns
 	for _, pattern := range v.suspiciousPatterns {
 		if pattern.MatchString(input) {
@@ -665,7 +740,7 @@ func (v *EnhancedValidator) validateSecurityPatterns(input string) *EnhancedVali
 			return result
 		}
 	}
-	
+
 	// Check for SQL injection patterns
 	for _, pattern := range v.sqlInjectionPatterns {
 		if pattern.MatchString(input) {
@@ -677,7 +752,7 @@ func (v *EnhancedValidator) validateSecurityPatterns(input string) *EnhancedVali
 			return result
 		}
 	}
-	
+
 	// Check for command injection patterns
 	for _, pattern := range v.commandInjectionPatterns {
 		if pattern.MatchString(input) {
@@ -689,7 +764,7 @@ func (v *EnhancedValidator) validateSecurityPatterns(input string) *EnhancedVali
 			return result
 		}
 	}
-	
+
 	result.Valid = true
 	return result
 }
@@ -711,16 +786,16 @@ func (v *EnhancedValidator) looksLikeHeader(line string) bool {
 	if colonIndex == -1 {
 		return false
 	}
-	
+
 	headerName := strings.TrimSpace(line[:colonIndex])
-	
+
 	// Check if header name contains only valid characters
 	for _, r := range headerName {
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_' {
 			return false
 		}
 	}
-	
+
 	return len(headerName) > 0
 }
 
@@ -729,14 +804,14 @@ func (v *EnhancedValidator) isValidHostnameFormat(hostname string) bool {
 	if len(hostname) == 0 || len(hostname) > 253 {
 		return false
 	}
-	
+
 	// Check for valid characters and structure
 	labels := strings.Split(hostname, ".")
 	for _, label := range labels {
 		if len(label) == 0 || len(label) > 63 {
 			return false
 		}
-		
+
 		// Label must start and end with alphanumeric
 		if !unicode.IsLetter(rune(label[0])) && !unicode.IsDigit(rune(label[0])) {
 			return false
@@ -744,7 +819,7 @@ func (v *EnhancedValidator) isValidHostnameFormat(hostname string) bool {
 		if !unicode.IsLetter(rune(label[len(label)-1])) && !unicode.IsDigit(rune(label[len(label)-1])) {
 			return false
 		}
-		
+
 		// Check all characters in label
 		for _, r := range label {
 			if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' {
@@ -752,7 +827,7 @@ func (v *EnhancedValidator) isValidHostnameFormat(hostname string) bool {
 			}
 		}
 	}
-	
+
 	return true
 }
 
@@ -823,10 +898,10 @@ func SafeLogString(input string) string {
 	if input == "" {
 		return ""
 	}
-	
+
 	var result strings.Builder
 	result.Grow(len(input)) // Pre-allocate capacity
-	
+
 	for _, r := range input {
 		switch {
 		case r == 0:
@@ -849,13 +924,13 @@ func SafeLogString(input string) string {
 			result.WriteString(fmt.Sprintf("\\u%04x", r)) // Non-printable characters
 		}
 	}
-	
+
 	// Truncate if too long for logging
 	if result.Len() > 1000 {
 		truncated := result.String()[:997] + "..."
 		return truncated
 	}
-	
+
 	return result.String()
 }
 
@@ -865,25 +940,25 @@ func (v *EnhancedValidator) ValidateEmailHeaders(headers string) *EnhancedValida
 		ValidationDetails: make(map[string]interface{}),
 		SecurityScore:     100,
 	}
-	
+
 	// Unfold headers first (handle continuation lines per RFC 5322)
 	unfoldedHeaders := v.unfoldHeaders(headers)
-	
+
 	// Split into individual header lines
 	headerLines := strings.Split(unfoldedHeaders, "\n")
 	headerCount := 0
 	suspiciousHeaders := 0
-	
+
 	for i, line := range headerLines {
 		line = strings.TrimSpace(line)
-		
+
 		// Skip empty lines
 		if len(line) == 0 {
 			continue
 		}
-		
+
 		headerCount++
-		
+
 		// Check header count limit
 		if headerCount > v.limits.MaxHeaderCount {
 			result.Valid = false
@@ -893,7 +968,7 @@ func (v *EnhancedValidator) ValidateEmailHeaders(headers string) *EnhancedValida
 			result.SecurityScore = 20
 			return result
 		}
-		
+
 		// Validate individual header
 		headerResult := v.validateSingleHeader(line)
 		if !headerResult.Valid {
@@ -904,22 +979,22 @@ func (v *EnhancedValidator) ValidateEmailHeaders(headers string) *EnhancedValida
 			result.SecurityScore = headerResult.SecurityScore
 			return result
 		}
-		
+
 		if headerResult.SecurityScore < 80 {
 			suspiciousHeaders++
 		}
 	}
-	
+
 	// Check for suspicious header patterns
 	if suspiciousHeaders > 5 {
 		result.SecurityScore = 30
 		result.ValidationDetails["suspicious_header_count"] = suspiciousHeaders
 	}
-	
+
 	result.Valid = true
 	result.ValidationDetails["header_count"] = headerCount
 	result.ValidationDetails["suspicious_headers"] = suspiciousHeaders
-	
+
 	return result
 }
 
@@ -928,11 +1003,11 @@ func (v *EnhancedValidator) unfoldHeaders(headers string) string {
 	// Split by lines
 	lines := strings.Split(headers, "\n")
 	var unfoldedLines []string
-	
+
 	for _, line := range lines {
 		// Remove \r if present
 		line = strings.TrimRight(line, "\r")
-		
+
 		// If this line starts with space or tab, it's a continuation of the previous header
 		if (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")) && len(unfoldedLines) > 0 {
 			// Append to the previous line (with a single space)
@@ -943,7 +1018,7 @@ func (v *EnhancedValidator) unfoldHeaders(headers string) string {
 			unfoldedLines = append(unfoldedLines, line)
 		}
 	}
-	
+
 	return strings.Join(unfoldedLines, "\n")
 }
 
@@ -953,7 +1028,7 @@ func (v *EnhancedValidator) validateSingleHeader(header string) *EnhancedValidat
 		ValidationDetails: make(map[string]interface{}),
 		SecurityScore:     100,
 	}
-	
+
 	// Length validation
 	if len(header) > v.limits.MaxHeaderLength {
 		result.Valid = false
@@ -963,7 +1038,7 @@ func (v *EnhancedValidator) validateSingleHeader(header string) *EnhancedValidat
 		result.SecurityScore = 0
 		return result
 	}
-	
+
 	// Header format validation
 	colonIndex := strings.Index(header, ":")
 	if colonIndex == -1 {
@@ -973,10 +1048,10 @@ func (v *EnhancedValidator) validateSingleHeader(header string) *EnhancedValidat
 		result.SecurityScore = 40
 		return result
 	}
-	
+
 	headerName := strings.TrimSpace(header[:colonIndex])
 	headerValue := strings.TrimSpace(header[colonIndex+1:])
-	
+
 	// Validate header name
 	if len(headerName) == 0 {
 		result.Valid = false
@@ -985,7 +1060,7 @@ func (v *EnhancedValidator) validateSingleHeader(header string) *EnhancedValidat
 		result.SecurityScore = 30
 		return result
 	}
-	
+
 	// Check for valid header name characters
 	for _, r := range headerName {
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_' {
@@ -996,7 +1071,7 @@ func (v *EnhancedValidator) validateSingleHeader(header string) *EnhancedValidat
 			return result
 		}
 	}
-	
+
 	// Header injection validation
 	if v.containsHeaderInjection(headerValue) {
 		result.Valid = false
@@ -1006,7 +1081,7 @@ func (v *EnhancedValidator) validateSingleHeader(header string) *EnhancedValidat
 		result.SecurityScore = 0
 		return result
 	}
-	
+
 	// Security pattern validation for header value (with header-specific exceptions)
 	if securityResult := v.validateHeaderSecurityPatterns(headerName, headerValue); !securityResult.Valid {
 		result.Valid = false
@@ -1016,11 +1091,11 @@ func (v *EnhancedValidator) validateSingleHeader(header string) *EnhancedValidat
 		result.SecurityScore = securityResult.SecurityScore
 		return result
 	}
-	
+
 	result.Valid = true
 	result.ValidationDetails["header_name"] = headerName
 	result.ValidationDetails["header_value_length"] = len(headerValue)
-	
+
 	return result
 }
 
