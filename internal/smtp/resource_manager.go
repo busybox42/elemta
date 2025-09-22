@@ -765,9 +765,9 @@ func (rm *ResourceManager) getOrCreateIPRateLimiter(ip string) *ResourceRateLimi
 		// Double-check pattern
 		if limiter, exists = rm.ipRateLimiters[ip]; !exists {
 			limiter = NewResourceRateLimiter(
-				rm.limits.MaxRequestsPerWindow/10,  // Per-IP limit is 1/10th of global
-				rm.limits.MaxRequestsPerWindow/600, // Refill rate
-				rm.limits.MaxRequestsPerWindow/10,
+				rm.limits.MaxRequestsPerWindow/2,   // Per-IP limit is 1/2 of global (more permissive)
+				rm.limits.MaxRequestsPerWindow/60,  // Refill rate (faster refill)
+				rm.limits.MaxRequestsPerWindow/2,
 				rm.limits.RateLimitWindow,
 			)
 			rm.ipRateLimiters[ip] = limiter
