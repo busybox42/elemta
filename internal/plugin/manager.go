@@ -34,6 +34,7 @@ type Manager struct {
 	spfPlugins       map[string]SPFPlugin
 	dmarcPlugins     map[string]DMARCPlugin
 	arcPlugins       map[string]ARCPlugin
+	rateLimitPlugins map[string]RateLimitPlugin
 	stagePlugins     map[ProcessingStage][]StagePlugin
 	typePlugins      map[string][]Plugin
 	loadedPlugins    map[string]*plugin.Plugin
@@ -50,6 +51,7 @@ func NewManager(pluginPath string) *Manager {
 		spfPlugins:       make(map[string]SPFPlugin),
 		dmarcPlugins:     make(map[string]DMARCPlugin),
 		arcPlugins:       make(map[string]ARCPlugin),
+		rateLimitPlugins: make(map[string]RateLimitPlugin),
 		stagePlugins:     make(map[ProcessingStage][]StagePlugin),
 		typePlugins:      make(map[string][]Plugin),
 		loadedPlugins:    make(map[string]*plugin.Plugin),
@@ -116,6 +118,10 @@ func (m *Manager) LoadPlugin(pluginName string) error {
 		}
 	case PluginTypeARC:
 		if err := m.loadARCPlugin(pluginName, p); err != nil {
+			return err
+		}
+	case PluginTypeRateLimit:
+		if err := m.loadRateLimitPlugin(pluginName, p); err != nil {
 			return err
 		}
 	default:
@@ -298,6 +304,39 @@ func (m *Manager) loadARCPlugin(pluginName string, p *plugin.Plugin) error {
 	return nil
 }
 
+// loadRateLimitPlugin loads a rate limit plugin
+func (m *Manager) loadRateLimitPlugin(pluginName string, p *plugin.Plugin) error {
+	// Look up the "NewRateLimiterPlugin" symbol
+	sym, err := p.Lookup("NewRateLimiterPlugin")
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrPluginSymbolNotFound, err)
+	}
+
+	// Assert that the symbol is a function that returns a RateLimitPlugin
+	newPlugin, ok := sym.(func() RateLimitPlugin)
+	if !ok {
+		return fmt.Errorf("%w: %v", ErrPluginInvalidType, "NewRateLimiterPlugin is not a function that returns a RateLimitPlugin")
+	}
+
+	// Call the function to get the plugin instance
+	plugin := newPlugin()
+
+	// Register the plugin
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Store the plugin
+	m.rateLimitPlugins[pluginName] = plugin
+	m.registerTypePlugin(pluginName, plugin, PluginTypeRateLimit)
+
+	// If it implements StagePlugin, register it for its stages
+	if stagePlugin, ok := plugin.(StagePlugin); ok {
+		m.registerStagePlugin(stagePlugin)
+	}
+
+	return nil
+}
+
 // loadGenericPlugin loads a generic plugin
 func (m *Manager) loadGenericPlugin(pluginName string, p *plugin.Plugin, pluginType string) error {
 	// Lookup plugin symbol
@@ -462,6 +501,19 @@ func (m *Manager) GetARCPlugin(name string) (ARCPlugin, error) {
 	return plugin, nil
 }
 
+// GetRateLimitPlugin returns a rate limit plugin by name
+func (m *Manager) GetRateLimitPlugin(name string) (RateLimitPlugin, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	plugin, ok := m.rateLimitPlugins[name]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrPluginNotFound, name)
+	}
+
+	return plugin, nil
+}
+
 // GetPluginsByType returns all plugins of a specific type
 func (m *Manager) GetPluginsByType(pluginType string) []Plugin {
 	m.mu.RLock()
@@ -607,6 +659,20 @@ func (m *Manager) ListARCPlugins() []string {
 	return plugins
 }
 
+// ListRateLimitPlugins returns a list of loaded rate limit plugins
+func (m *Manager) ListRateLimitPlugins() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var plugins []string
+	for name := range m.rateLimitPlugins {
+		plugins = append(plugins, name)
+	}
+
+	sort.Strings(plugins)
+	return plugins
+}
+
 // ListPluginTypes returns a list of all plugin types with loaded plugins
 func (m *Manager) ListPluginTypes() []string {
 	m.mu.RLock()
@@ -643,6 +709,7 @@ func (m *Manager) Close() error {
 	m.spfPlugins = make(map[string]SPFPlugin)
 	m.dmarcPlugins = make(map[string]DMARCPlugin)
 	m.arcPlugins = make(map[string]ARCPlugin)
+	m.rateLimitPlugins = make(map[string]RateLimitPlugin)
 	m.stagePlugins = make(map[ProcessingStage][]StagePlugin)
 	m.typePlugins = make(map[string][]Plugin)
 	m.loadedPlugins = make(map[string]*plugin.Plugin)

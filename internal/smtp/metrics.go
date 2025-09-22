@@ -51,6 +51,17 @@ type Metrics struct {
 	AuthAttempts  prometheus.Counter
 	AuthSuccesses prometheus.Counter
 	AuthFailures  prometheus.Counter
+
+	// Rate limiting metrics
+	RateLimitConnectionsHit    prometheus.Counter
+	RateLimitMessagesHit       prometheus.Counter
+	RateLimitVolumeHit         prometheus.Counter
+	RateLimitAuthHit           prometheus.Counter
+	RateLimitWhitelistHits     prometheus.Counter
+	RateLimitBlacklistHits     prometheus.Counter
+	RateLimitTotalRequests     prometheus.Counter
+	RateLimitActiveConnections *prometheus.GaugeVec
+	RateLimitTokenBucketTokens *prometheus.GaugeVec
 }
 
 // GetMetrics returns the singleton metrics instance
@@ -155,6 +166,44 @@ func newMetrics() *Metrics {
 			Name: "elemta_auth_failures_total",
 			Help: "Total number of failed authentications",
 		}),
+
+		// Rate limiting metrics
+		RateLimitConnectionsHit: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "elemta_rate_limit_connections_hit_total",
+			Help: "Total number of connection rate limit hits",
+		}),
+		RateLimitMessagesHit: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "elemta_rate_limit_messages_hit_total",
+			Help: "Total number of message rate limit hits",
+		}),
+		RateLimitVolumeHit: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "elemta_rate_limit_volume_hit_total",
+			Help: "Total number of volume rate limit hits",
+		}),
+		RateLimitAuthHit: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "elemta_rate_limit_auth_hit_total",
+			Help: "Total number of authentication rate limit hits",
+		}),
+		RateLimitWhitelistHits: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "elemta_rate_limit_whitelist_hits_total",
+			Help: "Total number of whitelist hits",
+		}),
+		RateLimitBlacklistHits: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "elemta_rate_limit_blacklist_hits_total",
+			Help: "Total number of blacklist hits",
+		}),
+		RateLimitTotalRequests: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "elemta_rate_limit_requests_total",
+			Help: "Total number of requests processed by rate limiter",
+		}),
+		RateLimitActiveConnections: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "elemta_rate_limit_active_connections",
+			Help: "Number of active connections per IP",
+		}, []string{"ip"}),
+		RateLimitTokenBucketTokens: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "elemta_rate_limit_token_bucket_tokens",
+			Help: "Current number of tokens in rate limit buckets",
+		}, []string{"ip", "limit_type"}),
 	}
 
 	// Initialize queue size metrics for different queue types

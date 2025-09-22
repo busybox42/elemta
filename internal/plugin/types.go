@@ -71,6 +71,24 @@ const (
 	PriorityLowest  PluginPriority = 0
 )
 
+// RateLimitPlugin interface for rate limiting plugins
+type RateLimitPlugin interface {
+	Plugin
+	SecurityHook
+	ConnectionHook
+	SMTPCommandHook
+	MailTransactionHook
+	MessageProcessingHook
+
+	// Rate limiting specific methods
+	GetMetrics() map[string]interface{}
+	UpdateConfig(config map[string]interface{}) error
+	AddToWhitelist(item string) error
+	AddToBlacklist(item string) error
+	RemoveFromWhitelist(item string) error
+	RemoveFromBlacklist(item string) error
+}
+
 // PluginResult represents the result of a plugin execution
 type PluginResult struct {
 	Action      PluginAction

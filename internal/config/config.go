@@ -14,6 +14,96 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 )
 
+// RateLimiterPluginConfig contains configuration for the rate limiter plugin
+type RateLimiterPluginConfig struct {
+	Enabled bool `toml:"enabled" json:"enabled" yaml:"enabled"`
+
+	// Connection limits
+	MaxConnectionsPerIP     int    `toml:"max_connections_per_ip" json:"max_connections_per_ip" yaml:"max_connections_per_ip"`
+	ConnectionRatePerMinute int    `toml:"connection_rate_per_minute" json:"connection_rate_per_minute" yaml:"connection_rate_per_minute"`
+	ConnectionBurstSize     int    `toml:"connection_burst_size" json:"connection_burst_size" yaml:"connection_burst_size"`
+	ConnectionTimeout       string `toml:"connection_timeout" json:"connection_timeout" yaml:"connection_timeout"`
+
+	// Message limits
+	MaxMessagesPerMinute    int `toml:"max_messages_per_minute" json:"max_messages_per_minute" yaml:"max_messages_per_minute"`
+	MaxMessagesPerHour      int `toml:"max_messages_per_hour" json:"max_messages_per_hour" yaml:"max_messages_per_hour"`
+	MaxRecipientsPerMessage int `toml:"max_recipients_per_message" json:"max_recipients_per_message" yaml:"max_recipients_per_message"`
+	MaxRecipientsPerHour    int `toml:"max_recipients_per_hour" json:"max_recipients_per_hour" yaml:"max_recipients_per_hour"`
+
+	// Volume limits
+	MaxMessageSize   string `toml:"max_message_size" json:"max_message_size" yaml:"max_message_size"`
+	MaxDataPerHour   string `toml:"max_data_per_hour" json:"max_data_per_hour" yaml:"max_data_per_hour"`
+	VolumeBurstSize  string `toml:"volume_burst_size" json:"volume_burst_size" yaml:"volume_burst_size"`
+	VolumeRateWindow string `toml:"volume_rate_window" json:"volume_rate_window" yaml:"volume_rate_window"`
+
+	// Authentication limits
+	MaxAuthAttemptsPerMinute int    `toml:"max_auth_attempts_per_minute" json:"max_auth_attempts_per_minute" yaml:"max_auth_attempts_per_minute"`
+	AuthLockoutDuration      string `toml:"auth_lockout_duration" json:"auth_lockout_duration" yaml:"auth_lockout_duration"`
+	AuthBurstSize            int    `toml:"auth_burst_size" json:"auth_burst_size" yaml:"auth_burst_size"`
+
+	// Access lists
+	WhitelistIPs     []string `toml:"whitelist_ips" json:"whitelist_ips" yaml:"whitelist_ips"`
+	WhitelistDomains []string `toml:"whitelist_domains" json:"whitelist_domains" yaml:"whitelist_domains"`
+	BlacklistIPs     []string `toml:"blacklist_ips" json:"blacklist_ips" yaml:"blacklist_ips"`
+	BlacklistDomains []string `toml:"blacklist_domains" json:"blacklist_domains" yaml:"blacklist_domains"`
+
+	// Valkey backend for distributed rate limiting
+	ValkeyURL       string `toml:"valkey_url" json:"valkey_url" yaml:"valkey_url"`
+	ValkeyKeyPrefix string `toml:"valkey_key_prefix" json:"valkey_key_prefix" yaml:"valkey_key_prefix"`
+
+	// Advanced settings
+	CacheSize       int    `toml:"cache_size" json:"cache_size" yaml:"cache_size"`
+	CacheTTL        string `toml:"cache_ttl" json:"cache_ttl" yaml:"cache_ttl"`
+	CleanupInterval string `toml:"cleanup_interval" json:"cleanup_interval" yaml:"cleanup_interval"`
+	MetricsEnabled  bool   `toml:"metrics_enabled" json:"metrics_enabled" yaml:"metrics_enabled"`
+}
+
+// DefaultRateLimiterPluginConfig returns sensible defaults for rate limiting
+func DefaultRateLimiterPluginConfig() *RateLimiterPluginConfig {
+	return &RateLimiterPluginConfig{
+		Enabled: true,
+
+		// Connection limits - conservative defaults
+		MaxConnectionsPerIP:     10,
+		ConnectionRatePerMinute: 100,
+		ConnectionBurstSize:     20,
+		ConnectionTimeout:       "30s",
+
+		// Message limits - reasonable for most use cases
+		MaxMessagesPerMinute:    60,
+		MaxMessagesPerHour:      1000,
+		MaxRecipientsPerMessage: 100,
+		MaxRecipientsPerHour:    5000,
+
+		// Volume limits - 50MB per message, 1GB per hour
+		MaxMessageSize:   "50MB",
+		MaxDataPerHour:   "1GB",
+		VolumeBurstSize:  "100MB",
+		VolumeRateWindow: "5m",
+
+		// Authentication limits - prevent brute force
+		MaxAuthAttemptsPerMinute: 5,
+		AuthLockoutDuration:      "15m",
+		AuthBurstSize:            10,
+
+		// Access lists - empty by default
+		WhitelistIPs:     []string{},
+		WhitelistDomains: []string{},
+		BlacklistIPs:     []string{},
+		BlacklistDomains: []string{},
+
+		// Valkey backend - disabled by default
+		ValkeyURL:       "",
+		ValkeyKeyPrefix: "elemta:ratelimit:",
+
+		// Advanced settings
+		CacheSize:       10000,
+		CacheTTL:        "1h",
+		CleanupInterval: "5m",
+		MetricsEnabled:  true,
+	}
+}
+
 // Config represents the application configuration
 type Config struct {
 	// Server configuration
@@ -52,6 +142,9 @@ type Config struct {
 		Directory string   `toml:"directory"`
 		Enabled   []string `toml:"enabled"`
 	} `toml:"plugins"`
+
+	// Rate Limiter Plugin configuration
+	RateLimiter *RateLimiterPluginConfig `toml:"rate_limiter"`
 
 	// Modern SMTP authentication config for Go SMTP server
 	Auth *smtp.AuthConfig `toml:"auth"`
@@ -100,6 +193,9 @@ func DefaultConfig() *Config {
 	cfg.QueueProcessor.Interval = 10
 	cfg.QueueProcessor.Workers = 5
 	cfg.QueueProcessor.Debug = false
+
+	// Set default rate limiter configuration
+	cfg.RateLimiter = DefaultRateLimiterPluginConfig()
 
 	return cfg
 }
@@ -394,6 +490,9 @@ func (c *Config) Validate() *ValidationResult {
 
 	// Validate delivery configuration
 	c.validateDelivery(result, securityValidator)
+
+	// Validate rate limiter configuration
+	c.validateRateLimiter(result, securityValidator)
 
 	return result
 }
@@ -881,6 +980,104 @@ func (c *Config) validateDelivery(result *ValidationResult, sv *SecurityValidato
 	// Validate retry delay
 	if err := sv.ValidateNumericBounds(int64(c.Delivery.RetryDelay), "delivery.retry_delay", 1, 3600); err != nil {
 		result.AddError("delivery.retry_delay", c.Delivery.RetryDelay, err.Error())
+	}
+}
+
+// validateRateLimiter validates rate limiter configuration
+func (c *Config) validateRateLimiter(result *ValidationResult, sv *SecurityValidator) {
+	if c.RateLimiter == nil {
+		return // Rate limiter config is optional
+	}
+
+	// Validate connection limits
+	if err := sv.ValidateNumericBounds(int64(c.RateLimiter.MaxConnectionsPerIP), "rate_limiter.max_connections_per_ip", 1, 1000); err != nil {
+		result.AddError("rate_limiter.max_connections_per_ip", c.RateLimiter.MaxConnectionsPerIP, err.Error())
+	}
+
+	if err := sv.ValidateNumericBounds(int64(c.RateLimiter.ConnectionRatePerMinute), "rate_limiter.connection_rate_per_minute", 1, 10000); err != nil {
+		result.AddError("rate_limiter.connection_rate_per_minute", c.RateLimiter.ConnectionRatePerMinute, err.Error())
+	}
+
+	if err := sv.ValidateNumericBounds(int64(c.RateLimiter.ConnectionBurstSize), "rate_limiter.connection_burst_size", 1, 1000); err != nil {
+		result.AddError("rate_limiter.connection_burst_size", c.RateLimiter.ConnectionBurstSize, err.Error())
+	}
+
+	// Validate message limits
+	if err := sv.ValidateNumericBounds(int64(c.RateLimiter.MaxMessagesPerMinute), "rate_limiter.max_messages_per_minute", 1, 10000); err != nil {
+		result.AddError("rate_limiter.max_messages_per_minute", c.RateLimiter.MaxMessagesPerMinute, err.Error())
+	}
+
+	if err := sv.ValidateNumericBounds(int64(c.RateLimiter.MaxMessagesPerHour), "rate_limiter.max_messages_per_hour", 1, 100000); err != nil {
+		result.AddError("rate_limiter.max_messages_per_hour", c.RateLimiter.MaxMessagesPerHour, err.Error())
+	}
+
+	if err := sv.ValidateNumericBounds(int64(c.RateLimiter.MaxRecipientsPerMessage), "rate_limiter.max_recipients_per_message", 1, 10000); err != nil {
+		result.AddError("rate_limiter.max_recipients_per_message", c.RateLimiter.MaxRecipientsPerMessage, err.Error())
+	}
+
+	if err := sv.ValidateNumericBounds(int64(c.RateLimiter.MaxRecipientsPerHour), "rate_limiter.max_recipients_per_hour", 1, 100000); err != nil {
+		result.AddError("rate_limiter.max_recipients_per_hour", c.RateLimiter.MaxRecipientsPerHour, err.Error())
+	}
+
+	// Validate authentication limits
+	if err := sv.ValidateNumericBounds(int64(c.RateLimiter.MaxAuthAttemptsPerMinute), "rate_limiter.max_auth_attempts_per_minute", 1, 1000); err != nil {
+		result.AddError("rate_limiter.max_auth_attempts_per_minute", c.RateLimiter.MaxAuthAttemptsPerMinute, err.Error())
+	}
+
+	if err := sv.ValidateNumericBounds(int64(c.RateLimiter.AuthBurstSize), "rate_limiter.auth_burst_size", 1, 1000); err != nil {
+		result.AddError("rate_limiter.auth_burst_size", c.RateLimiter.AuthBurstSize, err.Error())
+	}
+
+	// Validate cache settings
+	if err := sv.ValidateNumericBounds(int64(c.RateLimiter.CacheSize), "rate_limiter.cache_size", 100, 1000000); err != nil {
+		result.AddError("rate_limiter.cache_size", c.RateLimiter.CacheSize, err.Error())
+	}
+
+	// Validate IP addresses in whitelist/blacklist
+	for i, ip := range c.RateLimiter.WhitelistIPs {
+		c.RateLimiter.WhitelistIPs[i] = sv.SanitizeString(ip)
+		if ip != "" && net.ParseIP(ip) == nil {
+			result.AddError(fmt.Sprintf("rate_limiter.whitelist_ips[%d]", i), ip, "invalid IP address format")
+		}
+	}
+
+	for i, ip := range c.RateLimiter.BlacklistIPs {
+		c.RateLimiter.BlacklistIPs[i] = sv.SanitizeString(ip)
+		if ip != "" && net.ParseIP(ip) == nil {
+			result.AddError(fmt.Sprintf("rate_limiter.blacklist_ips[%d]", i), ip, "invalid IP address format")
+		}
+	}
+
+	// Validate domains in whitelist/blacklist
+	for i, domain := range c.RateLimiter.WhitelistDomains {
+		c.RateLimiter.WhitelistDomains[i] = sv.SanitizeString(domain)
+		if err := sv.ValidateHostname(domain, fmt.Sprintf("rate_limiter.whitelist_domains[%d]", i)); err != nil {
+			result.AddError(fmt.Sprintf("rate_limiter.whitelist_domains[%d]", i), domain, err.Error())
+		}
+	}
+
+	for i, domain := range c.RateLimiter.BlacklistDomains {
+		c.RateLimiter.BlacklistDomains[i] = sv.SanitizeString(domain)
+		if err := sv.ValidateHostname(domain, fmt.Sprintf("rate_limiter.blacklist_domains[%d]", i)); err != nil {
+			result.AddError(fmt.Sprintf("rate_limiter.blacklist_domains[%d]", i), domain, err.Error())
+		}
+	}
+
+	// Validate Valkey URL if provided
+	if c.RateLimiter.ValkeyURL != "" {
+		c.RateLimiter.ValkeyURL = sv.SanitizeString(c.RateLimiter.ValkeyURL)
+		// Basic URL validation - check if it starts with valkey:// or redis://
+		if !strings.HasPrefix(c.RateLimiter.ValkeyURL, "valkey://") && !strings.HasPrefix(c.RateLimiter.ValkeyURL, "redis://") {
+			result.AddError("rate_limiter.valkey_url", c.RateLimiter.ValkeyURL, "Valkey URL must start with valkey:// or redis://")
+		}
+	}
+
+	// Validate Valkey key prefix
+	if c.RateLimiter.ValkeyKeyPrefix != "" {
+		c.RateLimiter.ValkeyKeyPrefix = sv.SanitizeString(c.RateLimiter.ValkeyKeyPrefix)
+		if strings.Contains(c.RateLimiter.ValkeyKeyPrefix, " ") {
+			result.AddError("rate_limiter.valkey_key_prefix", c.RateLimiter.ValkeyKeyPrefix, "Valkey key prefix cannot contain spaces")
+		}
 	}
 }
 

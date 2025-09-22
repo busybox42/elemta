@@ -29,7 +29,7 @@ type EnhancedManager struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	started bool
-	
+
 	// Secure plugin integration (disabled for now due to naming conflicts)
 	// secureIntegration *SecurePluginIntegration
 	// useSecurePlugins  bool
@@ -282,6 +282,8 @@ func (em *EnhancedManager) loadAndInitializePlugin(pluginName string) error {
 		plugin = dmarcPlugin
 	} else if arcPlugin, err := em.Manager.GetARCPlugin(pluginName); err == nil {
 		plugin = arcPlugin
+	} else if rateLimitPlugin, err := em.Manager.GetRateLimitPlugin(pluginName); err == nil {
+		plugin = rateLimitPlugin
 	}
 
 	if plugin != nil {
