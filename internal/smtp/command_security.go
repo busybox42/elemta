@@ -48,9 +48,9 @@ type CommandSecurityConfig struct {
 // DefaultCommandSecurityConfig returns a secure default configuration
 func DefaultCommandSecurityConfig() *CommandSecurityConfig {
 	return &CommandSecurityConfig{
-		MaxCommandLength:    512,  // RFC 5321 limit
-		MaxParameterLength:  320,  // RFC 5321 email address limit
-		AllowedCommandChars: `^[A-Za-z0-9\-_]+$`,
+		MaxCommandLength:      512, // RFC 5321 limit
+		MaxParameterLength:    320, // RFC 5321 email address limit
+		AllowedCommandChars:   `^[A-Za-z0-9\-_]+$`,
 		AllowedParameterChars: `^[A-Za-z0-9\-_@\.:<>=\s]+$`,
 		BlockedCommandPatterns: []string{
 			// SQL injection patterns
@@ -80,10 +80,10 @@ func DefaultCommandSecurityConfig() *CommandSecurityConfig {
 		},
 		StrictMode:             true,
 		LogSuspiciousCommands:  true,
-		CommandTimeout:         30 * time.Second,  // 30 second timeout for command processing
-		MaxCommandsPerSession:  1000,              // Maximum commands per session
-		EnableMemoryMonitoring: true,              // Enable memory monitoring
-		MaxMemoryPerCommand:    1024 * 1024,       // 1MB max memory per command
+		CommandTimeout:         30 * time.Second, // 30 second timeout for command processing
+		MaxCommandsPerSession:  1000,             // Maximum commands per session
+		EnableMemoryMonitoring: true,             // Enable memory monitoring
+		MaxMemoryPerCommand:    1024 * 1024,      // 1MB max memory per command
 	}
 }
 
@@ -234,18 +234,18 @@ func (csm *CommandSecurityManager) parseCommand(line string) (string, string) {
 	if len(line) == 0 {
 		return "", ""
 	}
-	
+
 	// Safe string splitting with bounds checking
 	spaceIndex := strings.Index(line, " ")
 	if spaceIndex == -1 {
 		// No space found, entire line is command
 		return strings.ToUpper(line), ""
 	}
-	
+
 	// Extract command and arguments safely
 	cmd := strings.ToUpper(line[:spaceIndex])
 	args := strings.TrimSpace(line[spaceIndex+1:])
-	
+
 	return cmd, args
 }
 
@@ -370,7 +370,7 @@ func (csm *CommandSecurityManager) validateMailFromParameter(ctx context.Context
 	if err := csm.validateBounds(ctx, args, "MAIL_FROM_PARAM"); err != nil {
 		return err
 	}
-	
+
 	// Check for proper MAIL FROM syntax
 	if !strings.HasPrefix(strings.ToUpper(args), "FROM:") {
 		return fmt.Errorf("501 5.5.4 Syntax: MAIL FROM:<address>")
@@ -400,7 +400,7 @@ func (csm *CommandSecurityManager) validateRcptToParameter(ctx context.Context, 
 	if err := csm.validateBounds(ctx, args, "RCPT_TO_PARAM"); err != nil {
 		return err
 	}
-	
+
 	// Check for proper RCPT TO syntax
 	if !strings.HasPrefix(strings.ToUpper(args), "TO:") {
 		return fmt.Errorf("501 5.5.4 Syntax: RCPT TO:<address>")
@@ -440,7 +440,7 @@ func (csm *CommandSecurityManager) validateAuthParameter(ctx context.Context, ar
 	// Check for valid auth mechanisms
 	validMechanisms := []string{"PLAIN", "LOGIN"}
 	mechanism := strings.ToUpper(fields[0])
-	
+
 	valid := false
 	for _, vm := range validMechanisms {
 		if mechanism == vm {
@@ -577,10 +577,10 @@ func (csm *CommandSecurityManager) SanitizeCommand(line string) string {
 func (csm *CommandSecurityManager) checkMemoryUsage(ctx context.Context, initialStats runtime.MemStats) error {
 	var currentStats runtime.MemStats
 	runtime.ReadMemStats(&currentStats)
-	
+
 	// Calculate memory increase
 	memoryIncrease := int64(currentStats.Alloc) - int64(initialStats.Alloc)
-	
+
 	// Check if memory usage exceeds limit
 	if memoryIncrease > csm.config.MaxMemoryPerCommand {
 		csm.logger.WarnContext(ctx, "Command processing exceeded memory limit",
@@ -589,7 +589,7 @@ func (csm *CommandSecurityManager) checkMemoryUsage(ctx context.Context, initial
 		)
 		return fmt.Errorf("554 5.7.1 Command rejected: memory limit exceeded")
 	}
-	
+
 	// Log high memory usage for monitoring
 	if memoryIncrease > csm.config.MaxMemoryPerCommand/2 {
 		csm.logger.InfoContext(ctx, "High memory usage detected during command processing",
@@ -597,7 +597,7 @@ func (csm *CommandSecurityManager) checkMemoryUsage(ctx context.Context, initial
 			"max_memory_per_command", csm.config.MaxMemoryPerCommand,
 		)
 	}
-	
+
 	return nil
 }
 
@@ -610,7 +610,7 @@ func (csm *CommandSecurityManager) validateBounds(ctx context.Context, str strin
 		)
 		return fmt.Errorf("500 5.5.2 Internal error: invalid string length")
 	}
-	
+
 	// Check for extremely large strings that could cause issues
 	if len(str) > 1024*1024 { // 1MB limit for any single string
 		csm.logger.WarnContext(ctx, "String too large for safe processing",
@@ -619,7 +619,7 @@ func (csm *CommandSecurityManager) validateBounds(ctx context.Context, str strin
 		)
 		return fmt.Errorf("500 5.5.2 String too large")
 	}
-	
+
 	return nil
 }
 
@@ -629,7 +629,7 @@ func (csm *CommandSecurityManager) safeStringOperation(ctx context.Context, str 
 	if err := csm.validateBounds(ctx, str, operation); err != nil {
 		return "", err
 	}
-	
+
 	// Check slice bounds
 	if start < 0 || end < 0 || start > len(str) || end > len(str) || start > end {
 		csm.logger.WarnContext(ctx, "Invalid slice bounds",
@@ -640,22 +640,21 @@ func (csm *CommandSecurityManager) safeStringOperation(ctx context.Context, str 
 		)
 		return "", fmt.Errorf("500 5.5.2 Internal error: invalid slice bounds")
 	}
-	
+
 	return str[start:end], nil
 }
 
 // GetSecurityStats returns security statistics
 func (csm *CommandSecurityManager) GetSecurityStats() map[string]interface{} {
 	return map[string]interface{}{
-		"max_command_length":     csm.config.MaxCommandLength,
-		"max_parameter_length":   csm.config.MaxParameterLength,
-		"strict_mode":           csm.config.StrictMode,
-		"log_suspicious":        csm.config.LogSuspiciousCommands,
-		"blocked_patterns":      len(csm.config.BlockedCommandPatterns) + len(csm.config.BlockedParameterPatterns),
-		"command_timeout":       csm.config.CommandTimeout,
+		"max_command_length":       csm.config.MaxCommandLength,
+		"max_parameter_length":     csm.config.MaxParameterLength,
+		"strict_mode":              csm.config.StrictMode,
+		"log_suspicious":           csm.config.LogSuspiciousCommands,
+		"blocked_patterns":         len(csm.config.BlockedCommandPatterns) + len(csm.config.BlockedParameterPatterns),
+		"command_timeout":          csm.config.CommandTimeout,
 		"max_commands_per_session": csm.config.MaxCommandsPerSession,
-		"memory_monitoring":     csm.config.EnableMemoryMonitoring,
-		"max_memory_per_command": csm.config.MaxMemoryPerCommand,
+		"memory_monitoring":        csm.config.EnableMemoryMonitoring,
+		"max_memory_per_command":   csm.config.MaxMemoryPerCommand,
 	}
 }
-
