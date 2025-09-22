@@ -117,8 +117,8 @@ func (v *EnhancedValidator) initializeSecurityPatterns() {
 	// Header injection patterns (CRLF injection) - more specific to avoid false positives
 	v.headerInjectionPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`\x00|\x01|\x02|\x03|\x04|\x05|\x06|\x07|\x08|\x0B|\x0C|\x0E|\x0F`),           // Control chars
-		regexp.MustCompile(`(?i)\r?\n\s*(to|from|cc|bcc|subject|reply-to|return-path|message-id|date):`), // Header injection
-		regexp.MustCompile(`(?i)\r?\n\s*x-`), // X- header injection
+		regexp.MustCompile(`(?i)\r?\n\r?\n.*\r?\n\s*(to|from|cc|bcc|subject|reply-to|return-path|message-id|date):`), // Header injection after message body
+		regexp.MustCompile(`(?i)\r?\n\r?\n.*\r?\n\s*x-`), // X- header injection after message body
 	}
 }
 

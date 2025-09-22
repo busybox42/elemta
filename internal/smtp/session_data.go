@@ -1122,14 +1122,25 @@ func (dh *DataHandler) performContentAnalysis(ctx context.Context, data []byte, 
 		}
 	}
 
-	// Check for suspicious file extensions in attachments
+	// Check for suspicious file extensions in attachments (but not in email addresses)
 	suspiciousExtensions := []string{
-		".exe", ".bat", ".cmd", ".com", ".pif", ".scr", ".vbs", ".js",
+		".exe", ".bat", ".cmd", ".pif", ".scr", ".vbs", ".js",
 		".jar", ".app", ".deb", ".rpm", ".dmg", ".pkg", ".msi",
 	}
 
+	// Only check for .com if it's not part of an email address
+	contentLower := strings.ToLower(content)
 	for _, ext := range suspiciousExtensions {
-		if strings.Contains(strings.ToLower(content), ext) {
+		if strings.Contains(contentLower, ext) {
+			// Special handling for .com - only flag if it's not in an email address
+			if ext == ".com" {
+				// Check if .com is part of an email address pattern
+				if strings.Contains(contentLower, "@") && strings.Contains(contentLower, ".com") {
+					// This is likely an email address, skip
+					continue
+				}
+			}
+			
 			result.Threats = append(result.Threats, fmt.Sprintf("Suspicious file extension: %s", ext))
 			dh.logger.WarnContext(ctx, "Suspicious file extension detected",
 				"extension", ext,
