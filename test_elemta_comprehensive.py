@@ -86,7 +86,26 @@ class SMTPTestClient:
 
     def _read_response(self) -> str:
         """Read SMTP response"""
-        response = self.sock.recv(1024).decode('utf-8', errors='ignore')
+        response = ""
+        while True:
+            try:
+                data = self.sock.recv(1024).decode('utf-8', errors='ignore')
+                if not data:
+                    break
+                response += data
+                # Check if we have a complete response
+                # Look for the end of SMTP response (line not starting with space or digit)
+                lines = response.split('\r\n')
+                if len(lines) >= 2:
+                    # Check if the last complete line is the end of response
+                    last_complete_line = lines[-2]
+                    if last_complete_line and not last_complete_line.startswith(' '):
+                        # This should be the end of the response
+                        break
+            except socket.timeout:
+                break
+            except:
+                break
         return response.strip()
 
     def send_command(self, command: str) -> str:
