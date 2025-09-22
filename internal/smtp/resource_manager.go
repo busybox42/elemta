@@ -866,6 +866,11 @@ func (rm *ResourceManager) GetMemoryManager() *MemoryManager {
 	return rm.memoryManager
 }
 
+// SetMemoryManager sets the memory manager for the resource manager
+func (rm *ResourceManager) SetMemoryManager(memoryManager *MemoryManager) {
+	rm.memoryManager = memoryManager
+}
+
 // GetStats returns comprehensive resource manager statistics
 func (rm *ResourceManager) GetStats() map[string]interface{} {
 	activeConnections := atomic.LoadInt32(&rm.activeConnections)

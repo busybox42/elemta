@@ -80,9 +80,9 @@ func NewDataHandler(session *Session, state *SessionState, conn net.Conn, reader
 	}
 }
 
-// ReadData reads message data from the client with comprehensive validation
+// ReadData reads message data from the client with streaming and progressive memory tracking
 func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
-	dh.logger.DebugContext(ctx, "Starting message data reading")
+	dh.logger.DebugContext(ctx, "Starting streaming message data reading with memory tracking")
 
 	startTime := time.Now()
 	var buffer bytes.Buffer
@@ -92,6 +92,12 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 	suspiciousPatterns := 0
 	maxSize := dh.config.MaxSize
 
+	// Get per-session memory limit (50MB default for ELE-16)
+	sessionMemoryLimit := int64(50 * 1024 * 1024) // 50MB default
+	if dh.session.resourceManager != nil && dh.session.resourceManager.memoryManager != nil {
+		sessionMemoryLimit = dh.session.resourceManager.memoryManager.config.PerConnectionMemoryLimit
+	}
+
 	// Set read timeout
 	if deadline, ok := ctx.Deadline(); ok {
 		dh.conn.SetReadDeadline(deadline)
@@ -99,6 +105,10 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 		dh.conn.SetReadDeadline(time.Now().Add(30 * time.Minute))
 	}
 	defer dh.conn.SetReadDeadline(time.Time{})
+
+	// Progressive memory tracking variables
+	const memoryCheckInterval = 1024 * 1024 // Check every 1MB
+	lastMemoryCheck := int64(0)
 
 	for {
 		line, err := dh.reader.ReadBytes('\n')
@@ -121,6 +131,33 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 				"max_size", maxSize,
 			)
 			return nil, fmt.Errorf("552 5.3.4 Message size exceeds maximum allowed")
+		}
+
+		// PROGRESSIVE MEMORY TRACKING (ELE-16 Critical Fix)
+		// Check memory limits progressively during data reading
+		if state.BytesRead-lastMemoryCheck >= memoryCheckInterval {
+			lastMemoryCheck = state.BytesRead
+
+			// Check per-session memory limit
+			if state.BytesRead > sessionMemoryLimit {
+				dh.logger.WarnContext(ctx, "Session memory limit exceeded during data reading",
+					"bytes_read", state.BytesRead,
+					"session_memory_limit", sessionMemoryLimit,
+					"session_id", dh.session.sessionID,
+				)
+				return nil, fmt.Errorf("552 5.3.4 Session memory limit exceeded")
+			}
+
+			// Check global memory limits if resource manager is available
+			if dh.session.resourceManager != nil && dh.session.resourceManager.memoryManager != nil {
+				if err := dh.session.resourceManager.memoryManager.CheckMemoryLimit(); err != nil {
+					dh.logger.WarnContext(ctx, "Global memory limit exceeded during data reading",
+						"error", err,
+						"session_id", dh.session.sessionID,
+					)
+					return nil, fmt.Errorf("552 5.3.4 Server memory limit exceeded")
+				}
+			}
 		}
 
 		// Convert line to string for processing
@@ -153,14 +190,16 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 			}
 		}
 
-		// Write line to buffer
+		// Write line to buffer (streaming approach - could be optimized further)
 		buffer.Write(line)
 
-		// Periodic logging for large messages
+		// Periodic logging for large messages with memory tracking
 		if state.LineCount%1000 == 0 {
-			dh.logger.DebugContext(ctx, "Message reading progress",
+			dh.logger.DebugContext(ctx, "Message reading progress with memory tracking",
 				"lines_read", state.LineCount,
 				"bytes_read", state.BytesRead,
+				"session_memory_limit", sessionMemoryLimit,
+				"memory_utilization_pct", float64(state.BytesRead)/float64(sessionMemoryLimit)*100,
 				"duration", time.Since(startTime),
 			)
 		}
@@ -169,9 +208,21 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 	data := buffer.Bytes()
 	dh.state.SetDataSize(ctx, int64(len(data)))
 
-	dh.logger.InfoContext(ctx, "Message data reading completed",
+	// Final memory check before returning
+	if int64(len(data)) > sessionMemoryLimit {
+		dh.logger.WarnContext(ctx, "Final session memory limit check failed",
+			"final_size", len(data),
+			"session_memory_limit", sessionMemoryLimit,
+			"session_id", dh.session.sessionID,
+		)
+		return nil, fmt.Errorf("552 5.3.4 Session memory limit exceeded")
+	}
+
+	dh.logger.InfoContext(ctx, "Streaming message data reading completed with memory tracking",
 		"total_lines", state.LineCount,
 		"total_bytes", len(data),
+		"session_memory_limit", sessionMemoryLimit,
+		"memory_utilization_pct", float64(len(data))/float64(sessionMemoryLimit)*100,
 		"duration", time.Since(startTime),
 		"suspicious_patterns", suspiciousPatterns,
 	)
@@ -181,9 +232,35 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 
 // ProcessMessage processes the complete message with security scanning and validation
 func (dh *DataHandler) ProcessMessage(ctx context.Context, data []byte) error {
-	dh.logger.DebugContext(ctx, "Starting message processing", "size", len(data))
+	dh.logger.DebugContext(ctx, "Starting message processing with memory tracking", "size", len(data))
 
 	startTime := time.Now()
+
+	// PROGRESSIVE MEMORY TRACKING (ELE-16 Critical Fix)
+	// Check memory limits before processing
+	if dh.session.resourceManager != nil && dh.session.resourceManager.memoryManager != nil {
+		// Check global memory limits
+		if err := dh.session.resourceManager.memoryManager.CheckMemoryLimit(); err != nil {
+			dh.logger.WarnContext(ctx, "Global memory limit exceeded before message processing",
+				"error", err,
+				"session_id", dh.session.sessionID,
+				"message_size", len(data),
+			)
+			return fmt.Errorf("552 5.3.4 Server memory limit exceeded")
+		}
+
+		// Check per-session memory limits for the message
+		estimatedProcessingMemory := int64(len(data) * 3) // Estimate 3x message size for processing
+		if err := dh.session.resourceManager.memoryManager.CheckConnectionMemoryLimit(dh.session.sessionID, estimatedProcessingMemory); err != nil {
+			dh.logger.WarnContext(ctx, "Session memory limit exceeded for message processing",
+				"error", err,
+				"session_id", dh.session.sessionID,
+				"message_size", len(data),
+				"estimated_processing_memory", estimatedProcessingMemory,
+			)
+			return fmt.Errorf("552 5.3.4 Session memory limit exceeded")
+		}
+	}
 
 	// Extract message metadata
 	metadata, err := dh.extractMessageMetadata(ctx, data)

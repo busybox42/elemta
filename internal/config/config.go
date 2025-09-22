@@ -69,6 +69,9 @@ type Config struct {
 
 	// Metrics configuration
 	Metrics *smtp.MetricsConfig `toml:"metrics"`
+
+	// Memory management configuration
+	Memory *smtp.MemoryConfig `toml:"memory"`
 }
 
 // DefaultConfig returns the default configuration
@@ -979,7 +982,7 @@ func CreateDefaultConfig(configPath string) error {
 // SecureAllConfigFiles secures all configuration files in a directory
 func SecureAllConfigFiles(configDir string) error {
 	fileSecurity := NewConfigFileSecurity()
-	
+
 	// Validate all config files (this will show warnings but not fail)
 	if err := fileSecurity.ValidateAllConfigFiles(configDir); err != nil {
 		// Don't fail on validation errors, just log them

@@ -54,16 +54,25 @@ timeout = 30
 max_retries = 3
 retry_delay = 60
 
+[memory]
+max_memory_usage = 2147483648  # 2GB total memory limit
+memory_warning_threshold = 0.75  # 75% warning threshold
+memory_critical_threshold = 0.90  # 90% critical threshold
+gc_threshold = 0.80  # 80% force garbage collection
+monitoring_interval = 5  # Memory monitoring interval in seconds
+per_connection_memory_limit = 52428800  # 50MB per session (ELE-16 requirement)
+max_goroutines = 2000
+goroutine_leak_detection = true
+memory_exhaustion_protection = true
+
 [resources]
 max_connections = 1000
 max_connections_per_ip = 50
-max_goroutines = 2000
 connection_timeout = 30
 session_timeout = 300
 idle_timeout = 120
 rate_limit_window = 60
 max_requests_per_window = 1000  # Increased from 100 to 1000 for testing
-max_memory_usage = 2147483648  # 2GB
 goroutine_pool_size = 100
 circuit_breaker_enabled = true
 resource_monitoring_enabled = true

@@ -240,7 +240,23 @@ func NewServer(config *Config) (*Server, error) {
 
 	// Initialize resource manager with limits from config
 	var resourceLimits *ResourceLimits
+	var resourceManager *ResourceManager
+
 	if config.Resources != nil {
+		// Use memory configuration if available, otherwise use defaults
+		var memoryConfig *MemoryConfig
+		if config.Memory != nil {
+			memoryConfig = config.Memory
+			logger.Printf("Using memory configuration: %dMB total, %dMB per connection",
+				memoryConfig.MaxMemoryUsage/(1024*1024),
+				memoryConfig.PerConnectionMemoryLimit/(1024*1024))
+		} else {
+			memoryConfig = DefaultMemoryConfig()
+			logger.Printf("Using default memory configuration: %dMB total, %dMB per connection",
+				memoryConfig.MaxMemoryUsage/(1024*1024),
+				memoryConfig.PerConnectionMemoryLimit/(1024*1024))
+		}
+
 		resourceLimits = &ResourceLimits{
 			MaxConnections:            config.Resources.MaxConnections,
 			MaxConnectionsPerIP:       config.Resources.MaxConcurrent,      // Use MaxConcurrent as per-IP limit
@@ -250,16 +266,28 @@ func NewServer(config *Config) (*Server, error) {
 			IdleTimeout:               time.Duration(config.Resources.ReadTimeout) * time.Second,
 			RateLimitWindow:           time.Minute,
 			MaxRequestsPerWindow:      config.Resources.MaxConnections * 10, // 10 requests per connection per minute
-			MaxMemoryUsage:            500 * 1024 * 1024,                    // 500MB default
+			MaxMemoryUsage:            memoryConfig.MaxMemoryUsage,          // Use configured memory limit
 			GoroutinePoolSize:         config.MaxWorkers,
 			CircuitBreakerEnabled:     true,
 			ResourceMonitoringEnabled: true,
 		}
+
+		// Initialize resource manager with memory configuration
+		resourceManager = NewResourceManager(resourceLimits, slogger)
+
+		// Initialize memory manager with configuration
+		memoryManager := NewMemoryManager(memoryConfig, slogger)
+		resourceManager.SetMemoryManager(memoryManager)
+
+		logger.Printf("Resource manager initialized with memory protection enabled")
 	} else {
 		resourceLimits = DefaultResourceLimits()
+		resourceManager = NewResourceManager(resourceLimits, slogger)
+		// Initialize default memory manager
+		memoryManager := NewMemoryManager(DefaultMemoryConfig(), slogger)
+		resourceManager.SetMemoryManager(memoryManager)
+		logger.Printf("Resource manager initialized with default memory protection")
 	}
-
-	resourceManager := NewResourceManager(resourceLimits, slogger)
 
 	// Initialize concurrency management
 	ctx, cancel := context.WithCancel(context.Background())

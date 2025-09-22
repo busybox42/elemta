@@ -70,6 +70,9 @@ type Config struct {
 	// Delivery configuration
 	Delivery *DeliveryConfig `toml:"delivery" json:"delivery"`
 
+	// Memory management configuration
+	Memory *MemoryConfig `toml:"memory" json:"memory"`
+
 	SessionTimeout time.Duration `yaml:"session_timeout" toml:"session_timeout"`
 }
 
