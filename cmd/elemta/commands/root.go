@@ -29,14 +29,23 @@ Elemta is a high-performance, carrier-grade MTA with modular architecture and pl
 			var err error
 			cfg, err = config.LoadConfig(configPath)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+				fmt.Fprintf(os.Stderr, "FATAL ERROR: Failed to load configuration: %v\n", err)
+				fmt.Fprintf(os.Stderr, "\nTroubleshooting:\n")
+				fmt.Fprintf(os.Stderr, "  - Check if the config file exists and is readable\n")
+				fmt.Fprintf(os.Stderr, "  - Verify the config file format (should be TOML)\n")
+				fmt.Fprintf(os.Stderr, "  - Try specifying a config file with: --config /path/to/config.toml\n")
+				fmt.Fprintf(os.Stderr, "  - Check file permissions on the config file\n")
 				os.Exit(1)
 			}
 
 			// For server command, ensure queue directory exists
 			if cmd.Name() == "server" {
 				if err := cfg.EnsureQueueDirectory(); err != nil {
-					fmt.Fprintf(os.Stderr, "Error creating queue directories: %v\n", err)
+					fmt.Fprintf(os.Stderr, "FATAL ERROR: Failed to create queue directories: %v\n", err)
+					fmt.Fprintf(os.Stderr, "\nTroubleshooting:\n")
+					fmt.Fprintf(os.Stderr, "  - Check if you have write permissions to the queue directory: %s\n", cfg.Queue.Dir)
+					fmt.Fprintf(os.Stderr, "  - Try running with a different queue directory in your config\n")
+					fmt.Fprintf(os.Stderr, "  - Ensure the parent directory exists and is writable\n")
 					os.Exit(1)
 				}
 			}

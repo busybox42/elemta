@@ -49,9 +49,12 @@ func init() {
 func startServer() {
 	fmt.Println("Starting Elemta MTA server...")
 
-	// Load configuration
+	// Load configuration - this should have been loaded in PersistentPreRun
 	if cfg == nil {
-		fmt.Fprintf(os.Stderr, "Error: Configuration not loaded\n")
+		fmt.Fprintf(os.Stderr, "FATAL ERROR: Configuration not loaded\n")
+		fmt.Fprintf(os.Stderr, "This indicates a critical bug in the configuration loading system.\n")
+		fmt.Fprintf(os.Stderr, "Please check your configuration file and try again.\n")
+		fmt.Fprintf(os.Stderr, "You can specify a config file with: --config /path/to/config.toml\n")
 		os.Exit(1)
 	}
 

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/busybox42/elemta/internal/smtp"
 
@@ -84,16 +85,55 @@ func DefaultConfig() *Config {
 	cfg.Server.MaxSize = 25 * 1024 * 1024 // 25MB default
 	cfg.Server.TLS = false
 
-	// Set default queue directory
-	cfg.Queue.Dir = "/app/queue"
+	// Initialize TLS configuration with defaults
+	cfg.TLS = &smtp.TLSConfig{
+		Enabled: false,
+		LetsEncrypt: &smtp.LetsEncryptConfig{
+			Enabled:  false,
+			Domain:   "",
+			Email:    "",
+			CacheDir: "",
+			Staging:  false,
+		},
+		RenewalConfig: &smtp.CertRenewalConfig{
+			AutoRenew:      false,
+			RenewalDays:    30,
+			CheckInterval:  24 * time.Hour,
+			ForceRenewal:   false,
+			RenewalTimeout: 5 * time.Minute,
+		},
+	}
+
+	// Initialize Auth configuration with defaults
+	cfg.Auth = &smtp.AuthConfig{
+		Enabled:  false,
+		Required: false,
+	}
+
+	// Initialize Delivery configuration with defaults
+	cfg.Delivery = &smtp.DeliveryConfig{
+		Mode:          "lmtp",
+		Host:          "localhost",
+		Port:          2424,
+		Timeout:       30,
+		MaxRetries:    3,
+		RetryDelay:    60,
+		TestMode:      false,
+		DefaultDomain: "localhost",
+		Debug:         false,
+	}
+
+	// Initialize Plugins configuration with defaults
+	cfg.Plugins.Directory = "./plugins"
+	cfg.Plugins.Enabled = []string{}
+
+	// Set default queue directory (use user-writable location)
+	cfg.Queue.Dir = "./queue"
 
 	// Set default logging
 	cfg.Logging.Type = "console"
 	cfg.Logging.Level = "info"
 	cfg.Logging.Format = "text"
-
-	// Set default plugins directory
-	cfg.Plugins.Directory = "/app/plugins"
 
 	// Set default queue processor configuration
 	cfg.QueueProcessor.Enabled = true
