@@ -116,9 +116,9 @@ func (v *EnhancedValidator) initializeSecurityPatterns() {
 
 	// Header injection patterns (CRLF injection) - more specific to avoid false positives
 	v.headerInjectionPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`\x00|\x01|\x02|\x03|\x04|\x05|\x06|\x07|\x08|\x0B|\x0C|\x0E|\x0F`),           // Control chars
+		regexp.MustCompile(`\x00|\x01|\x02|\x03|\x04|\x05|\x06|\x07|\x08|\x0B|\x0C|\x0E|\x0F`),                       // Control chars
 		regexp.MustCompile(`(?i)\r?\n\r?\n.*\r?\n\s*(to|from|cc|bcc|subject|reply-to|return-path|message-id|date):`), // Header injection after message body
-		regexp.MustCompile(`(?i)\r?\n\r?\n.*\r?\n\s*x-`), // X- header injection after message body
+		regexp.MustCompile(`(?i)\r?\n\r?\n.*\r?\n\s*x-`),                                                             // X- header injection after message body
 	}
 }
 
@@ -290,6 +290,8 @@ func (v *EnhancedValidator) ValidateSMTPParameter(paramType, paramValue string) 
 		return v.validateSizeParameter(normalizedValue)
 	case "DATA_LINE":
 		return v.validateDataLineParameter(normalizedValue)
+	case "HEADER":
+		return v.validateHeaderParameter(normalizedValue)
 	default:
 		return v.validateGenericParameter(normalizedValue)
 	}
@@ -512,6 +514,76 @@ func (v *EnhancedValidator) validateSizeParameter(sizeStr string) *EnhancedValid
 	result.ValidationDetails["size_bytes"] = size
 
 	return result
+}
+
+// validateHeaderParameter validates email headers (more permissive than data lines)
+func (v *EnhancedValidator) validateHeaderParameter(headers string) *EnhancedValidationResult {
+	result := &EnhancedValidationResult{
+		ValidationDetails: make(map[string]interface{}),
+		SecurityScore:     100,
+	}
+
+	// Length validation
+	if len(headers) > v.limits.MaxLineLength*10 { // Allow longer headers
+		result.Valid = false
+		result.ErrorType = "headers_too_long"
+		result.ErrorMessage = fmt.Sprintf("Headers exceed maximum length (%d characters)", v.limits.MaxLineLength*10)
+		result.SecurityThreat = "buffer_overflow_attempt"
+		result.SecurityScore = 0
+		return result
+	}
+
+	// Check for dangerous Unicode characters
+	if v.containsDangerousUnicode(headers) {
+		result.Valid = false
+		result.ErrorType = "dangerous_unicode"
+		result.ErrorMessage = "Headers contain dangerous Unicode characters"
+		result.SecurityThreat = "unicode_attack"
+		result.SecurityScore = 0
+		return result
+	}
+
+	// Check for homograph attacks
+	if v.containsHomographAttack(headers) {
+		result.Valid = false
+		result.ErrorType = "homograph_attack"
+		result.ErrorMessage = "Headers contain potential homograph attack patterns"
+		result.SecurityThreat = "homograph_attack"
+		result.SecurityScore = 0
+		return result
+	}
+
+	// Only check for obvious header injection patterns (not legitimate headers)
+	// This is more permissive than DATA_LINE validation
+	if v.containsObviousHeaderInjection(headers) {
+		result.Valid = false
+		result.ErrorType = "header_injection"
+		result.ErrorMessage = "Headers contain obvious injection patterns"
+		result.SecurityThreat = "header_injection_attack"
+		result.SecurityScore = 0
+		return result
+	}
+
+	result.Valid = true
+	result.SecurityScore = 100
+	return result
+}
+
+// containsObviousHeaderInjection checks for obvious header injection patterns (more permissive)
+func (v *EnhancedValidator) containsObviousHeaderInjection(input string) bool {
+	// Only check for obvious injection patterns, not legitimate headers
+	obviousPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`\x00|\x01|\x02|\x03|\x04|\x05|\x06|\x07|\x08|\x0B|\x0C|\x0E|\x0F`), // Control chars
+		regexp.MustCompile(`(?i)\r?\n\r?\n.*\r?\n\s*(to|from|cc|bcc|subject|reply-to|return-path|message-id|date):`), // Header injection after body
+		regexp.MustCompile(`(?i)\r?\n\r?\n.*\r?\n\s*x-`), // X- header injection after body
+	}
+
+	for _, pattern := range obviousPatterns {
+		if pattern.MatchString(input) {
+			return true
+		}
+	}
+	return false
 }
 
 // validateDataLineParameter validates individual lines in DATA command

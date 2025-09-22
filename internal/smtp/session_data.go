@@ -1057,20 +1057,43 @@ func (dh *DataHandler) performContentAnalysis(ctx context.Context, data []byte, 
 	}
 
 	// For external connections, use enhanced validator for comprehensive content analysis
-	validationResult := dh.enhancedValidator.ValidateSMTPParameter("DATA_LINE", content)
+	// Separate headers and body to avoid false positives on legitimate headers
+	headers, body := dh.separateHeadersAndBody(content)
+	
+	// Validate headers separately (more permissive for legitimate headers)
+	if headers != "" {
+		headerValidationResult := dh.enhancedValidator.ValidateSMTPParameter("HEADER", headers)
+		if !headerValidationResult.Valid {
+			result.Passed = false
+			result.Threats = append(result.Threats, fmt.Sprintf("Header validation failed: %s", headerValidationResult.ErrorMessage))
 
-	if !validationResult.Valid {
-		result.Passed = false
-		result.Threats = append(result.Threats, fmt.Sprintf("Content validation failed: %s", validationResult.ErrorMessage))
+			LogSecurityEvent(dh.logger, "content_analysis_failed", headerValidationResult.SecurityThreat,
+				headerValidationResult.ErrorMessage, headers[:min(200, len(headers))], dh.conn.RemoteAddr().String())
 
-		LogSecurityEvent(dh.logger, "content_analysis_failed", validationResult.SecurityThreat,
-			validationResult.ErrorMessage, content[:min(200, len(content))], dh.conn.RemoteAddr().String())
+			dh.logger.WarnContext(ctx, "Header analysis failed",
+				"error_type", headerValidationResult.ErrorType,
+				"security_threat", headerValidationResult.SecurityThreat,
+				"security_score", headerValidationResult.SecurityScore,
+			)
+		}
+	}
+	
+	// Validate body content (strict validation for message body)
+	if body != "" {
+		bodyValidationResult := dh.enhancedValidator.ValidateSMTPParameter("DATA_LINE", body)
+		if !bodyValidationResult.Valid {
+			result.Passed = false
+			result.Threats = append(result.Threats, fmt.Sprintf("Body validation failed: %s", bodyValidationResult.ErrorMessage))
 
-		dh.logger.WarnContext(ctx, "Content analysis failed",
-			"error_type", validationResult.ErrorType,
-			"security_threat", validationResult.SecurityThreat,
-			"security_score", validationResult.SecurityScore,
-		)
+			LogSecurityEvent(dh.logger, "content_analysis_failed", bodyValidationResult.SecurityThreat,
+				bodyValidationResult.ErrorMessage, body[:min(200, len(body))], dh.conn.RemoteAddr().String())
+
+			dh.logger.WarnContext(ctx, "Body analysis failed",
+				"error_type", bodyValidationResult.ErrorType,
+				"security_threat", bodyValidationResult.SecurityThreat,
+				"security_score", bodyValidationResult.SecurityScore,
+			)
+		}
 	}
 
 	// Check for executable attachments (enhanced check)
@@ -1140,7 +1163,7 @@ func (dh *DataHandler) performContentAnalysis(ctx context.Context, data []byte, 
 					continue
 				}
 			}
-			
+
 			result.Threats = append(result.Threats, fmt.Sprintf("Suspicious file extension: %s", ext))
 			dh.logger.WarnContext(ctx, "Suspicious file extension detected",
 				"extension", ext,
@@ -1150,6 +1173,30 @@ func (dh *DataHandler) performContentAnalysis(ctx context.Context, data []byte, 
 	}
 
 	return nil
+}
+
+// separateHeadersAndBody separates email headers from the message body
+func (dh *DataHandler) separateHeadersAndBody(content string) (headers, body string) {
+	// Find the double CRLF that separates headers from body
+	doubleCRLF := "\r\n\r\n"
+	separatorIndex := strings.Index(content, doubleCRLF)
+	
+	if separatorIndex == -1 {
+		// Try single CRLF as fallback
+		singleCRLF := "\n\n"
+		separatorIndex = strings.Index(content, singleCRLF)
+		if separatorIndex == -1 {
+			// No clear separation found, treat entire content as headers
+			return content, ""
+		}
+		headers = content[:separatorIndex]
+		body = content[separatorIndex+len(singleCRLF):]
+	} else {
+		headers = content[:separatorIndex]
+		body = content[separatorIndex+len(doubleCRLF):]
+	}
+	
+	return headers, body
 }
 
 // min returns the minimum of two integers
