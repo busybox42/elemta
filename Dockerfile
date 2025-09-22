@@ -28,6 +28,7 @@ WORKDIR /build/plugins
 RUN CGO_ENABLED=1 go build -buildmode=plugin -o clamav.so ./clamav
 RUN CGO_ENABLED=1 go build -buildmode=plugin -o rspamd.so ./rspamd
 RUN CGO_ENABLED=1 go build -buildmode=plugin -o rate_limiter.so ./rate_limiter.go
+RUN CGO_ENABLED=1 go build -buildmode=plugin -o allowdeny.so ./allowdeny
 WORKDIR /build
 
 # Security-hardened final image
@@ -62,11 +63,16 @@ COPY --from=builder --chown=elemta:elemta /build/elemta-cli /app/elemta-cli
 COPY --from=builder --chown=elemta:elemta /build/plugins/clamav.so /app/plugins/clamav.so
 COPY --from=builder --chown=elemta:elemta /build/plugins/rspamd.so /app/plugins/rspamd.so
 COPY --from=builder --chown=elemta:elemta /build/plugins/rate_limiter.so /app/plugins/rate_limiter.so
+COPY --from=builder --chown=elemta:elemta /build/plugins/allowdeny.so /app/plugins/allowdeny.so
 
 # Copy configuration files with proper ownership
 COPY --chown=elemta:elemta config/elemta.toml /app/config/elemta.toml
 COPY --chown=elemta:elemta config/dev.toml /app/config/dev.toml
 COPY --chown=elemta:elemta config/users.txt /app/config/users.txt
+
+# Copy allow/deny plugin configuration
+COPY --chown=elemta:elemta plugins/allowdeny/config.toml /app/config/allowdeny.toml
+COPY --chown=elemta:elemta plugins/allowdeny/rules.json /app/config/rules.json
 
 # Copy SQLite database with proper ownership
 COPY --chown=elemta:elemta config/elemta.db /app/config/elemta.db

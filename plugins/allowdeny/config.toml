@@ -1,0 +1,66 @@
+# Allow/Deny Plugin Configuration
+
+# Rules configuration
+rules_file = "rules.json"
+reload_interval = "30s"
+cache_size = 10000
+enable_metrics = true
+default_action = "allow"
+enable_hot_reload = true
+performance_mode = true
+
+# External feed configuration
+[[external_feeds]]
+name = "spamhaus-drop"
+url = "https://www.spamhaus.org/drop/drop.txt"
+type = "blacklist"
+format = "cidr"
+update_interval = "1h"
+enabled = false
+
+[[external_feeds]]
+name = "spamhaus-edrop"
+url = "https://www.spamhaus.org/drop/edrop.txt"
+type = "blacklist"
+format = "cidr"
+update_interval = "1h"
+enabled = false
+
+[[external_feeds]]
+name = "spamhaus-dropv6"
+url = "https://www.spamhaus.org/drop/dropv6.txt"
+type = "blacklist"
+format = "cidr"
+update_interval = "1h"
+enabled = false
+
+[[external_feeds]]
+name = "custom-whitelist"
+url = "https://example.com/whitelist.txt"
+type = "whitelist"
+format = "ip"
+update_interval = "30m"
+enabled = false
+
+# Performance tuning
+[performance]
+max_concurrent_evaluations = 1000
+evaluation_timeout = "100ms"
+cache_cleanup_interval = "1h"
+rule_compilation_timeout = "5s"
+
+# Logging configuration
+[logging]
+log_evaluations = false
+log_denied_connections = true
+log_allowed_connections = false
+log_rule_matches = true
+log_performance_metrics = true
+
+# Security configuration
+[security]
+max_rules_per_source = 10000
+max_rule_size = 1024
+validate_regex_patterns = true
+sanitize_inputs = true
+rate_limit_updates = true
