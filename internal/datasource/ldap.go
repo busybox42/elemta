@@ -73,8 +73,8 @@ func (l *LDAP) Connect() error {
 		return fmt.Errorf("failed to connect to LDAP server: %w", err)
 	}
 
-	// Set timeout
-	conn.SetTimeout(5 * time.Second)
+	// Set timeout - increase to 30 seconds for better reliability
+	conn.SetTimeout(30 * time.Second)
 
 	// Bind with service account if credentials are provided
 	if l.config.Username != "" && l.config.Password != "" {
@@ -163,10 +163,14 @@ func (l *LDAP) Authenticate(ctx context.Context, username, password string) (boo
 	if err != nil {
 		return false, fmt.Errorf("failed to connect to LDAP server: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if conn != nil {
+			conn.Close()
+		}
+	}()
 
-	// Set timeout
-	conn.SetTimeout(5 * time.Second)
+	// Set timeout - increase to 30 seconds for better reliability
+	conn.SetTimeout(30 * time.Second)
 
 	// Bind with user credentials
 	if err := conn.Bind(userDN, password); err != nil {
