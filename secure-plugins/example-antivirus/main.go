@@ -215,7 +215,6 @@ func main() {
 	
 	// Set up JSON communication
 	encoder := json.NewEncoder(os.Stdout)
-	decoder := json.NewDecoder(os.Stdin)
 	scanner := bufio.NewScanner(os.Stdin)
 	
 	// Send ready signal
@@ -246,13 +245,13 @@ func main() {
 		
 		switch message.Type {
 		case "command":
-			err := p.handleCommand(plugin, message.Command, message.Data)
+			err := handleCommand(plugin, message.Command, message.Data)
 			if err != nil {
 				response.Error = err.Error()
 			}
 			
 		case "process_message":
-			output, err := p.handleProcessMessage(plugin, message.Data)
+			output, err := handleProcessMessage(plugin, message.Data)
 			if err != nil {
 				response.Error = err.Error()
 			} else {

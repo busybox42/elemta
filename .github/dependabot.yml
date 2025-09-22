@@ -1,0 +1,83 @@
+# Dependabot configuration for Elemta SMTP Server
+# This file enables automatic security updates and dependency monitoring
+
+version: 2
+updates:
+  # Enable version updates for Go modules
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "busybox42"
+    assignees:
+      - "busybox42"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "security"
+    # Group minor and patch updates together
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Allow updates to major versions (but require manual review)
+    allow:
+      - dependency-type: "all"
+    # Ignore specific dependencies that might need manual handling
+    ignore:
+      - dependency-name: "github.com/mattn/go-sqlite3"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "github.com/go-ldap/ldap/v3"
+        update-types: ["version-update:semver-major"]
+
+  # Enable security updates for Docker dependencies
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "busybox42"
+    assignees:
+      - "busybox42"
+    commit-message:
+      prefix: "docker"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "security"
+
+  # Enable security updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "busybox42"
+    assignees:
+      - "busybox42"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "security"

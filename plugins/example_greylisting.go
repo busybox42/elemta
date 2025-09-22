@@ -25,8 +25,8 @@ var PluginInfo = &plugin.PluginInfo{
 	Type:        plugin.PluginTypeGreylist,
 }
 
-// Plugin is the exported plugin instance
-var Plugin = &GreylistPlugin{
+// GreylistPluginInstance is the exported plugin instance
+var GreylistPluginInstance = &GreylistPlugin{
 	info:      *PluginInfo,
 	firstSeen: make(map[string]time.Time),
 	delay:     5 * time.Minute, // Default delay of 5 minutes
