@@ -32,8 +32,23 @@ run: build
 
 # Test targets
 test:
-	@echo "Running tests..."
+	@echo "Running Go tests..."
 	go test -v ./...
+
+test-centralized:
+	@echo "Running centralized test suite..."
+	./run_centralized_tests.sh
+
+test-docker:
+	@echo "Running Docker deployment tests..."
+	./run_centralized_tests.sh --deployment docker-desktop
+
+test-security:
+	@echo "Running security tests..."
+	./run_centralized_tests.sh --category security
+
+test-all: test test-centralized
+	@echo "All tests completed."
 
 # Docker targets
 docker: docker-build docker-run
