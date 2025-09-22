@@ -9,11 +9,11 @@ import (
 func (p *AllowDenyPlugin) GetMetrics() *Metrics {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	
+
 	// Return a copy to prevent external modification
 	metrics := *p.metrics
 	metrics.ActiveRules = int64(p.ruleEngine.GetRuleCount())
-	
+
 	return &metrics
 }
 
@@ -21,7 +21,7 @@ func (p *AllowDenyPlugin) GetMetrics() *Metrics {
 func (p *AllowDenyPlugin) ResetMetrics() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	p.metrics = &Metrics{
 		LastReloadTime: p.metrics.LastReloadTime, // Preserve reload time
 	}
@@ -52,12 +52,12 @@ func (p *AllowDenyPlugin) RecordEvaluationTime(duration time.Duration) {
 func (p *AllowDenyPlugin) GetCacheHitRate() float64 {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	
+
 	total := p.metrics.CacheHits + p.metrics.CacheMisses
 	if total == 0 {
 		return 0.0
 	}
-	
+
 	return float64(p.metrics.CacheHits) / float64(total) * 100.0
 }
 
@@ -65,11 +65,11 @@ func (p *AllowDenyPlugin) GetCacheHitRate() float64 {
 func (p *AllowDenyPlugin) GetAverageEvaluationTime() time.Duration {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	
+
 	if p.metrics.RulesEvaluated == 0 {
 		return 0
 	}
-	
+
 	return p.metrics.EvaluationTime / time.Duration(p.metrics.RulesEvaluated)
 }
 
@@ -77,26 +77,26 @@ func (p *AllowDenyPlugin) GetAverageEvaluationTime() time.Duration {
 func (p *AllowDenyPlugin) GetDenyRate() float64 {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	
+
 	total := p.metrics.RulesDenied + p.metrics.RulesAllowed
 	if total == 0 {
 		return 0.0
 	}
-	
+
 	return float64(p.metrics.RulesDenied) / float64(total) * 100.0
 }
 
 // RuleCacheStats provides statistics for rule caching
 type RuleCacheStats struct {
-	ipRules      map[string][]Rule
-	domainRules  map[string][]Rule
-	emailRules   map[string][]Rule
-	regexRules   []Rule
-	mu           sync.RWMutex
-	hitCount     int64
-	missCount    int64
-	maxSize      int
-	lastCleanup  time.Time
+	ipRules     map[string][]Rule
+	domainRules map[string][]Rule
+	emailRules  map[string][]Rule
+	regexRules  []Rule
+	mu          sync.RWMutex
+	hitCount    int64
+	missCount   int64
+	maxSize     int
+	lastCleanup time.Time
 }
 
 // NewRuleCache creates a new rule cache
@@ -114,13 +114,13 @@ func NewRuleCache(maxSize int) *RuleCache {
 func (rc *RuleCache) GetIPRules(ip string) ([]Rule, bool) {
 	rc.mu.RLock()
 	defer rc.mu.RUnlock()
-	
+
 	rules, exists := rc.ipRules[ip]
 	if exists {
 		rc.hitCount++
 		return rules, true
 	}
-	
+
 	rc.missCount++
 	return nil, false
 }
@@ -129,12 +129,12 @@ func (rc *RuleCache) GetIPRules(ip string) ([]Rule, bool) {
 func (rc *RuleCache) SetIPRules(ip string, rules []Rule) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
-	
+
 	// Check if we need to clean up cache
 	if len(rc.ipRules) >= rc.maxSize {
 		rc.cleanup()
 	}
-	
+
 	rc.ipRules[ip] = rules
 }
 
@@ -142,13 +142,13 @@ func (rc *RuleCache) SetIPRules(ip string, rules []Rule) {
 func (rc *RuleCache) GetDomainRules(domain string) ([]Rule, bool) {
 	rc.mu.RLock()
 	defer rc.mu.RUnlock()
-	
+
 	rules, exists := rc.domainRules[domain]
 	if exists {
 		rc.hitCount++
 		return rules, true
 	}
-	
+
 	rc.missCount++
 	return nil, false
 }
@@ -157,12 +157,12 @@ func (rc *RuleCache) GetDomainRules(domain string) ([]Rule, bool) {
 func (rc *RuleCache) SetDomainRules(domain string, rules []Rule) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
-	
+
 	// Check if we need to clean up cache
 	if len(rc.domainRules) >= rc.maxSize {
 		rc.cleanup()
 	}
-	
+
 	rc.domainRules[domain] = rules
 }
 
@@ -170,13 +170,13 @@ func (rc *RuleCache) SetDomainRules(domain string, rules []Rule) {
 func (rc *RuleCache) GetEmailRules(email string) ([]Rule, bool) {
 	rc.mu.RLock()
 	defer rc.mu.RUnlock()
-	
+
 	rules, exists := rc.emailRules[email]
 	if exists {
 		rc.hitCount++
 		return rules, true
 	}
-	
+
 	rc.missCount++
 	return nil, false
 }
@@ -185,12 +185,12 @@ func (rc *RuleCache) GetEmailRules(email string) ([]Rule, bool) {
 func (rc *RuleCache) SetEmailRules(email string, rules []Rule) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
-	
+
 	// Check if we need to clean up cache
 	if len(rc.emailRules) >= rc.maxSize {
 		rc.cleanup()
 	}
-	
+
 	rc.emailRules[email] = rules
 }
 
@@ -198,13 +198,13 @@ func (rc *RuleCache) SetEmailRules(email string, rules []Rule) {
 func (rc *RuleCache) GetStats() CacheStats {
 	rc.mu.RLock()
 	defer rc.mu.RUnlock()
-	
+
 	total := rc.hitCount + rc.missCount
 	hitRate := 0.0
 	if total > 0 {
 		hitRate = float64(rc.hitCount) / float64(total) * 100.0
 	}
-	
+
 	return CacheStats{
 		HitCount:    rc.hitCount,
 		MissCount:   rc.missCount,
@@ -233,7 +233,7 @@ type CacheStats struct {
 func (rc *RuleCache) cleanup() {
 	// Simple cleanup strategy: remove 25% of entries
 	// In a production system, you might want to use LRU or other strategies
-	
+
 	// Clean IP rules
 	if len(rc.ipRules) > 0 {
 		removeCount := len(rc.ipRules) / 4
@@ -246,7 +246,7 @@ func (rc *RuleCache) cleanup() {
 			}
 		}
 	}
-	
+
 	// Clean domain rules
 	if len(rc.domainRules) > 0 {
 		removeCount := len(rc.domainRules) / 4
@@ -259,7 +259,7 @@ func (rc *RuleCache) cleanup() {
 			}
 		}
 	}
-	
+
 	// Clean email rules
 	if len(rc.emailRules) > 0 {
 		removeCount := len(rc.emailRules) / 4
@@ -272,7 +272,7 @@ func (rc *RuleCache) cleanup() {
 			}
 		}
 	}
-	
+
 	// rc.lastCleanup = time.Now() // Field not available in this context
 }
 
@@ -280,7 +280,7 @@ func (rc *RuleCache) cleanup() {
 func (rc *RuleCache) Clear() {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
-	
+
 	rc.ipRules = make(map[string][]Rule)
 	rc.domainRules = make(map[string][]Rule)
 	rc.emailRules = make(map[string][]Rule)
@@ -293,7 +293,7 @@ func (rc *RuleCache) Clear() {
 func (rc *RuleCache) ShouldCleanup() bool {
 	rc.mu.RLock()
 	defer rc.mu.RUnlock()
-	
+
 	// Cleanup if cache is full
 	totalSize := len(rc.ipRules) + len(rc.domainRules) + len(rc.emailRules) + len(rc.regexRules)
 	return totalSize >= rc.maxSize

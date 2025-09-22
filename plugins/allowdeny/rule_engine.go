@@ -13,17 +13,17 @@ import (
 func (re *RuleEngine) EvaluateConnection(ip net.IP, remoteAddr string) *EvaluationResult {
 	re.mu.RLock()
 	defer re.mu.RUnlock()
-	
+
 	// Check IP-based rules first (fastest)
 	if result := re.evaluateIPRules(ip); result != nil {
 		return result
 	}
-	
+
 	// Check CIDR rules
 	if result := re.evaluateCIDRRules(ip); result != nil {
 		return result
 	}
-	
+
 	// Default action
 	return &EvaluationResult{
 		Action:  "allow", // Default action
@@ -37,27 +37,27 @@ func (re *RuleEngine) EvaluateConnection(ip net.IP, remoteAddr string) *Evaluati
 func (re *RuleEngine) EvaluateMailFrom(ip net.IP, remoteAddr, email string) *EvaluationResult {
 	re.mu.RLock()
 	defer re.mu.RUnlock()
-	
+
 	// First check connection-level rules
 	if result := re.EvaluateConnection(ip, remoteAddr); result.Action == "deny" {
 		return result
 	}
-	
+
 	// Check email-specific rules
 	if result := re.evaluateEmailRules(email); result != nil {
 		return result
 	}
-	
+
 	// Check domain rules
 	if result := re.evaluateDomainRules(email); result != nil {
 		return result
 	}
-	
+
 	// Check regex patterns
 	if result := re.evaluateRegexRules(email); result != nil {
 		return result
 	}
-	
+
 	return &EvaluationResult{
 		Action:  "allow",
 		RuleID:  "default",
@@ -70,27 +70,27 @@ func (re *RuleEngine) EvaluateMailFrom(ip net.IP, remoteAddr, email string) *Eva
 func (re *RuleEngine) EvaluateRcptTo(ip net.IP, remoteAddr, email string) *EvaluationResult {
 	re.mu.RLock()
 	defer re.mu.RUnlock()
-	
+
 	// First check connection-level rules
 	if result := re.EvaluateConnection(ip, remoteAddr); result.Action == "deny" {
 		return result
 	}
-	
+
 	// Check email-specific rules
 	if result := re.evaluateEmailRules(email); result != nil {
 		return result
 	}
-	
+
 	// Check domain rules
 	if result := re.evaluateDomainRules(email); result != nil {
 		return result
 	}
-	
+
 	// Check regex patterns
 	if result := re.evaluateRegexRules(email); result != nil {
 		return result
 	}
-	
+
 	return &EvaluationResult{
 		Action:  "allow",
 		RuleID:  "default",
@@ -102,7 +102,7 @@ func (re *RuleEngine) EvaluateRcptTo(ip net.IP, remoteAddr, email string) *Evalu
 // evaluateIPRules evaluates IP address rules
 func (re *RuleEngine) evaluateIPRules(ip net.IP) *EvaluationResult {
 	ipStr := ip.String()
-	
+
 	// Check IPv4 rules
 	if ip.To4() != nil {
 		if rules, exists := re.ipMatcher.ipv4Rules[ipStr]; exists {
@@ -114,7 +114,7 @@ func (re *RuleEngine) evaluateIPRules(ip net.IP) *EvaluationResult {
 			return re.selectHighestPriorityRule(rules)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -122,19 +122,19 @@ func (re *RuleEngine) evaluateIPRules(ip net.IP) *EvaluationResult {
 func (re *RuleEngine) evaluateCIDRRules(ip net.IP) *EvaluationResult {
 	re.ipMatcher.mu.RLock()
 	defer re.ipMatcher.mu.RUnlock()
-	
+
 	var matchingRules []Rule
-	
+
 	for _, cidrRule := range re.ipMatcher.cidrRules {
 		if cidrRule.Network.Contains(ip) {
 			matchingRules = append(matchingRules, cidrRule.Rule)
 		}
 	}
-	
+
 	if len(matchingRules) > 0 {
 		return re.selectHighestPriorityRule(matchingRules)
 	}
-	
+
 	return nil
 }
 
@@ -142,11 +142,11 @@ func (re *RuleEngine) evaluateCIDRRules(ip net.IP) *EvaluationResult {
 func (re *RuleEngine) evaluateEmailRules(email string) *EvaluationResult {
 	re.emailMatcher.mu.RLock()
 	defer re.emailMatcher.mu.RUnlock()
-	
+
 	if rules, exists := re.emailMatcher.emailRules[strings.ToLower(email)]; exists {
 		return re.selectHighestPriorityRule(rules)
 	}
-	
+
 	return nil
 }
 
@@ -154,20 +154,20 @@ func (re *RuleEngine) evaluateEmailRules(email string) *EvaluationResult {
 func (re *RuleEngine) evaluateDomainRules(email string) *EvaluationResult {
 	re.emailMatcher.mu.RLock()
 	defer re.emailMatcher.mu.RUnlock()
-	
+
 	// Extract domain from email
 	parts := strings.Split(email, "@")
 	if len(parts) != 2 {
 		return nil
 	}
-	
+
 	domain := strings.ToLower(parts[1])
-	
+
 	// Check exact domain match
 	if rules, exists := re.emailMatcher.domainRules[domain]; exists {
 		return re.selectHighestPriorityRule(rules)
 	}
-	
+
 	// Check wildcard patterns
 	for _, patternRule := range re.emailMatcher.patternRules {
 		if re.matchWildcard(patternRule.Pattern, domain) {
@@ -179,7 +179,7 @@ func (re *RuleEngine) evaluateDomainRules(email string) *EvaluationResult {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -187,7 +187,7 @@ func (re *RuleEngine) evaluateDomainRules(email string) *EvaluationResult {
 func (re *RuleEngine) evaluateRegexRules(email string) *EvaluationResult {
 	re.emailMatcher.mu.RLock()
 	defer re.emailMatcher.mu.RUnlock()
-	
+
 	for _, regexRule := range re.emailMatcher.regexRules {
 		if regexRule.Regex.MatchString(email) {
 			return &EvaluationResult{
@@ -198,7 +198,7 @@ func (re *RuleEngine) evaluateRegexRules(email string) *EvaluationResult {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -207,12 +207,12 @@ func (re *RuleEngine) selectHighestPriorityRule(rules []Rule) *EvaluationResult 
 	if len(rules) == 0 {
 		return nil
 	}
-	
+
 	// Sort by priority (higher number = higher priority)
 	sort.Slice(rules, func(i, j int) bool {
 		return rules[i].Priority > rules[j].Priority
 	})
-	
+
 	// Deny rules take precedence over allow rules at the same priority
 	selectedRule := rules[0]
 	for _, rule := range rules {
@@ -221,7 +221,7 @@ func (re *RuleEngine) selectHighestPriorityRule(rules []Rule) *EvaluationResult 
 			break
 		}
 	}
-	
+
 	return &EvaluationResult{
 		Action:  selectedRule.Action,
 		RuleID:  selectedRule.ID,
@@ -236,7 +236,7 @@ func (re *RuleEngine) matchWildcard(pattern, str string) bool {
 	regexPattern := strings.ReplaceAll(pattern, "*", ".*")
 	regexPattern = strings.ReplaceAll(regexPattern, "?", ".")
 	regexPattern = "^" + regexPattern + "$"
-	
+
 	matched, err := regexp.MatchString(regexPattern, str)
 	return err == nil && matched
 }
@@ -245,28 +245,28 @@ func (re *RuleEngine) matchWildcard(pattern, str string) bool {
 func (re *RuleEngine) rebuildMatchers() error {
 	re.mu.Lock()
 	defer re.mu.Unlock()
-	
+
 	// Clear existing matchers
 	re.ipMatcher.mu.Lock()
 	re.ipMatcher.ipv4Rules = make(map[string][]Rule)
 	re.ipMatcher.ipv6Rules = make(map[string][]Rule)
 	re.ipMatcher.cidrRules = make([]CIDRRule, 0)
 	re.ipMatcher.mu.Unlock()
-	
+
 	re.emailMatcher.mu.Lock()
 	re.emailMatcher.domainRules = make(map[string][]Rule)
 	re.emailMatcher.emailRules = make(map[string][]Rule)
 	re.emailMatcher.patternRules = make([]PatternRule, 0)
 	re.emailMatcher.regexRules = make([]RegexRule, 0)
 	re.emailMatcher.mu.Unlock()
-	
+
 	// Rebuild matchers from rules
 	for _, rule := range re.rules {
 		// Skip expired rules
 		if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
 			continue
 		}
-		
+
 		// Process IP address rules
 		for _, ipStr := range rule.IPAddresses {
 			ip := net.ParseIP(ipStr)
@@ -278,7 +278,7 @@ func (re *RuleEngine) rebuildMatchers() error {
 				}
 			}
 		}
-		
+
 		// Process CIDR block rules
 		for _, cidrStr := range rule.CIDRBlocks {
 			_, network, err := net.ParseCIDR(cidrStr)
@@ -289,13 +289,13 @@ func (re *RuleEngine) rebuildMatchers() error {
 				})
 			}
 		}
-		
+
 		// Process domain rules
 		for _, domain := range rule.Domains {
 			domain = strings.ToLower(domain)
 			re.emailMatcher.domainRules[domain] = append(re.emailMatcher.domainRules[domain], rule)
 		}
-		
+
 		// Process email pattern rules
 		for _, emailPattern := range rule.EmailPatterns {
 			emailPattern = strings.ToLower(emailPattern)
@@ -310,7 +310,7 @@ func (re *RuleEngine) rebuildMatchers() error {
 				re.emailMatcher.emailRules[emailPattern] = append(re.emailMatcher.emailRules[emailPattern], rule)
 			}
 		}
-		
+
 		// Process regex pattern rules
 		for _, regexStr := range rule.RegexPatterns {
 			if regex, err := regexp.Compile(regexStr); err == nil {
@@ -321,7 +321,7 @@ func (re *RuleEngine) rebuildMatchers() error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -329,15 +329,15 @@ func (re *RuleEngine) rebuildMatchers() error {
 func (re *RuleEngine) AddRule(rule Rule) error {
 	re.mu.Lock()
 	defer re.mu.Unlock()
-	
+
 	// Set timestamps
 	now := time.Now()
 	rule.CreatedAt = now
 	rule.UpdatedAt = now
-	
+
 	// Add rule
 	re.rules = append(re.rules, rule)
-	
+
 	// Rebuild matchers
 	return re.rebuildMatchers()
 }
@@ -346,7 +346,7 @@ func (re *RuleEngine) AddRule(rule Rule) error {
 func (re *RuleEngine) RemoveRule(ruleID string) error {
 	re.mu.Lock()
 	defer re.mu.Unlock()
-	
+
 	// Find and remove rule
 	for i, rule := range re.rules {
 		if rule.ID == ruleID {
@@ -354,7 +354,7 @@ func (re *RuleEngine) RemoveRule(ruleID string) error {
 			break
 		}
 	}
-	
+
 	// Rebuild matchers
 	return re.rebuildMatchers()
 }
@@ -363,7 +363,7 @@ func (re *RuleEngine) RemoveRule(ruleID string) error {
 func (re *RuleEngine) GetRules() []Rule {
 	re.mu.RLock()
 	defer re.mu.RUnlock()
-	
+
 	// Return a copy to prevent external modification
 	rules := make([]Rule, len(re.rules))
 	copy(rules, re.rules)
@@ -374,16 +374,16 @@ func (re *RuleEngine) GetRules() []Rule {
 func (re *RuleEngine) GetRuleCount() int {
 	re.mu.RLock()
 	defer re.mu.RUnlock()
-	
+
 	activeCount := 0
 	now := time.Now()
-	
+
 	for _, rule := range re.rules {
 		if rule.ExpiresAt == nil || now.Before(*rule.ExpiresAt) {
 			activeCount++
 		}
 	}
-	
+
 	return activeCount
 }
 
@@ -391,10 +391,10 @@ func (re *RuleEngine) GetRuleCount() int {
 func (re *RuleEngine) ClearExpiredRules() int {
 	re.mu.Lock()
 	defer re.mu.Unlock()
-	
+
 	now := time.Now()
 	originalCount := len(re.rules)
-	
+
 	// Filter out expired rules
 	var activeRules []Rule
 	for _, rule := range re.rules {
@@ -402,14 +402,14 @@ func (re *RuleEngine) ClearExpiredRules() int {
 			activeRules = append(activeRules, rule)
 		}
 	}
-	
+
 	re.rules = activeRules
 	removedCount := originalCount - len(activeRules)
-	
+
 	// Rebuild matchers if rules were removed
 	if removedCount > 0 {
 		re.rebuildMatchers()
 	}
-	
+
 	return removedCount
 }
