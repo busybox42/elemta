@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -48,6 +50,7 @@ func (cj *ConnectionJob) Priority() int {
 
 // WorkerPool manages a pool of workers with proper error handling and resource management
 type WorkerPool struct {
+	config         *WorkerPoolConfig
 	size           int
 	jobs           chan Job
 	results        chan Result
@@ -59,6 +62,7 @@ type WorkerPool struct {
 	wg             sync.WaitGroup
 	stats          *WorkerPoolStats
 	mu             sync.RWMutex
+	shutdown       int32
 }
 
 // WorkerPoolStats tracks worker pool performance metrics
@@ -68,13 +72,15 @@ type WorkerPoolStats struct {
 	FailedJobs     int64
 	ActiveWorkers  int32
 	QueuedJobs     int32
+	GoroutineCount int32
+	PanicCount     int64
+	OrphanedJobs   int64
 	CircuitBreaker struct {
 		State     string
 		Failures  int64
 		Successes int64
 		Timeouts  int64
 	}
-	mu sync.RWMutex
 }
 
 // WorkerPoolConfig configures the worker pool behavior
@@ -86,6 +92,9 @@ type WorkerPoolConfig struct {
 	MaxRequests         uint32
 	Interval            time.Duration
 	Timeout             time.Duration
+	JobTimeout          time.Duration
+	ShutdownTimeout     time.Duration
+	MaxGoroutines       int32
 	OnStateChange       func(name string, from gobreaker.State, to gobreaker.State)
 }
 
@@ -99,6 +108,9 @@ func DefaultWorkerPoolConfig() *WorkerPoolConfig {
 		MaxRequests:        100,
 		Interval:           time.Minute,
 		Timeout:            30 * time.Second,
+		JobTimeout:         60 * time.Second,
+		ShutdownTimeout:    30 * time.Second,
+		MaxGoroutines:      1000,
 		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
 			slog.Info("Circuit breaker state changed",
 				"name", name,
@@ -132,6 +144,7 @@ func NewWorkerPool(config *WorkerPoolConfig, logger *slog.Logger) *WorkerPool {
 	})
 
 	wp := &WorkerPool{
+		config:         config,
 		size:           config.Size,
 		jobs:           make(chan Job, config.JobBufferSize),
 		results:        make(chan Result, config.ResultBufferSize),
@@ -152,6 +165,9 @@ func (wp *WorkerPool) Start() error {
 		"size", wp.size,
 		"job_buffer", cap(wp.jobs),
 		"result_buffer", cap(wp.results),
+		"max_goroutines", wp.config.MaxGoroutines,
+		"job_timeout", wp.config.JobTimeout,
+		"shutdown_timeout", wp.config.ShutdownTimeout,
 	)
 
 	// Start workers
@@ -165,40 +181,79 @@ func (wp *WorkerPool) Start() error {
 	// Start result processor
 	wp.errGroup.Go(wp.resultProcessor)
 
+	// Start goroutine monitoring
+	wp.MonitorGoroutines()
+
 	return nil
 }
 
-// Stop gracefully shuts down the worker pool
+// Stop gracefully shuts down the worker pool with timeout
 func (wp *WorkerPool) Stop() error {
 	wp.logger.Info("Stopping worker pool")
+	
+	// Set shutdown flag
+	atomic.StoreInt32(&wp.shutdown, 1)
+	
+	// Create shutdown context with timeout
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), wp.config.ShutdownTimeout)
+	defer cancel()
 	
 	// Close jobs channel to signal workers to stop
 	close(wp.jobs)
 	
-	// Cancel context to ensure all workers exit
+	// Cancel main context
 	wp.cancel()
 	
-	// Wait for all workers to complete
-	err := wp.errGroup.Wait()
+	// Wait for all workers to complete with timeout
+	done := make(chan error, 1)
+	go func() {
+		done <- wp.errGroup.Wait()
+	}()
 	
-	// Close results channel
-	close(wp.results)
-	
-	wp.logger.Info("Worker pool stopped",
-		"final_stats", wp.GetStats(),
-	)
-	
-	return err
+	select {
+	case err := <-done:
+		// All workers completed normally
+		wp.logger.Info("All workers completed gracefully")
+		
+		// Close results channel
+		close(wp.results)
+		
+		wp.logger.Info("Worker pool stopped",
+			"final_stats", wp.GetStats(),
+		)
+		
+		return err
+		
+	case <-shutdownCtx.Done():
+		// Shutdown timeout exceeded
+		wp.logger.Error("Worker pool shutdown timeout exceeded",
+			"timeout", wp.config.ShutdownTimeout,
+			"active_workers", atomic.LoadInt32(&wp.stats.ActiveWorkers),
+		)
+		
+		// Force close results channel
+		close(wp.results)
+		
+		return fmt.Errorf("worker pool shutdown timeout exceeded")
+	}
 }
 
 // Submit adds a job to the worker pool queue
 func (wp *WorkerPool) Submit(job Job) error {
+	// Check if we're shutting down
+	if atomic.LoadInt32(&wp.shutdown) == 1 {
+		return fmt.Errorf("worker pool is shutting down")
+	}
+	
+	// Check goroutine count
+	if atomic.LoadInt32(&wp.stats.GoroutineCount) > wp.config.MaxGoroutines {
+		return fmt.Errorf("maximum goroutine limit exceeded")
+	}
+	
 	select {
 	case wp.jobs <- job:
-		wp.stats.mu.Lock()
-		wp.stats.TotalJobs++
-		wp.stats.QueuedJobs++
-		wp.stats.mu.Unlock()
+		atomic.AddInt64(&wp.stats.TotalJobs, 1)
+		atomic.AddInt32(&wp.stats.QueuedJobs, 1)
 		return nil
 	case <-wp.ctx.Done():
 		return wp.ctx.Err()
@@ -209,38 +264,60 @@ func (wp *WorkerPool) Submit(job Job) error {
 
 // SubmitWithTimeout adds a job to the worker pool queue with a timeout
 func (wp *WorkerPool) SubmitWithTimeout(job Job, timeout time.Duration) error {
+	// Check if we're shutting down
+	if atomic.LoadInt32(&wp.shutdown) == 1 {
+		return fmt.Errorf("worker pool is shutting down")
+	}
+	
+	// Check goroutine count
+	if atomic.LoadInt32(&wp.stats.GoroutineCount) > wp.config.MaxGoroutines {
+		return fmt.Errorf("maximum goroutine limit exceeded")
+	}
+	
 	ctx, cancel := context.WithTimeout(wp.ctx, timeout)
 	defer cancel()
 	
 	select {
 	case wp.jobs <- job:
-		wp.stats.mu.Lock()
-		wp.stats.TotalJobs++
-		wp.stats.QueuedJobs++
-		wp.stats.mu.Unlock()
+		atomic.AddInt64(&wp.stats.TotalJobs, 1)
+		atomic.AddInt32(&wp.stats.QueuedJobs, 1)
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 }
 
-// worker processes jobs from the jobs channel
+// worker processes jobs from the jobs channel with panic recovery
 func (wp *WorkerPool) worker(workerID int) error {
 	workerLogger := wp.logger.With("worker_id", workerID)
 	workerLogger.Debug("Worker started")
 	
-	wp.stats.mu.Lock()
-	wp.stats.ActiveWorkers++
-	wp.stats.mu.Unlock()
-	
+	// Update active worker count
+	atomic.AddInt32(&wp.stats.ActiveWorkers, 1)
 	defer func() {
-		wp.stats.mu.Lock()
-		wp.stats.ActiveWorkers--
-		wp.stats.mu.Unlock()
+		atomic.AddInt32(&wp.stats.ActiveWorkers, -1)
 		workerLogger.Debug("Worker stopped")
 	}()
 
+	// Panic recovery wrapper
+	defer func() {
+		if r := recover(); r != nil {
+			atomic.AddInt64(&wp.stats.PanicCount, 1)
+			workerLogger.Error("Worker panicked, recovering",
+				"panic", r,
+				"worker_id", workerID,
+			)
+			// Don't re-panic, just log and continue
+		}
+	}()
+
 	for {
+		// Check if we're shutting down
+		if atomic.LoadInt32(&wp.shutdown) == 1 {
+			workerLogger.Debug("Shutdown signal received, worker exiting")
+			return nil
+		}
+
 		select {
 		case job, ok := <-wp.jobs:
 			if !ok {
@@ -248,20 +325,26 @@ func (wp *WorkerPool) worker(workerID int) error {
 				return nil
 			}
 
-			wp.stats.mu.Lock()
-			wp.stats.QueuedJobs--
-			wp.stats.mu.Unlock()
+			// Update queued jobs count
+			atomic.AddInt32(&wp.stats.QueuedJobs, -1)
 
-			// Process job with circuit breaker protection
-			result := wp.processJob(job, workerLogger)
+			// Process job with timeout and panic recovery
+			result := wp.processJobWithTimeout(job, workerLogger)
 			
-			// Send result
+			// Send result with timeout
 			select {
 			case wp.results <- result:
 			case <-wp.ctx.Done():
+				// Mark job as orphaned
+				atomic.AddInt64(&wp.stats.OrphanedJobs, 1)
+				workerLogger.Warn("Context cancelled while sending result, job orphaned",
+					"job_id", job.ID(),
+				)
 				return wp.ctx.Err()
-			default:
-				workerLogger.Warn("Results channel full, dropping result",
+			case <-time.After(5 * time.Second):
+				// Timeout sending result
+				atomic.AddInt64(&wp.stats.OrphanedJobs, 1)
+				workerLogger.Warn("Timeout sending result, job orphaned",
 					"job_id", job.ID(),
 				)
 			}
@@ -273,8 +356,8 @@ func (wp *WorkerPool) worker(workerID int) error {
 	}
 }
 
-// processJob processes a single job with circuit breaker protection
-func (wp *WorkerPool) processJob(job Job, logger *slog.Logger) Result {
+// processJobWithTimeout processes a job with timeout protection and panic recovery
+func (wp *WorkerPool) processJobWithTimeout(job Job, logger *slog.Logger) Result {
 	startTime := time.Now()
 	
 	logger.Debug("Processing job",
@@ -282,10 +365,31 @@ func (wp *WorkerPool) processJob(job Job, logger *slog.Logger) Result {
 		"priority", job.Priority(),
 	)
 
-	// Execute job with circuit breaker
-	data, err := wp.circuitBreaker.Execute(func() (interface{}, error) {
-		return job.Process(wp.ctx)
-	})
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(wp.ctx, wp.config.JobTimeout)
+	defer cancel()
+
+	// Execute job with circuit breaker and timeout
+	var data interface{}
+	var err error
+	
+	// Panic recovery for job processing
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				atomic.AddInt64(&wp.stats.PanicCount, 1)
+				logger.Error("Job processing panicked",
+					"job_id", job.ID(),
+					"panic", r,
+				)
+				err = fmt.Errorf("job processing panicked: %v", r)
+			}
+		}()
+		
+		data, err = wp.circuitBreaker.Execute(func() (interface{}, error) {
+			return job.Process(ctx)
+		})
+	}()
 
 	duration := time.Since(startTime)
 	
@@ -295,24 +399,22 @@ func (wp *WorkerPool) processJob(job Job, logger *slog.Logger) Result {
 		Error: err,
 	}
 
-	// Update statistics
-	wp.stats.mu.Lock()
+	// Update statistics atomically
 	if err != nil {
-		wp.stats.FailedJobs++
-		wp.stats.CircuitBreaker.Failures++
+		atomic.AddInt64(&wp.stats.FailedJobs, 1)
+		atomic.AddInt64(&wp.stats.CircuitBreaker.Failures, 1)
 	} else {
-		wp.stats.CompletedJobs++
-		wp.stats.CircuitBreaker.Successes++
+		atomic.AddInt64(&wp.stats.CompletedJobs, 1)
+		atomic.AddInt64(&wp.stats.CircuitBreaker.Successes, 1)
 	}
-	wp.stats.mu.Unlock()
 
 	// Update circuit breaker stats
 	cbStats := wp.circuitBreaker.Counts()
-	wp.stats.mu.Lock()
+	wp.mu.Lock()
 	wp.stats.CircuitBreaker.State = wp.circuitBreaker.State().String()
 	wp.stats.CircuitBreaker.Failures = int64(cbStats.TotalFailures)
 	wp.stats.CircuitBreaker.Successes = int64(cbStats.TotalSuccesses)
-	wp.stats.mu.Unlock()
+	wp.mu.Unlock()
 
 	logger.Debug("Job processed",
 		"job_id", job.ID(),
@@ -322,6 +424,11 @@ func (wp *WorkerPool) processJob(job Job, logger *slog.Logger) Result {
 	)
 
 	return result
+}
+
+// processJob processes a single job with circuit breaker protection (legacy method)
+func (wp *WorkerPool) processJob(job Job, logger *slog.Logger) Result {
+	return wp.processJobWithTimeout(job, logger)
 }
 
 // resultProcessor handles results from workers
@@ -358,11 +465,32 @@ func (wp *WorkerPool) resultProcessor() error {
 
 // GetStats returns current worker pool statistics
 func (wp *WorkerPool) GetStats() WorkerPoolStats {
-	wp.stats.mu.RLock()
-	defer wp.stats.mu.RUnlock()
+	wp.mu.RLock()
+	defer wp.mu.RUnlock()
 	
-	// Create a copy to avoid race conditions
-	stats := *wp.stats
+	// Create a copy to avoid race conditions and lock copying
+	stats := WorkerPoolStats{
+		TotalJobs:      wp.stats.TotalJobs,
+		CompletedJobs:  wp.stats.CompletedJobs,
+		FailedJobs:     wp.stats.FailedJobs,
+		ActiveWorkers:  wp.stats.ActiveWorkers,
+		QueuedJobs:     wp.stats.QueuedJobs,
+		GoroutineCount: int32(runtime.NumGoroutine()),
+		PanicCount:     wp.stats.PanicCount,
+		OrphanedJobs:   wp.stats.OrphanedJobs,
+		CircuitBreaker: struct {
+			State     string
+			Failures  int64
+			Successes int64
+			Timeouts  int64
+		}{
+			State:     wp.stats.CircuitBreaker.State,
+			Failures:  wp.stats.CircuitBreaker.Failures,
+			Successes: wp.stats.CircuitBreaker.Successes,
+			Timeouts:  wp.stats.CircuitBreaker.Timeouts,
+		},
+	}
+	
 	return stats
 }
 
@@ -379,7 +507,44 @@ func (wp *WorkerPool) IsHealthy() bool {
 	// - Circuit breaker is not open
 	// - At least one worker is active
 	// - Job queue is not completely full
+	// - Goroutine count is within limits
+	// - No excessive panics
+	// - Not shutting down
 	return wp.circuitBreaker.State() != gobreaker.StateOpen &&
 		   stats.ActiveWorkers > 0 &&
-		   len(wp.jobs) < cap(wp.jobs)
+		   len(wp.jobs) < cap(wp.jobs) &&
+		   stats.GoroutineCount < wp.config.MaxGoroutines &&
+		   stats.PanicCount < 100 && // Allow some panics but not excessive
+		   atomic.LoadInt32(&wp.shutdown) == 0
+}
+
+// MonitorGoroutines starts a goroutine monitoring routine
+func (wp *WorkerPool) MonitorGoroutines() {
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		
+		for {
+			select {
+			case <-ticker.C:
+				stats := wp.GetStats()
+				if stats.GoroutineCount > wp.config.MaxGoroutines {
+					wp.logger.Error("Goroutine limit exceeded",
+						"current", stats.GoroutineCount,
+						"limit", wp.config.MaxGoroutines,
+					)
+				}
+				
+				if stats.PanicCount > 0 {
+					wp.logger.Warn("Panic count detected",
+						"panic_count", stats.PanicCount,
+					)
+				}
+				
+			case <-wp.ctx.Done():
+				wp.logger.Debug("Goroutine monitor stopped")
+				return
+			}
+		}
+	}()
 }
