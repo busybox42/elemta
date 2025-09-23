@@ -1,7 +1,35 @@
-.PHONY: all build clean install run test docker docker-build docker-run docker-stop cli cli-install cli-test cli-docker api api-install api-test
+.PHONY: all help build clean install-bin install install-dev uninstall run test docker docker-build docker-run docker-stop cli cli-install cli-test cli-docker api api-install api-test update update-backup update-restart
 
 # Default target
 all: build
+
+# Help target
+help:
+	@echo "Elemta - High Performance SMTP Server"
+	@echo ""
+	@echo "Available targets:"
+	@echo "  build          - Build Elemta binaries and plugins"
+	@echo "  clean          - Clean build artifacts"
+	@echo "  install        - Interactive Elemta installation"
+	@echo "  install-dev    - Development environment setup with demo users"
+	@echo "  uninstall      - Complete Elemta removal and cleanup"
+	@echo "  update         - Update Elemta configuration"
+	@echo "  update-backup  - Update with backup"
+	@echo "  update-restart - Restart Elemta services"
+	@echo "  run            - Run Elemta server"
+	@echo "  test           - Run all tests"
+	@echo "  test-centralized - Run centralized Python test suite"
+	@echo "  test-docker    - Test Docker deployment"
+	@echo "  test-auth      - Quick authentication test"
+	@echo "  test-security  - Run security tests"
+	@echo "  docker         - Build and run Docker containers"
+	@echo "  docker-down    - Stop all Docker services"
+	@echo "  cli            - Build CLI tools"
+	@echo "  api            - Build API tools"
+	@echo ""
+	@echo "Quick start:"
+	@echo "  make install-dev  # Set up development environment"
+	@echo "  make test-docker  # Test the deployment"
 
 # Build targets
 build:
@@ -18,7 +46,7 @@ clean:
 	@echo "Clean complete."
 
 # Install targets
-install: build
+install-bin: build
 	@echo "Installing elemta server and utilities..."
 	cp bin/elemta $(GOPATH)/bin/
 	cp bin/elemta-queue $(GOPATH)/bin/
@@ -37,15 +65,19 @@ test:
 
 test-centralized:
 	@echo "Running centralized test suite..."
-	./run_centralized_tests.sh
+	./tests/run_centralized_tests.sh
 
 test-docker:
 	@echo "Running Docker deployment tests..."
-	./run_centralized_tests.sh --deployment docker-desktop
+	./tests/run_centralized_tests.sh --deployment docker-desktop
+
+test-auth: ## Quick authentication test
+	@echo "Running authentication test..."
+	./install/test-auth.sh
 
 test-security:
 	@echo "Running security tests..."
-	./run_centralized_tests.sh --category security
+	./tests/run_centralized_tests.sh --category security
 
 test-all: test test-centralized
 	@echo "All tests completed."
@@ -116,4 +148,29 @@ docker-setup:
 
 docker-down:
 	@echo "🛑 Stopping all Elemta services..."
-	docker-compose down -v 
+	docker-compose down -v
+
+# Installation and update targets
+install:
+	@echo "🚀 Running Elemta installer..."
+	./install/install.sh
+
+install-dev:
+	@echo "🚀 Setting up Elemta development environment..."
+	./install/install-dev.sh
+
+uninstall:
+	@echo "🗑️  Uninstalling Elemta..."
+	./install/uninstall.sh
+
+update:
+	@echo "🔄 Updating Elemta configuration..."
+	./install/update.sh
+
+update-backup:
+	@echo "🔄 Updating Elemta with backup..."
+	./install/update.sh -b
+
+update-restart:
+	@echo "🔄 Restarting Elemta services..."
+	./install/update.sh -r 

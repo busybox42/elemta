@@ -66,7 +66,7 @@ COPY --from=builder --chown=elemta:elemta /build/plugins/rate_limiter.so /app/pl
 COPY --from=builder --chown=elemta:elemta /build/plugins/allowdeny.so /app/plugins/allowdeny.so
 
 # Copy configuration files with proper ownership
-COPY --chown=elemta:elemta config/elemta.toml /app/config/elemta.toml
+COPY --chown=elemta:elemta config/elemta-generated.toml /app/config/elemta-generated.toml
 COPY --chown=elemta:elemta config/dev.toml /app/config/dev.toml
 COPY --chown=elemta:elemta config/users.txt /app/config/users.txt
 

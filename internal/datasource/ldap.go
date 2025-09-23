@@ -45,10 +45,11 @@ func NewLDAP(config Config) *LDAP {
 	}
 
 	// Ensure userDN and groupDN are relative to baseDN if they don't contain the baseDN
-	if !strings.HasSuffix(userDN, baseDN) && !strings.Contains(userDN, ",") {
+	// Special case: if userDN is the same as baseDN, don't append it
+	if !strings.HasSuffix(userDN, baseDN) && !strings.Contains(userDN, ",") && userDN != baseDN {
 		userDN = userDN + "," + baseDN
 	}
-	if !strings.HasSuffix(groupDN, baseDN) && !strings.Contains(groupDN, ",") {
+	if !strings.HasSuffix(groupDN, baseDN) && !strings.Contains(groupDN, ",") && groupDN != baseDN {
 		groupDN = groupDN + "," + baseDN
 	}
 

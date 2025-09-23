@@ -21,7 +21,7 @@ services:
       - DEBUG=true
       - NODE_ID=0
       - TEST_MODE=true
-      - ELEMTA_CONFIG_PATH=/app/config/elemta.toml
+      - ELEMTA_CONFIG_PATH=/app/config/elemta-generated.toml
       - API_PORT=8081  # Used internally only
       - DELIVERY_HOST=elemta-dovecot
       - DELIVERY_PORT=2424
@@ -45,10 +45,14 @@ services:
     networks:
       - elemta_network
     depends_on:
-      - elemta-clamav
-      - elemta-rspamd
-      - elemta-dovecot
-      - elemta-ldap
+      elemta-clamav:
+        condition: service_healthy
+      elemta-rspamd:
+        condition: service_healthy
+      elemta-dovecot:
+        condition: service_healthy
+      elemta-ldap:
+        condition: service_healthy
 
   # elemta-api:
   #   image: python:3.9-slim
@@ -86,7 +90,7 @@ services:
     environment:
       - TZ=UTC
       - NODE_ID=web
-      - ELEMTA_CONFIG_PATH=/app/config/elemta.toml
+      - ELEMTA_CONFIG_PATH=/app/config/elemta-generated.toml
     # Security configuration for the container
     security_opt:
       - no-new-privileges:true

@@ -13,11 +13,13 @@ Elemta uses a multi-layered testing approach:
 
 ## Centralized Test Suite
 
-The centralized test suite (`test_elemta_centralized.py`) is the primary testing tool for Elemta. It provides:
+The centralized test suite (`tests/test_elemta_centralized.py`) is the primary testing tool for Elemta. It provides:
 
 - **Unified Interface** - Single script for all testing needs
 - **Multiple Deployment Support** - Docker Desktop, Docker Dev, Local
-- **Comprehensive Coverage** - SMTP, Auth, Security, Performance, E2E, Monitoring
+- **Organized Test Categories** - Clear separation of deployment, SMTP, auth, security, performance, e2e, and monitoring tests
+- **Robust SMTP Client** - Improved response parsing and connection handling
+- **Comprehensive Coverage** - 21 test cases covering all major functionality
 - **Parallel Execution** - Run tests concurrently for faster execution
 - **Detailed Reporting** - Clear pass/fail results with timing information
 
@@ -25,16 +27,16 @@ The centralized test suite (`test_elemta_centralized.py`) is the primary testing
 
 ```bash
 # Run all tests against Docker Desktop deployment
-./run_centralized_tests.sh
+./tests/run_centralized_tests.sh
 
 # Run security tests only
-./run_centralized_tests.sh --category security
+./tests/run_centralized_tests.sh --category security
 
 # Run specific test
-./run_centralized_tests.sh --test smtp-greeting
+./tests/run_centralized_tests.sh --test smtp-greeting
 
 # Run tests in parallel with verbose output
-./run_centralized_tests.sh --parallel --verbose
+./tests/run_centralized_tests.sh --parallel --verbose
 ```
 
 ### Test Categories

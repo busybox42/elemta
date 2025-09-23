@@ -125,8 +125,16 @@ func startServer() {
 	// Map delivery config
 	smtpConfig.Delivery = cfg.Delivery
 
-	fmt.Printf("[DEBUG] cfg.TLS: %+v\n", *cfg.TLS)
-	fmt.Printf("[DEBUG] smtpConfig.TLS: %+v\n", *smtpConfig.TLS)
+	if cfg.TLS != nil {
+		fmt.Printf("[DEBUG] cfg.TLS: %+v\n", *cfg.TLS)
+	} else {
+		fmt.Printf("[DEBUG] cfg.TLS is nil\n")
+	}
+	if smtpConfig.TLS != nil {
+		fmt.Printf("[DEBUG] smtpConfig.TLS: %+v\n", *smtpConfig.TLS)
+	} else {
+		fmt.Printf("[DEBUG] smtpConfig.TLS is nil\n")
+	}
 
 	// Map plugins config
 	if len(cfg.Plugins.Enabled) > 0 {
@@ -139,10 +147,12 @@ func startServer() {
 
 	// Restore certDir logic for certificate monitoring
 	certDir := "/var/elemta/certs" // Default certificate directory
-	if cfg.TLS.LetsEncrypt.Enabled && cfg.TLS.LetsEncrypt.CacheDir != "" {
-		certDir = cfg.TLS.LetsEncrypt.CacheDir
-	} else if cfg.TLS.CertFile != "" {
-		certDir = getDirectoryFromPath(cfg.TLS.CertFile)
+	if cfg.TLS != nil {
+		if cfg.TLS.LetsEncrypt.Enabled && cfg.TLS.LetsEncrypt.CacheDir != "" {
+			certDir = cfg.TLS.LetsEncrypt.CacheDir
+		} else if cfg.TLS.CertFile != "" {
+			certDir = getDirectoryFromPath(cfg.TLS.CertFile)
+		}
 	}
 
 	// Configure Queue Processor from config
@@ -206,7 +216,7 @@ func startServer() {
 	go func() {
 		errChan <- server.Wait()
 	}()
-	
+
 	select {
 	case <-sigChan:
 		fmt.Println("\nShutdown signal received, stopping server...")

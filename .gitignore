@@ -102,6 +102,7 @@ test-*.sh
 *-docker.sh
 !tests/test-elemta-docker.sh
 !tests/test-elemta.sh
+!install/test-auth.sh
 
 # Local configuration files
 elemta.toml

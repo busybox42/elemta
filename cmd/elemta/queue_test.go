@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/busybox42/elemta/internal/queue"
 	"github.com/busybox42/elemta/internal/smtp"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -19,15 +20,15 @@ func setupTestQueue(t *testing.T) (*queueOperations, string) {
 	assert.NoError(t, err)
 
 	// Create queue subdirectories
-	queueTypes := []smtp.QueueType{
-		smtp.QueueTypeActive,
-		smtp.QueueTypeDeferred,
-		smtp.QueueTypeHeld,
-		smtp.QueueTypeFailed,
+	queueTypes := []string{
+		"active",
+		"deferred", 
+		"held",
+		"failed",
 	}
 
 	for _, qType := range queueTypes {
-		err := os.MkdirAll(filepath.Join(tempDir, string(qType)), 0755)
+		err := os.MkdirAll(filepath.Join(tempDir, qType), 0755)
 		assert.NoError(t, err)
 	}
 
@@ -39,28 +40,26 @@ func setupTestQueue(t *testing.T) (*queueOperations, string) {
 	return qo, tempDir
 }
 
-func createTestMessage(t *testing.T, queueDir string, id string, queueType smtp.QueueType) {
-	msg := &smtp.QueuedMessage{
-		MessageInfo: smtp.MessageInfo{
-			ID:        id,
-			From:      "sender@example.com",
-			To:        []string{"recipient@example.com"},
-			Status:    smtp.StatusQueued,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		},
-		QueueType:   queueType,
-		Priority:    smtp.PriorityNormal,
-		RetryCount:  0,
-		NextRetry:   time.Now(),
-		Attempts:    []smtp.DeliveryAttempt{},
+func createTestMessage(t *testing.T, queueDir string, id string, queueType string) {
+	msg := &queue.Message{
+		ID:        id,
+		From:      "sender@example.com",
+		To:        []string{"recipient@example.com"},
+		Subject:   "Test Message",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		QueueType: queue.QueueType(queueType),
+		Priority:  queue.PriorityNormal,
+		RetryCount: 0,
+		NextRetry: time.Now(),
+		Attempts:  []queue.Attempt{},
 		Annotations: make(map[string]string),
 	}
 
 	data, err := json.Marshal(msg)
 	assert.NoError(t, err)
 
-	err = os.WriteFile(filepath.Join(queueDir, string(queueType), id+".json"), data, 0644)
+	err = os.WriteFile(filepath.Join(queueDir, queueType, id+".json"), data, 0644)
 	assert.NoError(t, err)
 }
 
@@ -69,7 +68,7 @@ func TestQueueOperations(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create a test message
-	createTestMessage(t, tempDir, "test-msg-1", smtp.QueueTypeActive)
+	createTestMessage(t, tempDir, "test-msg-1", "active")
 
 	// Create a cobra command for testing
 	cmd := &cobra.Command{}
@@ -107,7 +106,7 @@ func TestQueueOperations(t *testing.T) {
 		assert.Contains(t, buf.String(), "deleted successfully")
 
 		// Verify message is deleted
-		_, err = os.Stat(filepath.Join(tempDir, string(smtp.QueueTypeActive), "test-msg-1.json"))
+		_, err = os.Stat(filepath.Join(tempDir, "active", "test-msg-1.json"))
 		assert.True(t, os.IsNotExist(err))
 	})
 
@@ -120,8 +119,8 @@ func TestQueueOperations(t *testing.T) {
 
 	t.Run("flush command", func(t *testing.T) {
 		// Create some test messages
-		createTestMessage(t, tempDir, "test-msg-2", smtp.QueueTypeActive)
-		createTestMessage(t, tempDir, "test-msg-3", smtp.QueueTypeDeferred)
+		createTestMessage(t, tempDir, "test-msg-2", "active")
+		createTestMessage(t, tempDir, "test-msg-3", "deferred")
 
 		buf.Reset()
 		err := qo.flushQueue(cmd, []string{})
@@ -129,20 +128,20 @@ func TestQueueOperations(t *testing.T) {
 		assert.Contains(t, buf.String(), "Successfully flushed queue")
 
 		// Verify messages are deleted
-		files, err := os.ReadDir(filepath.Join(tempDir, string(smtp.QueueTypeActive)))
+		files, err := os.ReadDir(filepath.Join(tempDir, "active"))
 		assert.NoError(t, err)
 		assert.Empty(t, files)
 
-		files, err = os.ReadDir(filepath.Join(tempDir, string(smtp.QueueTypeDeferred)))
+		files, err = os.ReadDir(filepath.Join(tempDir, "deferred"))
 		assert.NoError(t, err)
 		assert.Empty(t, files)
 	})
 
 	t.Run("stats command", func(t *testing.T) {
 		// Create some test messages for stats
-		createTestMessage(t, tempDir, "test-msg-4", smtp.QueueTypeActive)
-		createTestMessage(t, tempDir, "test-msg-5", smtp.QueueTypeDeferred)
-		createTestMessage(t, tempDir, "test-msg-6", smtp.QueueTypeHeld)
+		createTestMessage(t, tempDir, "test-msg-4", "active")
+		createTestMessage(t, tempDir, "test-msg-5", "deferred")
+		createTestMessage(t, tempDir, "test-msg-6", "held")
 
 		buf.Reset()
 		err := qo.showStats(cmd, []string{})

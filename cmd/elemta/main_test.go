@@ -10,7 +10,6 @@ import (
 
 	"github.com/busybox42/elemta/cmd/elemta/commands"
 	"github.com/busybox42/elemta/internal/queue"
-	"github.com/busybox42/elemta/internal/smtp"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 )
@@ -31,21 +30,20 @@ func setupTestEnv(t *testing.T) (func(), string) {
 		assert.NoError(t, err)
 	}
 
-	// Create test configuration
-	config := smtp.Config{
-		ListenAddr:    "localhost:2525",
-		QueueDir:      queueDir,
-		MaxWorkers:    10,
-		MaxRetries:    5,
-		DevMode:       true,
-		Hostname:      "localhost",
-		RetrySchedule: []int{300, 600, 1800, 3600},
-	}
+	// Create test configuration in TOML format
+	configContent := `[server]
+listen_addr = "localhost:2525"
+hostname = "localhost"
+dev_mode = true
 
-	configData, err := json.MarshalIndent(config, "", "  ")
-	assert.NoError(t, err)
+[queue]
+queue_dir = "` + queueDir + `"
+max_workers = 10
+max_retries = 5
+retry_schedule = [300, 600, 1800, 3600]
+`
 
-	err = os.WriteFile(filepath.Join(tempDir, "elemta.conf"), configData, 0644)
+	err = os.WriteFile(filepath.Join(tempDir, "elemta.conf"), []byte(configContent), 0600)
 	assert.NoError(t, err)
 
 	// Change to test directory
