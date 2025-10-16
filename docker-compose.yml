@@ -53,6 +53,8 @@ services:
         condition: service_healthy
       elemta-ldap:
         condition: service_healthy
+      valkey:
+        condition: service_healthy
 
   # elemta-api:
   #   image: python:3.9-slim
@@ -317,6 +319,31 @@ services:
   #     retries: 3
   #     start_period: 20s
 
+  # Valkey - Shared state for multinode deployments
+  valkey:
+    image: valkey/valkey:8.0-alpine
+    container_name: elemta-valkey
+    hostname: elemta-valkey
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    command: >
+      valkey-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    networks:
+      - elemta_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   # Webmail Interface
   elemta-roundcube:
     image: roundcube/roundcubemail:latest
@@ -371,6 +398,8 @@ volumes:
   clamav_data:
     driver: local
   rspamd_data:
+    driver: local
+  valkey_data:
     driver: local
   prometheus_data:
     driver: local
