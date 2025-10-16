@@ -121,10 +121,42 @@ func (l *LDAP) getUserDN(username string) string {
 	return fmt.Sprintf("uid=%s,%s", ldap.EscapeFilter(username), l.userDN)
 }
 
+// ensureConnection checks if the LDAP connection is still alive and reconnects if needed
+func (l *LDAP) ensureConnection() error {
+	// Try a simple search to check if connection is alive
+	if l.conn != nil {
+		testSearch := ldap.NewSearchRequest(
+			l.baseDN,
+			ldap.ScopeBaseObject,
+			ldap.NeverDerefAliases,
+			1, 5, false,
+			"(objectClass=*)",
+			[]string{"dn"},
+			nil,
+		)
+		_, err := l.conn.Search(testSearch)
+		if err == nil {
+			// Connection is alive
+			return nil
+		}
+		// Connection is dead, close it
+		l.conn.Close()
+		l.connected = false
+	}
+
+	// Reconnect
+	return l.Connect()
+}
+
 // Authenticate verifies credentials against the LDAP server
 func (l *LDAP) Authenticate(ctx context.Context, username, password string) (bool, error) {
 	if !l.connected {
 		return false, ErrNotConnected
+	}
+
+	// Check if connection is still alive, reconnect if needed
+	if err := l.ensureConnection(); err != nil {
+		return false, fmt.Errorf("failed to ensure LDAP connection: %w", err)
 	}
 
 	// First, search for the user by email address to get the actual DN
@@ -189,6 +221,11 @@ func (l *LDAP) Authenticate(ctx context.Context, username, password string) (boo
 func (l *LDAP) GetUser(ctx context.Context, username string) (User, error) {
 	if !l.connected {
 		return User{}, ErrNotConnected
+	}
+
+	// Ensure connection is alive
+	if err := l.ensureConnection(); err != nil {
+		return User{}, fmt.Errorf("failed to ensure LDAP connection: %w", err)
 	}
 
 	// Search for the user

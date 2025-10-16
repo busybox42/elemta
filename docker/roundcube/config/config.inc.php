@@ -24,12 +24,12 @@ $config['imap_force_lsub'] = false;
 $config['imap_force_ns'] = false;
 $config['imap_conn_options'] = null;
 
-// Connect directly to Elemta - no auth required for internal networks
+// Connect to Elemta with user authentication
 $config['smtp_server'] = 'elemta';
 $config['smtp_port'] = 2525;
-$config['smtp_user'] = null;
-$config['smtp_pass'] = null;
-$config['smtp_auth_type'] = null;
+$config['smtp_user'] = '%u';  // Use IMAP username
+$config['smtp_pass'] = '%p';  // Use IMAP password
+$config['smtp_auth_type'] = 'PLAIN';
 $config['smtp_timeout'] = 120;
 $config['smtp_conn_options'] = null;
 $config['smtp_debug'] = false;

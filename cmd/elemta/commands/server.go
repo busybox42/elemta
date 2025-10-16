@@ -125,6 +125,14 @@ func startServer() {
 	// Map delivery config
 	smtpConfig.Delivery = cfg.Delivery
 
+	// Map metrics config
+	smtpConfig.Metrics = cfg.Metrics
+	if cfg.Metrics != nil {
+		fmt.Printf("[DEBUG] Metrics config mapped: enabled=%v, listen_addr=%s\n", cfg.Metrics.Enabled, cfg.Metrics.ListenAddr)
+	} else {
+		fmt.Printf("[DEBUG] cfg.Metrics is nil\n")
+	}
+
 	if cfg.TLS != nil {
 		fmt.Printf("[DEBUG] cfg.TLS: %+v\n", *cfg.TLS)
 	} else {

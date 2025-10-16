@@ -420,6 +420,22 @@ func LoadConfig(configPath string) (*Config, error) {
 		}
 	}
 
+	// Set default metrics configuration if not provided
+	if config.Metrics == nil {
+		config.Metrics = &MetricsConfig{
+			Enabled:    true,
+			ListenAddr: ":8080",
+		}
+	}
+
+	// Set default API configuration if not provided
+	if config.API == nil {
+		config.API = &APIConfig{
+			Enabled:    false,
+			ListenAddr: ":8081",
+		}
+	}
+
 	if err := os.MkdirAll(config.QueueDir, 0755); err != nil {
 		return nil, err
 	}
