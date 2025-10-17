@@ -155,12 +155,12 @@ setup-kibana:
 
 docker-setup: docker-build
 	@echo "🚀 Starting Elemta stack..."
-	docker compose up -d
+	docker compose -f deployments/compose/docker-compose.yml up -d
 	@echo "✅ Elemta stack running!"
 
 docker-down:
 	@echo "🛑 Stopping all Elemta services..."
-	docker compose down -v
+	docker compose -f deployments/compose/docker-compose.yml down -v
 
 # Installation and update targets
 install:

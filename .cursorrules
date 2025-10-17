@@ -23,12 +23,40 @@ This is Elemta, a high-performance SMTP server written in Go. Always consult the
 - Context: Pass `context.Context` as first parameter for all operations
 - Logging: Use structured logging with `slog` package
 
-### File Structure Rules
-- Core implementation in `internal/` 
-- Entry points in `cmd/`
-- Configuration in `config/`
-- Documentation in `docs/` and `.notes/`
-- Tests alongside implementation files
+### File Structure Rules - STRICTLY ENFORCE
+**Core Directories:**
+- `internal/` - Core implementation, internal packages
+- `cmd/` - Application entry points (main.go files)
+- `config/` - Configuration files and examples
+- `docs/` - User-facing documentation
+- `.notes/` - Project notes (gitignored)
+
+**Organized Subdirectories:**
+- `deployments/compose/` - ALL docker-compose*.yml files
+- `tests/` - Test code and test fixtures
+- `tests/fixtures/` - Test data (ldif, json, xml, etc.)
+- `scripts/` - Production scripts
+- `scripts/dev/` - Development-only scripts (rebuild, restart, etc.)
+- `monitoring/` - Prometheus, Grafana, Alertmanager configs
+- `monitoring/grafana/dashboards/` - Grafana dashboard JSON files
+- `examples/` - Code examples and sample integrations
+- `docker/` - Dockerfiles and service configs
+- `k8s/` - Kubernetes manifests
+- `install/` - Installation and upgrade scripts
+
+**Rules for New Files:**
+1. **NEVER** add scripts to project root - use `scripts/` or `scripts/dev/`
+2. **NEVER** add test fixtures to project root - use `tests/fixtures/<type>/`
+3. **NEVER** add config examples to project root - use `config/` or `examples/`
+4. **NEVER** add LDIF files to project root - use `tests/fixtures/ldap/`
+5. **NEVER** add docker-compose variants to project root - use `deployments/compose/`
+6. **NEVER** commit compiled binaries - they belong in `bin/` (gitignored)
+7. **NEVER** commit AI work files (*_WORK.md, *_TODO.md) - they're gitignored
+
+**Before Creating a New File:**
+- Ask: "Where does this logically belong in the directory structure?"
+- Check if a similar directory already exists
+- Add a README.md to new directories explaining their purpose
 
 ### Testing Requirements
 - Write table-driven tests for all new functionality
