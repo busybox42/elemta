@@ -87,6 +87,7 @@ services:
       - elemta_queue:/app/queue:ro
       - elemta_logs:/app/logs:ro
       # Web files are now included in the Docker image
+    command: ["/app/elemta", "web", "--listen", "0.0.0.0:8025", "--queue-dir", "/app/queue", "--web-root", "/app/web/static"]
     environment:
       - TZ=UTC
       - NODE_ID=web
@@ -103,7 +104,6 @@ services:
       - ALL
     cap_add: []
     entrypoint: []
-    command: ["/app/elemta", "web", "--listen", "0.0.0.0:8025", "--auth-enabled", "--queue-dir", "/app/queue", "--web-root", "/app/web/static"]
     networks:
       - elemta_network
     depends_on:
