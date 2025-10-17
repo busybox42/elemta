@@ -145,13 +145,15 @@ type CertRenewalConfig struct {
 
 // ResourceConfig represents resource limits
 type ResourceConfig struct {
-	MaxCPU            int   `json:"max_cpu"`
-	MaxMemory         int64 `json:"max_memory"`
-	MaxConnections    int   `json:"max_connections"`
-	MaxConcurrent     int   `json:"max_concurrent"`
-	ConnectionTimeout int   `json:"connection_timeout"`
-	ReadTimeout       int   `json:"read_timeout"`
-	WriteTimeout      int   `json:"write_timeout"`
+	MaxCPU            int    `json:"max_cpu" toml:"max_cpu"`
+	MaxMemory         int64  `json:"max_memory" toml:"max_memory"`
+	MaxConnections    int    `json:"max_connections" toml:"max_connections"`
+	MaxConcurrent     int    `json:"max_concurrent" toml:"max_concurrent"`
+	ConnectionTimeout int    `json:"connection_timeout" toml:"connection_timeout"`
+	ReadTimeout       int    `json:"read_timeout" toml:"read_timeout"`
+	WriteTimeout      int    `json:"write_timeout" toml:"write_timeout"`
+	ValkeyURL         string `json:"valkey_url" toml:"valkey_url"`
+	ValkeyKeyPrefix   string `json:"valkey_key_prefix" toml:"valkey_key_prefix"`
 }
 
 // CacheConfig represents caching configuration

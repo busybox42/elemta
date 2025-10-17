@@ -17,6 +17,11 @@ config/examples/elemta-fixed.conf
 # AI-related files
 .cursor*
 .notes/
+TODAYS_WORK.md
+*_WORK.md
+*_TODO.md
+*_NOTES.md
+CURSOR_*.md
 scripts/update_roadmap*.sh
 scripts/*_ai_*.sh
 *.txt

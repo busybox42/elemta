@@ -1,12 +1,15 @@
 package smtp
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/valkey-io/valkey-go"
 )
 
 // ResourceLimits defines resource limits for the SMTP server
@@ -23,6 +26,8 @@ type ResourceLimits struct {
 	GoroutinePoolSize         int           `toml:"goroutine_pool_size" json:"goroutine_pool_size"`                 // Worker goroutine pool size
 	CircuitBreakerEnabled     bool          `toml:"circuit_breaker_enabled" json:"circuit_breaker_enabled"`         // Enable circuit breakers
 	ResourceMonitoringEnabled bool          `toml:"resource_monitoring_enabled" json:"resource_monitoring_enabled"` // Enable resource monitoring
+	ValkeyURL                 string        `toml:"valkey_url" json:"valkey_url"`                                   // Valkey URL for distributed rate limiting
+	ValkeyKeyPrefix           string        `toml:"valkey_key_prefix" json:"valkey_key_prefix"`                     // Valkey key prefix
 }
 
 // DefaultResourceLimits returns sensible default resource limits
@@ -431,6 +436,124 @@ func (cb *CircuitBreaker) GetStats() map[string]interface{} {
 	}
 }
 
+// ValkeyRateLimiter provides distributed rate limiting using Valkey
+type ValkeyRateLimiter struct {
+	client       valkey.Client
+	keyPrefix    string
+	logger       *slog.Logger
+	enabled      bool
+	rateLimitTTL time.Duration
+}
+
+// NewValkeyRateLimiter creates a new Valkey-backed rate limiter
+func NewValkeyRateLimiter(valkeyURL, keyPrefix string, ttl time.Duration, logger *slog.Logger) (*ValkeyRateLimiter, error) {
+	if valkeyURL == "" {
+		logger.Info("Valkey URL not configured, using local rate limiting only")
+		return &ValkeyRateLimiter{enabled: false, logger: logger}, nil
+	}
+
+	// Strip protocol prefix if present (valkey:// or redis://)
+	addr := valkeyURL
+	if len(addr) > 9 && (addr[:9] == "valkey://" || addr[:8] == "redis://") {
+		if addr[:9] == "valkey://" {
+			addr = addr[9:]
+		} else if addr[:8] == "redis://" {
+			addr = addr[8:]
+		}
+	}
+
+	client, err := valkey.NewClient(valkey.ClientOption{
+		InitAddress: []string{addr},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Valkey client: %w", err)
+	}
+
+	// Test connection
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Do(ctx, client.B().Ping().Build()).Error(); err != nil {
+		return nil, fmt.Errorf("failed to connect to Valkey: %w", err)
+	}
+
+	logger.Info("Valkey client initialized for distributed rate limiting",
+		"url", valkeyURL,
+		"key_prefix", keyPrefix)
+
+	return &ValkeyRateLimiter{
+		client:       client,
+		keyPrefix:    keyPrefix,
+		logger:       logger,
+		enabled:      true,
+		rateLimitTTL: ttl,
+	}, nil
+}
+
+// CheckRateLimit checks rate limit in Valkey using token bucket algorithm
+func (v *ValkeyRateLimiter) CheckRateLimit(ctx context.Context, key string, maxRequests int, window time.Duration) (bool, error) {
+	if !v.enabled {
+		return true, nil // Allow if Valkey is disabled
+	}
+
+	fullKey := v.keyPrefix + key
+	now := time.Now().Unix()
+	windowStart := now - int64(window.Seconds())
+
+	// Use sorted set to track requests in time window
+	// Remove old entries
+	v.client.Do(ctx, v.client.B().Zremrangebyscore().Key(fullKey).Min(fmt.Sprintf("%d", 0)).Max(fmt.Sprintf("%d", windowStart)).Build())
+
+	// Count current requests in window
+	countCmd := v.client.Do(ctx, v.client.B().Zcount().Key(fullKey).Min(fmt.Sprintf("%d", windowStart)).Max(fmt.Sprintf("%d", now)).Build())
+	count, err := countCmd.AsInt64()
+	if err != nil && err.Error() != "redis nil message" {
+		v.logger.Warn("Failed to check rate limit in Valkey", "error", err, "key", key)
+		return true, nil // Fail open on Valkey errors
+	}
+
+	if count >= int64(maxRequests) {
+		return false, nil // Rate limit exceeded
+	}
+
+	// Add current request
+	v.client.Do(ctx, v.client.B().Zadd().Key(fullKey).ScoreMember().ScoreMember(float64(now), fmt.Sprintf("%d", now)).Build())
+
+	// Set expiration
+	v.client.Do(ctx, v.client.B().Expire().Key(fullKey).Seconds(int64(v.rateLimitTTL.Seconds())).Build())
+
+	return true, nil
+}
+
+// IncrementCounter increments a counter in Valkey
+func (v *ValkeyRateLimiter) IncrementCounter(ctx context.Context, key string, ttl time.Duration) (int64, error) {
+	if !v.enabled {
+		return 0, nil
+	}
+
+	fullKey := v.keyPrefix + key
+
+	// Increment counter
+	incrCmd := v.client.Do(ctx, v.client.B().Incr().Key(fullKey).Build())
+	if err := incrCmd.Error(); err != nil {
+		return 0, fmt.Errorf("failed to increment counter: %w", err)
+	}
+
+	// Set expiration
+	v.client.Do(ctx, v.client.B().Expire().Key(fullKey).Seconds(int64(ttl.Seconds())).Build())
+
+	return incrCmd.AsInt64()
+}
+
+// Close closes the Valkey connection
+func (v *ValkeyRateLimiter) Close() error {
+	if !v.enabled || v.client == nil {
+		return nil
+	}
+	v.client.Close()
+	return nil
+}
+
 // ResourceManager manages all server resources and limits
 type ResourceManager struct {
 	limits               *ResourceLimits
@@ -444,6 +567,7 @@ type ResourceManager struct {
 	circuitBreakers      map[string]*CircuitBreaker
 	circuitBreakersMutex sync.RWMutex
 	memoryManager        *MemoryManager
+	valkeyClient         *ValkeyRateLimiter // Distributed rate limiting
 	activeConnections    int32
 	totalRequests        int64
 	rejectedRequests     int64
@@ -487,6 +611,24 @@ func NewResourceManager(limits *ResourceLimits, logger *slog.Logger) *ResourceMa
 	// Initialize goroutine pool
 	rm.goroutinePool = NewGoroutinePool(limits.GoroutinePoolSize, logger)
 
+	// Initialize Valkey for distributed rate limiting
+	if limits.ValkeyURL != "" {
+		keyPrefix := limits.ValkeyKeyPrefix
+		if keyPrefix == "" {
+			keyPrefix = "elemta:ratelimit:"
+		}
+
+		valkeyClient, err := NewValkeyRateLimiter(limits.ValkeyURL, keyPrefix, limits.RateLimitWindow*2, logger)
+		if err != nil {
+			logger.Warn("Failed to initialize Valkey client, using local rate limiting only", "error", err)
+		} else {
+			rm.valkeyClient = valkeyClient
+			logger.Info("Distributed rate limiting enabled via Valkey",
+				"valkey_url", limits.ValkeyURL,
+				"key_prefix", keyPrefix)
+		}
+	}
+
 	// Start monitoring if enabled
 	if rm.monitoringEnabled {
 		go rm.startResourceMonitoring()
@@ -498,6 +640,7 @@ func NewResourceManager(limits *ResourceLimits, logger *slog.Logger) *ResourceMa
 		"goroutine_pool_size", limits.GoroutinePoolSize,
 		"max_memory_usage", limits.MaxMemoryUsage,
 		"monitoring_enabled", rm.monitoringEnabled,
+		"valkey_enabled", rm.valkeyClient != nil && rm.valkeyClient.enabled,
 	)
 
 	return rm
@@ -582,7 +725,7 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 	}
 	fmt.Printf("DEBUG: Global rate limit check passed\n")
 
-	// Check per-IP rate limiting
+	// Check per-IP rate limiting (local)
 	fmt.Printf("DEBUG: Checking per-IP rate limiting\n")
 	ipRateLimiter := rm.getOrCreateIPRateLimiter(host)
 	if !ipRateLimiter.Allow() {
@@ -594,6 +737,27 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 		return false
 	}
 	fmt.Printf("DEBUG: Per-IP rate limit check passed\n")
+
+	// Check distributed rate limiting via Valkey if enabled
+	if rm.valkeyClient != nil && rm.valkeyClient.enabled {
+		fmt.Printf("DEBUG: Checking Valkey distributed rate limiting for %s\n", host)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		allowed, err := rm.valkeyClient.CheckRateLimit(ctx, "ip:"+host, rm.limits.MaxRequestsPerWindow, rm.limits.RateLimitWindow)
+		if err != nil {
+			rm.logger.Warn("Valkey rate limit check failed, allowing connection", "error", err, "ip", host)
+		} else if !allowed {
+			fmt.Printf("DEBUG: Valkey distributed rate limit exceeded for %s\n", host)
+			atomic.AddInt64(&rm.rejectedRequests, 1)
+			rm.logger.Warn("Connection rejected: distributed rate limit exceeded",
+				"ip", host,
+				"valkey_enabled", true,
+			)
+			return false
+		}
+		fmt.Printf("DEBUG: Valkey distributed rate limit check passed for %s\n", host)
+	}
 
 	fmt.Printf("DEBUG: All connection checks passed, accepting connection\n")
 	return true
@@ -765,8 +929,8 @@ func (rm *ResourceManager) getOrCreateIPRateLimiter(ip string) *ResourceRateLimi
 		// Double-check pattern
 		if limiter, exists = rm.ipRateLimiters[ip]; !exists {
 			limiter = NewResourceRateLimiter(
-				rm.limits.MaxRequestsPerWindow/2,   // Per-IP limit is 1/2 of global (more permissive)
-				rm.limits.MaxRequestsPerWindow/60,  // Refill rate (faster refill)
+				rm.limits.MaxRequestsPerWindow/2,  // Per-IP limit is 1/2 of global (more permissive)
+				rm.limits.MaxRequestsPerWindow/60, // Refill rate (faster refill)
 				rm.limits.MaxRequestsPerWindow/2,
 				rm.limits.RateLimitWindow,
 			)
@@ -931,6 +1095,11 @@ func (rm *ResourceManager) Close() {
 	// Close memory manager
 	if rm.memoryManager != nil {
 		rm.memoryManager.Close()
+	}
+
+	// Close Valkey client
+	if rm.valkeyClient != nil {
+		rm.valkeyClient.Close()
 	}
 
 	rm.logger.Info("Resource manager shut down")

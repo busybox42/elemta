@@ -267,9 +267,11 @@ func NewServer(config *Config) (*Server, error) {
 			RateLimitWindow:           time.Minute,
 			MaxRequestsPerWindow:      config.Resources.MaxConnections * 10, // 10 requests per connection per minute
 			MaxMemoryUsage:            memoryConfig.MaxMemoryUsage,          // Use configured memory limit
-			GoroutinePoolSize:         config.MaxWorkers,
+			GoroutinePoolSize:         100,                                  // Fixed worker pool size for connection handling
 			CircuitBreakerEnabled:     true,
 			ResourceMonitoringEnabled: true,
+			ValkeyURL:                 config.Resources.ValkeyURL,       // Valkey for distributed rate limiting
+			ValkeyKeyPrefix:           config.Resources.ValkeyKeyPrefix, // Valkey key prefix
 		}
 
 		// Initialize resource manager with memory configuration
@@ -622,10 +624,6 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 		s.logger = log.New(os.Stdout, "SMTP: ", log.LstdFlags)
 	}
 
-	// Create context with timeout enforcement
-	ctx, cancel := context.WithTimeout(context.Background(), s.resourceManager.GetSessionTimeout())
-	defer cancel()
-
 	// Guaranteed cleanup function that runs even on panic
 	cleanup := func() {
 		if cleanupDone {
@@ -689,26 +687,10 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 	session.SetResourceManager(s.resourceManager)
 	// Note: Builtin plugins would be set through plugin manager if needed
 
-	// Handle the SMTP session with circuit breaker protection and timeout enforcement
-	smtpCircuitBreaker := s.resourceManager.GetCircuitBreaker("smtp-session")
-	err := smtpCircuitBreaker.Execute(func() error {
-		// Use context for timeout enforcement
-		done := make(chan error, 1)
-		go func() {
-			fmt.Printf("DEBUG: Starting session.Handle() for %s\n", clientIP)
-			done <- session.Handle()
-			fmt.Printf("DEBUG: session.Handle() completed for %s\n", clientIP)
-		}()
-
-		select {
-		case err := <-done:
-			return err
-		case <-ctx.Done():
-			// Timeout occurred, close connection
-			conn.Close()
-			return ctx.Err()
-		}
-	})
+	// Handle the SMTP session directly (circuit breaker disabled for now due to premature failures)
+	fmt.Printf("DEBUG: Starting session.Handle() for %s\n", clientIP)
+	err := session.Handle()
+	fmt.Printf("DEBUG: session.Handle() completed for %s\n", clientIP)
 
 	if err != nil {
 		if err != io.EOF && err != context.DeadlineExceeded {

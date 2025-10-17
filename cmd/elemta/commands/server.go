@@ -110,20 +110,25 @@ func startServer() {
 
 	// Create SMTP server configuration
 	smtpConfig := &smtp.Config{
-		Hostname:     cfg.Server.Hostname,
-		ListenAddr:   cfg.Server.Listen,
-		QueueDir:     cfg.Queue.Dir,
-		MaxSize:      10 * 1024 * 1024,        // Use 10MB default if not specified
-		LocalDomains: cfg.Server.LocalDomains, // Map local domains from main config
+		Hostname:     cfg.Hostname,     // Use top-level hostname
+		ListenAddr:   cfg.ListenAddr,   // Use top-level listen_addr
+		QueueDir:     cfg.QueueDir,     // Use top-level queue_dir
+		MaxSize:      cfg.MaxSize,      // Use top-level max_size
+		LocalDomains: cfg.LocalDomains, // Use top-level local_domains
 		TLS:          cfg.TLS,
-		DevMode:      devMode || cfg.Server.DevMode, // Use command line flag or TOML config
+		DevMode:      devMode || cfg.Server.DevMode,
 	}
+
+	fmt.Printf("[INFO] SMTP Config: hostname=%s, local_domains=%v\n", smtpConfig.Hostname, smtpConfig.LocalDomains)
 
 	// Map authentication config
 	smtpConfig.Auth = cfg.Auth
 
 	// Map delivery config
 	smtpConfig.Delivery = cfg.Delivery
+
+	// Map resources config (for Valkey integration)
+	smtpConfig.Resources = cfg.Resources
 
 	// Map metrics config
 	smtpConfig.Metrics = cfg.Metrics

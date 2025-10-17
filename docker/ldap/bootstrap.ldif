@@ -13,6 +13,8 @@ objectClass: groupOfNames
 cn: users
 member: uid=sender,ou=people,dc=example,dc=com
 member: uid=recipient,ou=people,dc=example,dc=com
+member: uid=demo,ou=people,dc=example,dc=com
+member: uid=user,ou=people,dc=example,dc=com
 
 # Test user: sender@example.com
 dn: uid=sender,ou=people,dc=example,dc=com
@@ -25,7 +27,7 @@ sn: Sender
 givenName: Test
 displayName: Test Sender
 mail: sender@example.com
-userPassword: {PLAIN}password
+userPassword: password
 uidNumber: 5001
 gidNumber: 5000
 homeDirectory: /var/mail/sender@example.com
@@ -42,25 +44,42 @@ sn: Recipient
 givenName: Test
 displayName: Test Recipient
 mail: recipient@example.com
-userPassword: {PLAIN}password
+userPassword: password
 uidNumber: 5002
 gidNumber: 5000
 homeDirectory: /var/mail/recipient@example.com
 loginShell: /bin/false
 
-# Additional test user: admin@example.com
-dn: uid=admin,ou=people,dc=example,dc=com
+# Test user: user@example.com (main test account)
+dn: uid=user,ou=people,dc=example,dc=com
 objectClass: inetOrgPerson
 objectClass: posixAccount
 objectClass: shadowAccount
-uid: admin
-cn: Test Admin
-sn: Admin
+uid: user
+cn: Test User
+sn: User
 givenName: Test
-displayName: Test Admin
-mail: admin@example.com
-userPassword: {PLAIN}admin123
+displayName: Test User
+mail: user@example.com
+userPassword: password
 uidNumber: 5003
 gidNumber: 5000
-homeDirectory: /var/mail/admin@example.com
-loginShell: /bin/false 
+homeDirectory: /var/mail/user@example.com
+loginShell: /bin/false
+
+# Demo user: demo@example.com (for auth tests)
+dn: uid=demo,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: demo
+cn: Demo User
+sn: User
+givenName: Demo
+displayName: Demo User
+mail: demo@example.com
+userPassword: demo123
+uidNumber: 5004
+gidNumber: 5000
+homeDirectory: /var/mail/demo@example.com
+loginShell: /bin/false

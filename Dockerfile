@@ -68,7 +68,7 @@ COPY --from=builder --chown=elemta:elemta /build/plugins/allowdeny.so /app/plugi
 # Copy configuration files with proper ownership
 COPY --chown=elemta:elemta config/elemta-generated.toml /app/config/elemta-generated.toml
 COPY --chown=elemta:elemta config/dev.toml /app/config/dev.toml
-COPY --chown=elemta:elemta config/users.txt /app/config/users.txt
+# users.txt not needed - using LDAP authentication
 
 # Copy allow/deny plugin configuration
 COPY --chown=elemta:elemta plugins/allowdeny/config.toml /app/config/allowdeny.toml

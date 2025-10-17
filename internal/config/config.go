@@ -106,7 +106,19 @@ func DefaultRateLimiterPluginConfig() *RateLimiterPluginConfig {
 
 // Config represents the application configuration
 type Config struct {
-	// Server configuration
+	// Top-level server settings (from flat TOML structure)
+	Hostname       string   `toml:"hostname"`
+	ListenAddr     string   `toml:"listen_addr"`
+	QueueDir       string   `toml:"queue_dir"`
+	MaxSize        int64    `toml:"max_size"`
+	MaxWorkers     int      `toml:"max_workers"`
+	MaxRetries     int      `toml:"max_retries"`
+	MaxQueueTime   int      `toml:"max_queue_time"`
+	RetrySchedule  []int    `toml:"retry_schedule"`
+	SessionTimeout string   `toml:"session_timeout"`
+	LocalDomains   []string `toml:"local_domains"`
+
+	// Server configuration (legacy nested structure)
 	Server struct {
 		Hostname         string   `toml:"hostname"`
 		Listen           string   `toml:"listen"`
@@ -165,6 +177,9 @@ type Config struct {
 
 	// Memory management configuration
 	Memory *smtp.MemoryConfig `toml:"memory"`
+
+	// Resource management configuration (for distributed rate limiting via Valkey)
+	Resources *smtp.ResourceConfig `toml:"resources"`
 }
 
 // DefaultConfig returns the default configuration
