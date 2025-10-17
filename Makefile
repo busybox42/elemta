@@ -99,7 +99,7 @@ docker: docker-build docker-run
 
 docker-build:
 	@echo "Building Docker image..."
-	docker compose build
+	docker compose -f deployments/compose/docker-compose.yml build
 
 docker-run:
 	@echo "Starting Docker containers..."

@@ -2,7 +2,7 @@ services:
   elemta:
     image: elemta:latest
     build:
-      context: .
+      context: ../..
       dockerfile: Dockerfile
     container_name: elemta-node0
     restart: unless-stopped
@@ -182,6 +182,7 @@ services:
     volumes:
       - ldap_data:/var/lib/ldap
       - ldap_config:/etc/ldap/slapd.d
+      - ../../docker/ldap:/docker-ldap:ro
     networks:
       - elemta_network
     healthcheck:
@@ -194,7 +195,7 @@ services:
   elemta-dovecot:
     image: elemta_dovecot:latest
     build:
-      context: ./docker/dovecot
+      context: ../../docker/dovecot
       dockerfile: Dockerfile
     container_name: elemta-dovecot
     hostname: elemta-dovecot
