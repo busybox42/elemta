@@ -143,3 +143,15 @@ docker/rspamd/override.d/
 
 # Deploy directory
 .deploy/
+
+# Additional cruft prevention
+config/*.db
+config/*.sqlite
+*.db-journal
+bin/test-*
+elemta
+*.prof
+*.test
+.idea/
+.vscode/settings.json
+examples/**/*.so
