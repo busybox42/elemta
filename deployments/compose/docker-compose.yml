@@ -19,7 +19,7 @@ services:
       - DEBUG=true
       - NODE_ID=0
       - TEST_MODE=true
-      - ELEMTA_CONFIG_PATH=/app/config/elemta-generated.toml
+      - ELEMTA_CONFIG_PATH=/app/config/elemta.toml
       - API_PORT=8081  # Used internally only
       - DELIVERY_HOST=elemta-dovecot
       - DELIVERY_PORT=2424
@@ -91,7 +91,7 @@ services:
     environment:
       - TZ=UTC
       - NODE_ID=web
-      - ELEMTA_CONFIG_PATH=/app/config/elemta-generated.toml
+      - ELEMTA_CONFIG_PATH=/app/config/elemta.toml
     # Security configuration for the container
     security_opt:
       - no-new-privileges:true

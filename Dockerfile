@@ -57,8 +57,9 @@ COPY --from=builder --chown=elemta:elemta /build/elemta-cli /app/elemta-cli
 # Note: No .so plugins copied - all plugins are built into the main binary
 
 # Copy configuration files with proper ownership
+COPY --chown=elemta:elemta config/elemta.toml /app/config/elemta.toml
 COPY --chown=elemta:elemta config/dev.toml /app/config/dev.toml
-# Note: Using LDAP authentication, no local database or generated configs needed
+# Note: Using LDAP authentication, no local database needed
 
 # Copy TLS cert and key with proper ownership and permissions
 COPY --chown=elemta:elemta config/test.crt /app/certs/test.crt
