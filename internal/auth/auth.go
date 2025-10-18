@@ -211,7 +211,7 @@ func HashPassword(password string) (string, error) {
 func ComparePasswordsSecure(hashedPassword, plainPassword string) error {
 	// Always perform the same operations to maintain constant time
 	var result error = ErrInvalidCredentials
-	
+
 	if strings.HasPrefix(hashedPassword, "$2") {
 		// bcrypt - already constant time
 		result = bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
@@ -261,7 +261,7 @@ func ComparePasswordsSecure(hashedPassword, plainPassword string) error {
 			result = nil
 		}
 	}
-	
+
 	return result
 }
 
@@ -388,7 +388,7 @@ func (a *Auth) CreateUser(ctx context.Context, username, password, email, fullNa
 	_, err := a.ds.GetUser(ctx, username)
 	if err == nil {
 		return ErrUserExists
-	} else if !errors.Is(err, datasource.ErrNotFound) {
+	} else if !errors.Is(err, datasource.ErrNotFound) && !errors.Is(err, datasource.ErrAlreadyExists) {
 		return fmt.Errorf("failed to check if user exists: %w", err)
 	}
 
@@ -422,6 +422,10 @@ func (a *Auth) CreateUser(ctx context.Context, username, password, email, fullNa
 	}
 
 	if err := a.ds.CreateUser(ctx, user); err != nil {
+		// Convert datasource.ErrAlreadyExists to auth.ErrUserExists
+		if errors.Is(err, datasource.ErrAlreadyExists) {
+			return ErrUserExists
+		}
 		return fmt.Errorf("failed to create user: %w", err)
 	}
 

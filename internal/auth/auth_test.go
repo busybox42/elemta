@@ -98,6 +98,10 @@ func (m *MockLDAP) Query(ctx context.Context, query string, args ...interface{})
 }
 
 func TestAuth(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping TestAuth in short mode - requires database setup")
+	}
+
 	// Create a temporary directory for the test database
 	tempDir, err := os.MkdirTemp("", "elemta-auth-test")
 	if err != nil {
@@ -116,9 +120,16 @@ func TestAuth(t *testing.T) {
 
 	ctx := context.Background()
 
+	// Create test user for all subsequent tests
+	err = auth.CreateUser(ctx, "testuser", "password123", "test@example.com", "Test User", false)
+	if err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
+
 	// Test user creation
 	t.Run("CreateUser", func(t *testing.T) {
-		err := auth.CreateUser(ctx, "testuser", "password123", "test@example.com", "Test User", false)
+		// Test creating a new user
+		err := auth.CreateUser(ctx, "newuser", "password456", "new@example.com", "New User", false)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}

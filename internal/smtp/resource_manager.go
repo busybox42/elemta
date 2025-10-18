@@ -595,13 +595,19 @@ func NewResourceManager(limits *ResourceLimits, logger *slog.Logger) *ResourceMa
 	}
 
 	// Initialize memory manager with resource limits
+	// Prevent divide-by-zero: ensure MaxConnections is at least 1
+	maxConnections := limits.MaxConnections
+	if maxConnections == 0 {
+		maxConnections = 1 // Minimum 1 connection for memory calculation
+	}
+	
 	memoryConfig := &MemoryConfig{
 		MaxMemoryUsage:             limits.MaxMemoryUsage,
 		MemoryWarningThreshold:     0.75, // 75% warning
 		MemoryCriticalThreshold:    0.90, // 90% critical
 		GCThreshold:                0.80, // 80% force GC
 		MonitoringInterval:         5 * time.Second,
-		PerConnectionMemoryLimit:   limits.MaxMemoryUsage / int64(limits.MaxConnections), // Distribute memory across connections
+		PerConnectionMemoryLimit:   limits.MaxMemoryUsage / int64(maxConnections), // Distribute memory across connections
 		MaxGoroutines:              limits.MaxGoroutines,
 		GoroutineLeakDetection:     true,
 		MemoryExhaustionProtection: true,

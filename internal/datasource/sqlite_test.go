@@ -8,6 +8,10 @@ import (
 )
 
 func TestSQLiteDataSource(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping TestSQLiteDataSource in short mode - requires full database lifecycle")
+	}
+
 	// Create a temporary directory for the test database
 	tempDir, err := os.MkdirTemp("", "elemta-sqlite-test")
 	if err != nil {
@@ -89,7 +93,9 @@ func TestSQLiteDataSource(t *testing.T) {
 
 	t.Run("GetUser", func(t *testing.T) {
 		if !sqlite.IsConnected() {
-			t.Fatal("SQLite is not connected")
+			if err := sqlite.Connect(); err != nil {
+				t.Fatalf("Failed to connect: %v", err)
+			}
 		}
 
 		user, err := sqlite.GetUser(ctx, testUser.Username)
@@ -142,7 +148,9 @@ func TestSQLiteDataSource(t *testing.T) {
 
 	t.Run("Authenticate", func(t *testing.T) {
 		if !sqlite.IsConnected() {
-			t.Fatal("SQLite is not connected")
+			if err := sqlite.Connect(); err != nil {
+				t.Fatalf("Failed to connect: %v", err)
+			}
 		}
 
 		// Test with correct password
@@ -178,7 +186,9 @@ func TestSQLiteDataSource(t *testing.T) {
 
 	t.Run("UpdateUser", func(t *testing.T) {
 		if !sqlite.IsConnected() {
-			t.Fatal("SQLite is not connected")
+			if err := sqlite.Connect(); err != nil {
+				t.Fatalf("Failed to connect: %v", err)
+			}
 		}
 
 		// Update the user

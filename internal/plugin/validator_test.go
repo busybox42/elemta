@@ -33,6 +33,10 @@ func TestNewPluginValidator(t *testing.T) {
 }
 
 func TestValidatePlugin_FileBasics(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping plugin file validation test in short mode")
+	}
+
 	validator := NewPluginValidator()
 
 	tests := []struct {

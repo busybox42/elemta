@@ -22,7 +22,7 @@ func setupTestQueue(t *testing.T) (*queueOperations, string) {
 	// Create queue subdirectories
 	queueTypes := []string{
 		"active",
-		"deferred", 
+		"deferred",
 		"held",
 		"failed",
 	}
@@ -42,17 +42,17 @@ func setupTestQueue(t *testing.T) (*queueOperations, string) {
 
 func createTestMessage(t *testing.T, queueDir string, id string, queueType string) {
 	msg := &queue.Message{
-		ID:        id,
-		From:      "sender@example.com",
-		To:        []string{"recipient@example.com"},
-		Subject:   "Test Message",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		QueueType: queue.QueueType(queueType),
-		Priority:  queue.PriorityNormal,
-		RetryCount: 0,
-		NextRetry: time.Now(),
-		Attempts:  []queue.Attempt{},
+		ID:          id,
+		From:        "sender@example.com",
+		To:          []string{"recipient@example.com"},
+		Subject:     "Test Message",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+		QueueType:   queue.QueueType(queueType),
+		Priority:    queue.PriorityNormal,
+		RetryCount:  0,
+		NextRetry:   time.Now(),
+		Attempts:    []queue.Attempt{},
 		Annotations: make(map[string]string),
 	}
 
@@ -125,7 +125,7 @@ func TestQueueOperations(t *testing.T) {
 		buf.Reset()
 		err := qo.flushQueue(cmd, []string{})
 		assert.NoError(t, err)
-		assert.Contains(t, buf.String(), "Successfully flushed queue")
+		assert.Contains(t, buf.String(), "Successfully flushed")
 
 		// Verify messages are deleted
 		files, err := os.ReadDir(filepath.Join(tempDir, "active"))

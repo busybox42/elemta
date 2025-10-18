@@ -30,6 +30,10 @@ func setupTestEnv(t *testing.T) (func(), string) {
 		assert.NoError(t, err)
 	}
 
+	// Set test mode environment variables
+	os.Setenv("ELEMTA_TEST", "1")
+	os.Setenv("ELEMTA_TEST_QUEUE_DIR", queueDir)
+
 	// Create test configuration in TOML format
 	configContent := `[server]
 listen_addr = "localhost:2525"
@@ -54,6 +58,8 @@ retry_schedule = [300, 600, 1800, 3600]
 	return func() {
 		os.Chdir(cwd)
 		os.RemoveAll(tempDir)
+		os.Unsetenv("ELEMTA_TEST")
+		os.Unsetenv("ELEMTA_TEST_QUEUE_DIR")
 	}, queueDir
 }
 

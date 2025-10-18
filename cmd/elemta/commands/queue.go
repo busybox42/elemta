@@ -161,6 +161,11 @@ func getQueueDir() string {
 		return cfg.Queue.Dir
 	}
 
+	// Check for test mode environment variable
+	if testQueue := os.Getenv("ELEMTA_TEST_QUEUE_DIR"); testQueue != "" {
+		return testQueue
+	}
+
 	// Default queue directory
 	return "/app/queue"
 }

@@ -70,7 +70,7 @@ func NewSQLite(config Config) *SQLite {
 
 	// Initialize security manager
 	securityManager := NewSQLSecurityManager(logger)
-	
+
 	// Register allowed tables and columns for SQLite
 	securityManager.RegisterTable("users", []string{
 		"username", "password", "email", "full_name", "is_active", "is_admin",
@@ -541,6 +541,10 @@ func (s *SQLite) CreateUser(ctx context.Context, user User) error {
 	)
 
 	if err != nil {
+		// Check for UNIQUE constraint violation
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return ErrAlreadyExists
+		}
 		return fmt.Errorf("failed to create user: %w", err)
 	}
 

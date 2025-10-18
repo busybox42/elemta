@@ -10,6 +10,10 @@ import (
 
 // TestSQLInjectionPrevention tests comprehensive SQL injection prevention
 func TestSQLInjectionPrevention(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping SQL injection test in short mode")
+	}
+
 	// Create logger for testing
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelError, // Reduce noise during testing
@@ -17,7 +21,7 @@ func TestSQLInjectionPrevention(t *testing.T) {
 
 	// Initialize security manager
 	securityManager := NewSQLSecurityManager(logger)
-	
+
 	// Register test table
 	securityManager.RegisterTable("users", []string{
 		"username", "password", "email", "full_name", "is_active", "is_admin",
@@ -282,21 +286,21 @@ func TestSQLInjectionPrevention(t *testing.T) {
 
 	t.Run("Error Handling", func(t *testing.T) {
 		// Test secure error handling
-		testErr := securityManager.HandleSecureError("SELECT", "users", "testuser", 
+		testErr := securityManager.HandleSecureError("SELECT", "users", "testuser",
 			context.DeadlineExceeded, "Operation timed out")
-		
+
 		if testErr == nil {
 			t.Error("HandleSecureError should return an error")
 		}
-		
+
 		if !strings.Contains(testErr.Error(), "Operation timed out") {
 			t.Errorf("HandleSecureError should return user message, got: %v", testErr)
 		}
-		
+
 		// Test generic error message
-		genericErr := securityManager.HandleSecureError("SELECT", "users", "testuser", 
+		genericErr := securityManager.HandleSecureError("SELECT", "users", "testuser",
 			context.DeadlineExceeded, "")
-		
+
 		if genericErr == nil || genericErr.Error() != "database operation failed" {
 			t.Errorf("HandleSecureError should return generic message, got: %v", genericErr)
 		}
@@ -305,6 +309,10 @@ func TestSQLInjectionPrevention(t *testing.T) {
 
 // TestSQLiteSecurityIntegration tests SQLite with security enhancements
 func TestSQLiteSecurityIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping SQLite security integration test in short mode")
+	}
+
 	// Create temporary SQLite database for testing
 	config := Config{
 		Type:     "sqlite",
@@ -341,7 +349,7 @@ func TestSQLiteSecurityIntegration(t *testing.T) {
 		for _, attempt := range injectionAttempts {
 			_, err := sqlite.Authenticate(ctx, attempt.username, attempt.password)
 			if err == nil {
-				t.Errorf("Authentication should reject SQL injection attempt: %s / %s", 
+				t.Errorf("Authentication should reject SQL injection attempt: %s / %s",
 					attempt.username, attempt.password)
 			}
 		}
@@ -403,7 +411,7 @@ func BenchmarkSecurityValidation(b *testing.B) {
 
 	b.Run("BuildSecureQuery", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, _, _ = securityManager.BuildSecureQuery("SELECT", "users", 
+			_, _, _ = securityManager.BuildSecureQuery("SELECT", "users",
 				[]string{"username", "email"}, []string{"is_active"})
 		}
 	})

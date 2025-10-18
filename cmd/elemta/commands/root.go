@@ -29,6 +29,11 @@ Elemta is a high-performance, carrier-grade MTA with modular architecture and pl
 			var err error
 			cfg, err = config.LoadConfig(configPath)
 			if err != nil {
+				// In test mode (ELEMTA_TEST env var set), just warn and skip
+				if os.Getenv("ELEMTA_TEST") != "" {
+					fmt.Fprintf(os.Stderr, "Warning: config loading failed in test mode: %v\n", err)
+					return
+				}
 				fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 				os.Exit(1)
 			}

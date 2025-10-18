@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/busybox42/elemta/internal/smtp"
