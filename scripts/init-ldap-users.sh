@@ -74,8 +74,8 @@ userPassword: password
 EOF
 
 echo "Verifying users were added..."
-docker exec elemta-ldap ldapsearch -x -b "ou=people,dc=example,dc=com" "(uid=demo)" uid | grep -q "uid: demo" && echo "✅ Demo user found" || echo "❌ Demo user not found"
-docker exec elemta-ldap ldapsearch -x -b "ou=people,dc=example,dc=com" "(uid=user)" uid | grep -q "uid: user" && echo "✅ User found" || echo "❌ User not found"
+docker exec elemta-ldap ldapsearch -H ldapi:/// -Y EXTERNAL -b "ou=people,dc=example,dc=com" "(uid=demo)" uid 2>/dev/null | grep -q "uid: demo" && echo "✅ Demo user found" || echo "❌ Demo user not found"
+docker exec elemta-ldap ldapsearch -H ldapi:/// -Y EXTERNAL -b "ou=people,dc=example,dc=com" "(uid=user)" uid 2>/dev/null | grep -q "uid: user" && echo "✅ User found" || echo "❌ User not found"
 
 echo "Testing authentication..."
 docker exec elemta-ldap ldapwhoami -x -D "uid=demo,ou=people,dc=example,dc=com" -w demo123 && echo "✅ Demo auth works" || echo "❌ Demo auth failed"
