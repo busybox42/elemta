@@ -1,5 +1,11 @@
 # Elemta SMTP Server Configuration
 
+# Top-level configuration (used by SMTP server)
+hostname = "mail.dev.evil-admin.com"
+listen_addr = ":2525"
+local_domains = ["example.com", "evil-admin.com", "localhost", "mail.example.com"]
+max_size = 52428800  # 50MB
+
 [server]
 hostname = "mail.example.com"
 listen = ":2525"  # Internal SMTP port (non-privileged)
