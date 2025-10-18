@@ -225,7 +225,7 @@ enabled = true
 listen_addr = ":8080"`
 
 	configFile := filepath.Join(tempDir, "valid.conf")
-	err := os.WriteFile(configFile, []byte(validConfig), 0644)
+	err := os.WriteFile(configFile, []byte(validConfig), 0600) // Use 0600 for security validation
 	if err != nil {
 		t.Fatalf("Failed to create valid config file: %v", err)
 	}

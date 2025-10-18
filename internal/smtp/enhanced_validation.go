@@ -368,8 +368,15 @@ func (v *EnhancedValidator) validateEmailParameter(email string) *EnhancedValida
 	result.Valid = true
 	result.RFCCompliant = true
 	result.SanitizedValue = v.sanitizeEmailParameter(email)
-	result.ValidationDetails["local_part_length"] = len(strings.Split(email, "@")[0])
-	result.ValidationDetails["domain_length"] = len(strings.Split(email, "@")[1])
+	
+	// Safely get lengths
+	parts := strings.Split(email, "@")
+	if len(parts) >= 1 {
+		result.ValidationDetails["local_part_length"] = len(parts[0])
+	}
+	if len(parts) >= 2 {
+		result.ValidationDetails["domain_length"] = len(parts[1])
+	}
 
 	return result
 }
