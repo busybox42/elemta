@@ -158,10 +158,10 @@ fi
 
 # For Docker deployments, check if Docker is running
 if [[ "$DEPLOYMENT" == "docker-desktop" || "$DEPLOYMENT" == "docker-dev" ]]; then
-    if ! docker compose ps | grep -q "elemta-node0.*Up"; then
+    if ! docker compose -f deployments/compose/docker-compose.yml ps | grep -q "elemta-node0.*Up"; then
         print_status $RED "❌ Elemta Docker container is not running!"
         print_status $YELLOW "Please start the Docker deployment first:"
-        print_status $YELLOW "  docker compose up -d"
+        print_status $YELLOW "  make docker-setup"
         exit 1
     fi
 fi

@@ -596,7 +596,7 @@ class ElemtaTestSuite:
         
         try:
             result = subprocess.run(
-                ["docker", "compose", "ps", "--format", "json"],
+                ["docker", "compose", "-f", "deployments/compose/docker-compose.yml", "ps", "--format", "json"],
                 capture_output=True, text=True, timeout=10
             )
             
