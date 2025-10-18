@@ -156,6 +156,8 @@ setup-kibana:
 docker-setup: docker-build
 	@echo "🚀 Starting Elemta stack..."
 	docker compose -f deployments/compose/docker-compose.yml up -d
+	@echo "⏳ Initializing LDAP users..."
+	@./scripts/init-ldap-if-needed.sh
 	@echo "✅ Elemta stack running!"
 
 docker-down:

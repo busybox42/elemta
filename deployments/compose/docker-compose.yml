@@ -186,11 +186,11 @@ services:
     networks:
       - elemta_network
     healthcheck:
-      test: ["CMD", "ldapsearch", "-x", "-D", "cn=admin,dc=example,dc=com", "-w", "admin", "-b", "dc=example,dc=com", "-s", "base", "-LLL"]
-      interval: 30s
+      test: ["CMD", "sh", "-c", "ldapsearch -x -H ldapi:/// -Y EXTERNAL -b 'ou=people,dc=example,dc=com' '(uid=user)' 2>&1 | grep -q 'uid: user' || ldapsearch -x -D 'cn=admin,dc=example,dc=com' -w admin -b 'dc=example,dc=com' -s base -LLL"]
+      interval: 10s
       timeout: 10s
-      retries: 5
-      start_period: 30s
+      retries: 30
+      start_period: 45s
 
   elemta-dovecot:
     image: elemta_dovecot:latest

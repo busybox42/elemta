@@ -210,8 +210,12 @@ print_status $BLUE "🚀 Running Elemta centralized tests..."
 print_status $BLUE "Command: $TEST_CMD"
 echo ""
 
-# Execute the test command
-if $TEST_CMD; then
+# Execute the test command and capture the output
+$TEST_CMD
+test_exit_code=$?
+
+# The Python script returns 0 on success, non-zero on failure
+if [ $test_exit_code -eq 0 ]; then
     print_status $GREEN "🎉 All tests passed!"
     exit 0
 else
