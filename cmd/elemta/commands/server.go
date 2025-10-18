@@ -109,17 +109,31 @@ func startServer() {
 	}
 
 	// Create SMTP server configuration
+	fmt.Printf("[DEBUG] cfg.QueueDir (flat): '%s'\n", cfg.QueueDir)
+	fmt.Printf("[DEBUG] cfg.Queue.Dir (nested): '%s'\n", cfg.Queue.Dir)
+	
+	// Use Queue.Dir if QueueDir is empty (handle both config formats)
+	queueDir := cfg.QueueDir
+	if queueDir == "" && cfg.Queue.Dir != "" {
+		fmt.Printf("[DEBUG] Using cfg.Queue.Dir since cfg.QueueDir is empty\n")
+		queueDir = cfg.Queue.Dir
+	}
+	if queueDir == "" {
+		queueDir = "/app/queue" // Fallback default
+		fmt.Printf("[DEBUG] Both queue configs empty, using fallback: %s\n", queueDir)
+	}
+	
 	smtpConfig := &smtp.Config{
 		Hostname:     cfg.Hostname,     // Use top-level hostname
 		ListenAddr:   cfg.ListenAddr,   // Use top-level listen_addr
-		QueueDir:     cfg.QueueDir,     // Use top-level queue_dir
+		QueueDir:     queueDir,         // Use queue directory (prioritize flat, fallback to nested)
 		MaxSize:      cfg.MaxSize,      // Use top-level max_size
 		LocalDomains: cfg.LocalDomains, // Use top-level local_domains
 		TLS:          cfg.TLS,
 		DevMode:      devMode || cfg.Server.DevMode,
 	}
 
-	fmt.Printf("[INFO] SMTP Config: hostname=%s, local_domains=%v\n", smtpConfig.Hostname, smtpConfig.LocalDomains)
+	fmt.Printf("[INFO] SMTP Config: hostname=%s, queue_dir=%s, local_domains=%v\n", smtpConfig.Hostname, smtpConfig.QueueDir, smtpConfig.LocalDomains)
 
 	// Map authentication config
 	smtpConfig.Auth = cfg.Auth
