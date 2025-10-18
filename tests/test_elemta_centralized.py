@@ -740,7 +740,7 @@ This is a test email.
         try:
             client.connect()
             client.ehlo()
-            response = client.auth_plain("demo", "demo123")
+            response = client.auth_plain("user@example.com", "password")
             if not response.startswith("235"):
                 raise Exception(f"AUTH PLAIN failed: {response}")
             self.logger.info(f"AUTH PLAIN successful: {response}")
@@ -753,7 +753,7 @@ This is a test email.
         try:
             client.connect()
             client.ehlo()
-            response = client.auth_login("demo", "demo123")
+            response = client.auth_login("user@example.com", "password")
             if not response.startswith("235"):
                 raise Exception(f"AUTH LOGIN failed: {response}")
             self.logger.info(f"AUTH LOGIN successful: {response}")
