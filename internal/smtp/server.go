@@ -257,17 +257,41 @@ func NewServer(config *Config) (*Server, error) {
 				memoryConfig.PerConnectionMemoryLimit/(1024*1024))
 		}
 
+		// Handle missing fields with sensible defaults
+		maxConnPerIP := config.Resources.MaxConnectionsPerIP
+		if maxConnPerIP == 0 {
+			maxConnPerIP = config.Resources.MaxConcurrent // Fallback to MaxConcurrent if not set
+			if maxConnPerIP == 0 {
+				maxConnPerIP = 50 // Final fallback default
+			}
+		}
+		
+		goroutinePoolSize := config.Resources.GoroutinePoolSize
+		if goroutinePoolSize == 0 {
+			goroutinePoolSize = 100 // Default pool size
+		}
+		
+		rateLimitWindow := time.Duration(config.Resources.RateLimitWindow) * time.Second
+		if rateLimitWindow == 0 {
+			rateLimitWindow = time.Minute // Default 1 minute window
+		}
+		
+		maxRequestsPerWindow := config.Resources.MaxRequestsPerWindow
+		if maxRequestsPerWindow == 0 {
+			maxRequestsPerWindow = config.Resources.MaxConnections * 10 // Default: 10 requests per connection
+		}
+		
 		resourceLimits = &ResourceLimits{
 			MaxConnections:            config.Resources.MaxConnections,
-			MaxConnectionsPerIP:       config.Resources.MaxConcurrent,      // Use MaxConcurrent as per-IP limit
+			MaxConnectionsPerIP:       maxConnPerIP,
 			MaxGoroutines:             config.Resources.MaxConnections * 2, // Allow 2 goroutines per connection
 			ConnectionTimeout:         time.Duration(config.Resources.ConnectionTimeout) * time.Second,
-			SessionTimeout:            config.SessionTimeout,
-			IdleTimeout:               time.Duration(config.Resources.ReadTimeout) * time.Second,
-			RateLimitWindow:           time.Minute,
-			MaxRequestsPerWindow:      config.Resources.MaxConnections * 10, // 10 requests per connection per minute
+			SessionTimeout:            time.Duration(config.Resources.SessionTimeout) * time.Second,
+			IdleTimeout:               time.Duration(config.Resources.IdleTimeout) * time.Second,
+			RateLimitWindow:           rateLimitWindow,
+			MaxRequestsPerWindow:      maxRequestsPerWindow,
 			MaxMemoryUsage:            memoryConfig.MaxMemoryUsage,          // Use configured memory limit
-			GoroutinePoolSize:         100,                                  // Fixed worker pool size for connection handling
+			GoroutinePoolSize:         goroutinePoolSize,
 			CircuitBreakerEnabled:     true,
 			ResourceMonitoringEnabled: true,
 			ValkeyURL:                 config.Resources.ValkeyURL,       // Valkey for distributed rate limiting

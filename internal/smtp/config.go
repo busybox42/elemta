@@ -145,15 +145,22 @@ type CertRenewalConfig struct {
 
 // ResourceConfig represents resource limits
 type ResourceConfig struct {
-	MaxCPU            int    `json:"max_cpu" toml:"max_cpu"`
-	MaxMemory         int64  `json:"max_memory" toml:"max_memory"`
-	MaxConnections    int    `json:"max_connections" toml:"max_connections"`
-	MaxConcurrent     int    `json:"max_concurrent" toml:"max_concurrent"`
-	ConnectionTimeout int    `json:"connection_timeout" toml:"connection_timeout"`
-	ReadTimeout       int    `json:"read_timeout" toml:"read_timeout"`
-	WriteTimeout      int    `json:"write_timeout" toml:"write_timeout"`
-	ValkeyURL         string `json:"valkey_url" toml:"valkey_url"`
-	ValkeyKeyPrefix   string `json:"valkey_key_prefix" toml:"valkey_key_prefix"`
+	MaxCPU               int    `json:"max_cpu" toml:"max_cpu"`
+	MaxMemory            int64  `json:"max_memory" toml:"max_memory"`
+	MaxConnections       int    `json:"max_connections" toml:"max_connections"`
+	MaxConnectionsPerIP  int    `json:"max_connections_per_ip" toml:"max_connections_per_ip"`
+	MaxConcurrent        int    `json:"max_concurrent" toml:"max_concurrent"`
+	ConnectionTimeout    int    `json:"connection_timeout" toml:"connection_timeout"`
+	ReadTimeout          int    `json:"read_timeout" toml:"read_timeout"`
+	WriteTimeout         int    `json:"write_timeout" toml:"write_timeout"`
+	ValkeyURL            string `json:"valkey_url" toml:"valkey_url"`
+	ValkeyKeyPrefix      string `json:"valkey_key_prefix" toml:"valkey_key_prefix"`
+	SessionTimeout       int    `json:"session_timeout" toml:"session_timeout"`
+	IdleTimeout          int    `json:"idle_timeout" toml:"idle_timeout"`
+	GoroutinePoolSize    int    `json:"goroutine_pool_size" toml:"goroutine_pool_size"`
+	MaxMemoryUsage       int64  `json:"max_memory_usage" toml:"max_memory_usage"`
+	RateLimitWindow      int    `json:"rate_limit_window" toml:"rate_limit_window"`
+	MaxRequestsPerWindow int    `json:"max_requests_per_window" toml:"max_requests_per_window"`
 }
 
 // CacheConfig represents caching configuration
