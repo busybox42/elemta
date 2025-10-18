@@ -19,17 +19,10 @@ COPY . .
 RUN go mod tidy
 
 # Build the elemta binaries (statically linked)
+# All plugins are built-in to the main binary - no external .so files needed
 RUN CGO_ENABLED=0 go build -o elemta ./cmd/elemta
 RUN CGO_ENABLED=0 go build -o elemta-queue ./cmd/elemta-queue
 RUN CGO_ENABLED=0 go build -o elemta-cli ./cmd/elemta-cli
-
-# Build the plugins (with CGO enabled for plugins)
-WORKDIR /build/plugins
-RUN CGO_ENABLED=1 go build -buildmode=plugin -o clamav.so ./clamav
-RUN CGO_ENABLED=1 go build -buildmode=plugin -o rspamd.so ./rspamd
-RUN CGO_ENABLED=1 go build -buildmode=plugin -o rate_limiter.so ./rate_limiter.go
-RUN CGO_ENABLED=1 go build -buildmode=plugin -o allowdeny.so ./allowdeny
-WORKDIR /build
 
 # Security-hardened final image
 FROM debian:bookworm-slim
@@ -42,6 +35,7 @@ RUN groupadd -r elemta -g 1001 && \
 RUN apt-get update && apt-get install -y python3 python3-pip curl netcat-openbsd dos2unix libc6 && rm -rf /var/lib/apt/lists/*
 
 # Create directories with proper ownership from the start
+# Note: /app/plugins directory exists but is empty (all plugins are built-in)
 RUN mkdir -p /app/config /app/queue /app/logs /app/plugins /app/certs && \
     chown -R elemta:elemta /app && \
     chmod 755 /app/config /app/logs /app/plugins /app/certs && \
@@ -60,19 +54,12 @@ RUN dos2unix /app/entrypoint.sh && \
 COPY --from=builder --chown=elemta:elemta /build/elemta /app/elemta
 COPY --from=builder --chown=elemta:elemta /build/elemta-queue /app/elemta-queue
 COPY --from=builder --chown=elemta:elemta /build/elemta-cli /app/elemta-cli
-COPY --from=builder --chown=elemta:elemta /build/plugins/clamav.so /app/plugins/clamav.so
-COPY --from=builder --chown=elemta:elemta /build/plugins/rspamd.so /app/plugins/rspamd.so
-COPY --from=builder --chown=elemta:elemta /build/plugins/rate_limiter.so /app/plugins/rate_limiter.so
-COPY --from=builder --chown=elemta:elemta /build/plugins/allowdeny.so /app/plugins/allowdeny.so
+# Note: No .so plugins copied - all plugins are built into the main binary
 
 # Copy configuration files with proper ownership
 COPY --chown=elemta:elemta config/elemta-generated.toml /app/config/elemta-generated.toml
 COPY --chown=elemta:elemta config/dev.toml /app/config/dev.toml
 # users.txt not needed - using LDAP authentication
-
-# Copy allow/deny plugin configuration
-COPY --chown=elemta:elemta plugins/allowdeny/config.toml /app/config/allowdeny.toml
-COPY --chown=elemta:elemta plugins/allowdeny/rules.json /app/config/rules.json
 
 # Copy SQLite database with proper ownership
 COPY --chown=elemta:elemta config/elemta.db /app/config/elemta.db
