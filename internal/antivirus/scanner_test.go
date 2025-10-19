@@ -598,4 +598,3 @@ func BenchmarkScanBytes(b *testing.B) {
 		manager.ScanBytes(ctx, data)
 	}
 }
-

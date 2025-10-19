@@ -243,7 +243,7 @@ func TestMemoryCacheBasicOperations(t *testing.T) {
 
 	t.Run("Exists check", func(t *testing.T) {
 		cache.Set(ctx, "exists-key", "value", 0)
-		
+
 		exists, err := cache.Exists(ctx, "exists-key")
 		assert.NoError(t, err)
 		assert.True(t, exists)
@@ -644,7 +644,7 @@ func TestMemoryCacheEdgeCases(t *testing.T) {
 		err = cache.Connect()
 		assert.NoError(t, err) // Should not error
 		assert.True(t, cache.IsConnected())
-		
+
 		cache.Close()
 	})
 
@@ -708,4 +708,3 @@ func BenchmarkMemoryCacheIncrement(b *testing.B) {
 		cache.Increment(ctx, "counter", 1)
 	}
 }
-

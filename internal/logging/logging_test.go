@@ -354,4 +354,3 @@ func BenchmarkFieldCreation(b *testing.B) {
 		_ = F("key", "value")
 	}
 }
-
