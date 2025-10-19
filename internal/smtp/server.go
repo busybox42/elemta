@@ -525,7 +525,7 @@ func (s *Server) updateQueueMetricsWithRetry() {
 // acceptConnections accepts and handles incoming connections with standardized worker pool
 func (s *Server) acceptConnections() error {
 	s.logger.Printf("Starting connection acceptance loop")
-	fmt.Printf("DEBUG: acceptConnections goroutine started\n")
+	s.slogger.Debug("acceptConnections goroutine started")
 
 	for {
 		select {
@@ -553,7 +553,7 @@ func (s *Server) acceptConnections() error {
 			continue
 		}
 
-		fmt.Printf("DEBUG: Connection accepted from %s\n", conn.RemoteAddr())
+		s.slogger.Debug("Connection accepted", "remote_addr", conn.RemoteAddr().String())
 
 		// Reset deadline after successful accept
 		if tcpListener, ok := s.listener.(*net.TCPListener); ok {
@@ -562,13 +562,13 @@ func (s *Server) acceptConnections() error {
 
 		// Check if connection can be accepted based on resource limits
 		clientAddr := conn.RemoteAddr().String()
-		fmt.Printf("DEBUG: Checking if connection can be accepted from %s\n", clientAddr)
+		s.slogger.Debug("Checking if connection can be accepted", "client_addr", clientAddr)
 		if !s.resourceManager.CanAcceptConnection(clientAddr) {
 			s.logger.Printf("Connection rejected due to resource limits: %s", clientAddr)
 			conn.Close()
 			continue
 		}
-		fmt.Printf("DEBUG: Connection accepted by resource manager\n")
+		s.slogger.Debug("Connection accepted by resource manager")
 
 		// Create connection job for worker pool
 		jobID := uuid.New().String()
@@ -581,7 +581,7 @@ func (s *Server) acceptConnections() error {
 		}
 
 		// Submit job to worker pool with timeout
-		fmt.Printf("DEBUG: Submitting connection job %s to worker pool\n", jobID)
+		s.slogger.Debug("Submitting connection job to worker pool", "job_id", jobID)
 		if err := s.workerPool.SubmitWithTimeout(connectionJob, 5*time.Second); err != nil {
 			s.slogger.Warn("Failed to submit connection to worker pool, handling directly",
 				"remote_addr", clientAddr,
@@ -615,31 +615,31 @@ func (s *Server) acceptConnections() error {
 
 // handleConnectionWithContext processes a connection with proper context handling
 func (s *Server) handleConnectionWithContext(ctx context.Context, conn interface{}) error {
-	fmt.Printf("DEBUG: handleConnectionWithContext called\n")
+	s.slogger.Debug("handleConnectionWithContext called")
 	netConn, ok := conn.(net.Conn)
 	if !ok {
-		fmt.Printf("DEBUG: Invalid connection type\n")
+		s.slogger.Debug("Invalid connection type")
 		return fmt.Errorf("invalid connection type")
 	}
-	fmt.Printf("DEBUG: Connection type is valid, proceeding with session handling\n")
+	s.slogger.Debug("Connection type is valid, proceeding with session handling")
 
 	// Ensure connection is closed when done
 	defer func() {
-		fmt.Printf("DEBUG: Closing connection\n")
+		s.slogger.Debug("Closing connection")
 		netConn.Close()
 	}()
 
 	// Handle the session with context
-	fmt.Printf("DEBUG: Calling handleAndCloseSession\n")
+	s.slogger.Debug("Calling handleAndCloseSession")
 	s.handleAndCloseSession(netConn)
-	fmt.Printf("DEBUG: handleAndCloseSession completed\n")
+	s.slogger.Debug("handleAndCloseSession completed")
 	return nil
 }
 
 // handleAndCloseSession processes a connection and ensures it's properly closed with guaranteed cleanup
 func (s *Server) handleAndCloseSession(conn net.Conn) {
 	clientIP := conn.RemoteAddr().String()
-	fmt.Printf("DEBUG: handleAndCloseSession called for %s\n", clientIP)
+	s.slogger.Debug("handleAndCloseSession called", "client_ip", clientIP)
 	var sessionID string
 	var cleanupDone bool
 
@@ -677,24 +677,24 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 	}()
 
 	// Register connection with resource manager
-	fmt.Printf("DEBUG: Registering connection with resource manager\n")
+	s.slogger.Debug("Registering connection with resource manager")
 	sessionID = s.resourceManager.AcceptConnection(conn)
-	fmt.Printf("DEBUG: Connection registered with session ID: %s\n", sessionID)
+	s.slogger.Debug("Connection registered", "session_id", sessionID)
 	s.logger.Printf("new connection: %s (session: %s)", clientIP, sessionID)
 
 	// Set connection timeout
-	fmt.Printf("DEBUG: Setting connection deadline\n")
+	s.slogger.Debug("Setting connection deadline")
 	if err := conn.SetDeadline(time.Now().Add(s.resourceManager.GetConnectionTimeout())); err != nil {
-		fmt.Printf("DEBUG: Failed to set connection deadline: %v\n", err)
+		s.slogger.Debug("Failed to set connection deadline", "error", err)
 		s.logger.Printf("failed to set connection deadline: %v, client: %s, session: %s", err, clientIP, sessionID)
 	} else {
-		fmt.Printf("DEBUG: Connection deadline set successfully\n")
+		s.slogger.Debug("Connection deadline set successfully")
 	}
 
 	// Create a new session with the current configuration and authentication
-	fmt.Printf("DEBUG: Creating new SMTP session for %s\n", clientIP)
+	s.slogger.Debug("Creating new SMTP session", "client_ip", clientIP)
 	session := NewSession(conn, s.config, s.authenticator)
-	fmt.Printf("DEBUG: SMTP session created successfully\n")
+	s.slogger.Debug("SMTP session created successfully")
 
 	// Set the TLS manager from the server
 	session.SetTLSManager(s.tlsManager)
@@ -712,9 +712,9 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 	// Note: Builtin plugins would be set through plugin manager if needed
 
 	// Handle the SMTP session directly (circuit breaker disabled for now due to premature failures)
-	fmt.Printf("DEBUG: Starting session.Handle() for %s\n", clientIP)
+	s.slogger.Debug("Starting session.Handle()", "client_ip", clientIP)
 	err := session.Handle()
-	fmt.Printf("DEBUG: session.Handle() completed for %s\n", clientIP)
+	s.slogger.Debug("session.Handle() completed", "client_ip", clientIP)
 
 	if err != nil {
 		if err != io.EOF && err != context.DeadlineExceeded {

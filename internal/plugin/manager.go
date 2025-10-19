@@ -417,7 +417,7 @@ func (m *Manager) LoadPlugins() error {
 	// Now load each plugin (each call will take the lock as needed)
 	for _, pluginName := range pluginNames {
 		if err := m.LoadPlugin(pluginName); err != nil {
-			fmt.Printf("Failed to load plugin %s: %v\n", pluginName, err)
+			fmt.Fprintf(os.Stderr, "Failed to load plugin %s: %v\n", pluginName, err)
 		}
 	}
 

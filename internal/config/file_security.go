@@ -61,7 +61,7 @@ func (cfs *ConfigFileSecurity) SecureFilePermissions(filePath string) error {
 		}
 
 		// Log the security improvement
-		fmt.Printf("SECURITY: Set secure permissions on %s (%s -> %s)\n",
+		fmt.Fprintf(os.Stderr, "SECURITY: Set secure permissions on %s (%s -> %s)\n",
 			filePath, currentMode.Perm(), targetMode)
 	}
 
@@ -274,7 +274,7 @@ func (cfs *ConfigFileSecurity) CreateSecureConfigFile(filePath string, content [
 		return fmt.Errorf("config file ownership validation failed: %w", err)
 	}
 
-	fmt.Printf("SECURITY: Created secure config file %s with permissions %s\n", filePath, fileMode)
+	fmt.Fprintf(os.Stderr, "SECURITY: Created secure config file %s with permissions %s\n", filePath, fileMode)
 
 	return nil
 }
@@ -419,7 +419,7 @@ func (cfs *ConfigFileSecurity) ValidateAllConfigFiles(configDir string) error {
 	if len(warnings) > 0 {
 		fmt.Println("Config file security warnings:")
 		for _, warning := range warnings {
-			fmt.Printf("  WARNING: %s\n", warning)
+			fmt.Fprintf(os.Stderr, "  WARNING: %s\n", warning)
 		}
 	}
 

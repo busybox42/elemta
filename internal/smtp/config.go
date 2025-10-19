@@ -240,7 +240,7 @@ type APIConfig struct {
 func findConfigFile(configPath string) (string, error) {
 	if configPath != "" {
 		if _, err := os.Stat(configPath); err == nil {
-			fmt.Printf("Using config from explicit path: %s\n", configPath)
+			// Informational: config file found at explicit path
 			return configPath, nil
 		}
 		return "", fmt.Errorf("config file not found at %s", configPath)
@@ -255,9 +255,9 @@ func findConfigFile(configPath string) (string, error) {
 	}
 
 	for _, path := range searchPaths {
-		fmt.Printf("Checking for config at: %s\n", path)
+		// Checking for config file in search paths
 		if _, err := os.Stat(path); err == nil {
-			fmt.Printf("Found config at: %s\n", path)
+			// Config file found in search path
 			return path, nil
 		}
 	}

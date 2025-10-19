@@ -227,8 +227,8 @@ func StartMetricsServer(addr string) *http.Server {
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			// Log error but don't crash
-			// We'll use fmt.Printf here since we might not have a logger available
-			fmt.Printf("Metrics server error: %v\n", err)
+			// Log to stderr since we might not have a logger available
+			fmt.Fprintf(os.Stderr, "Metrics server error: %v\n", err)
 		}
 	}()
 

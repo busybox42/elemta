@@ -235,9 +235,9 @@ func FindConfigFile(configPath string) (string, error) {
 	}
 
 	for _, loc := range locations {
-		fmt.Printf("Checking for config at: %s\n", loc)
+		// Checking for config file in search paths (startup)
 		if _, err := os.Stat(loc); err == nil {
-			fmt.Printf("Found config at: %s\n", loc)
+			// Config file found in search path
 			return loc, nil
 		}
 	}
@@ -280,7 +280,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("config file too large: %d bytes (max: %d)", len(data), securityValidator.config.MaxConfigFileSize)
 	}
 
-	fmt.Printf("[DEBUG] Raw config file contents:\n%s\n", string(data))
+	// Debug: config file loaded successfully (comment only for production)
 
 	// Pre-initialize TLS pointer for TOML mapping
 	cfg.TLS = &smtp.TLSConfig{}
@@ -326,15 +326,15 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("configuration validation failed: %s", strings.Join(errorMessages, "; "))
 	}
 
-	// Log warnings if any
+	// Log warnings if any (visible during startup)
 	if len(validationResult.Warnings) > 0 {
-		fmt.Println("Configuration warnings:")
+		fmt.Fprintln(os.Stderr, "Configuration warnings:")
 		for _, warning := range validationResult.Warnings {
-			fmt.Printf("  WARNING: %s\n", warning.Error())
+			fmt.Fprintf(os.Stderr, "  WARNING: %s\n", warning.Error())
 		}
 	}
 
-	fmt.Printf("Configuration loaded successfully. Hostname: %s, Listen: %s\n",
+	fmt.Fprintf(os.Stderr, "Configuration loaded successfully. Hostname: %s, Listen: %s\n",
 		cfg.Server.Hostname, cfg.Server.Listen)
 
 	return cfg, nil
@@ -1198,7 +1198,7 @@ func SecureAllConfigFiles(configDir string) error {
 	// Validate all config files (this will show warnings but not fail)
 	if err := fileSecurity.ValidateAllConfigFiles(configDir); err != nil {
 		// Don't fail on validation errors, just log them
-		fmt.Printf("WARNING: Config file security validation issues: %v\n", err)
+		fmt.Fprintf(os.Stderr, "WARNING: Config file security validation issues: %v\n", err)
 	}
 
 	// Read directory contents to secure individual files
@@ -1222,7 +1222,7 @@ func SecureAllConfigFiles(configDir string) error {
 
 		// Secure file permissions
 		if err := fileSecurity.SecureFilePermissions(filePath); err != nil {
-			fmt.Printf("WARNING: Failed to secure permissions for %s: %v\n", filePath, err)
+			fmt.Fprintf(os.Stderr, "WARNING: Failed to secure permissions for %s: %v\n", filePath, err)
 		}
 	}
 

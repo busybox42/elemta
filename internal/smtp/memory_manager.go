@@ -129,17 +129,16 @@ func NewMemoryManager(config *MemoryConfig, logger *slog.Logger) *MemoryManager 
 // CheckMemoryLimit checks if current memory usage is within limits
 func (mm *MemoryManager) CheckMemoryLimit() error {
 	// Check circuit breaker first (without holding the main lock to avoid deadlock)
-	fmt.Printf("DEBUG: Checking circuit breaker state\n")
+	mm.logger.Debug("Checking circuit breaker state")
 	if !mm.circuitBreaker.AllowRequest() {
-		fmt.Printf("DEBUG: Circuit breaker is OPEN - rejecting connection\n")
+		mm.logger.Debug("Circuit breaker is OPEN - rejecting connection")
 		return fmt.Errorf("memory circuit breaker is open - memory exhaustion protection active")
 	}
-	fmt.Printf("DEBUG: Circuit breaker is CLOSED - allowing connection\n")
+	mm.logger.Debug("Circuit breaker is CLOSED - allowing connection")
 
 	// Get current memory stats (this doesn't need the main lock)
 	stats := mm.getCurrentMemoryStats()
-	fmt.Printf("DEBUG: Memory stats - utilization: %.2f%%, current: %d, max: %d, critical_threshold: %.2f%%\n",
-		stats.MemoryUtilization*100, stats.CurrentMemoryUsage, mm.config.MaxMemoryUsage, mm.config.MemoryCriticalThreshold*100)
+	mm.logger.Debug("Memory stats", "utilization_pct", stats.MemoryUtilization*100, "current_bytes", stats.CurrentMemoryUsage, "max_bytes", mm.config.MaxMemoryUsage, "critical_threshold_pct", mm.config.MemoryCriticalThreshold*100)
 
 	// Check if we're approaching memory limits
 	if stats.MemoryUtilization >= mm.config.MemoryCriticalThreshold {
@@ -174,22 +173,22 @@ func (mm *MemoryManager) CheckMemoryLimit() error {
 
 // CheckConnectionMemoryLimit checks if a connection can consume additional memory
 func (mm *MemoryManager) CheckConnectionMemoryLimit(connectionID string, additionalMemory int64) error {
-	fmt.Printf("DEBUG: CheckConnectionMemoryLimit called for connection %s, memory %d\n", connectionID, additionalMemory)
+	mm.logger.Debug("CheckConnectionMemoryLimit called", "connection_id", connectionID, "memory_bytes", additionalMemory)
 
 	// Check overall memory limit first (this method doesn't hold locks)
-	fmt.Printf("DEBUG: Calling CheckMemoryLimit from CheckConnectionMemoryLimit\n")
+	mm.logger.Debug("Calling CheckMemoryLimit from CheckConnectionMemoryLimit")
 	if err := mm.CheckMemoryLimit(); err != nil {
-		fmt.Printf("DEBUG: CheckMemoryLimit failed: %v\n", err)
+		mm.logger.Debug("CheckMemoryLimit failed", "error", err)
 		return err
 	}
-	fmt.Printf("DEBUG: CheckMemoryLimit passed\n")
+	mm.logger.Debug("CheckMemoryLimit passed")
 
 	// Check per-connection memory limit (use cached config to avoid lock contention)
 	perConnectionLimit := mm.config.PerConnectionMemoryLimit
-	fmt.Printf("DEBUG: Per-connection memory limit: %d, requested: %d\n", perConnectionLimit, additionalMemory)
+	mm.logger.Debug("Per-connection memory limit", "limit_bytes", perConnectionLimit, "requested_bytes", additionalMemory)
 
 	if additionalMemory > perConnectionLimit {
-		fmt.Printf("DEBUG: Connection memory limit exceeded\n")
+		mm.logger.Debug("Connection memory limit exceeded")
 		mm.logger.Warn("Connection memory limit exceeded",
 			"connection_id", connectionID,
 			"requested_memory", additionalMemory,
@@ -199,25 +198,25 @@ func (mm *MemoryManager) CheckConnectionMemoryLimit(connectionID string, additio
 			additionalMemory, perConnectionLimit)
 	}
 
-	fmt.Printf("DEBUG: CheckConnectionMemoryLimit passed\n")
+	mm.logger.Debug("CheckConnectionMemoryLimit passed")
 	return nil
 }
 
 // CheckGoroutineLimit checks if we can create additional goroutines
 func (mm *MemoryManager) CheckGoroutineLimit() error {
-	fmt.Printf("DEBUG: CheckGoroutineLimit called\n")
+	mm.logger.Debug("CheckGoroutineLimit called")
 
 	// Get current goroutine count (this is thread-safe)
 	numGoroutines := runtime.NumGoroutine()
-	fmt.Printf("DEBUG: Current goroutine count: %d\n", numGoroutines)
+	mm.logger.Debug("Current goroutine count", "count", numGoroutines)
 
 	// Use cached config value to avoid lock contention
 	// The config is set during initialization and rarely changes
 	maxGoroutines := mm.config.MaxGoroutines
-	fmt.Printf("DEBUG: Max goroutines config: %d\n", maxGoroutines)
+	mm.logger.Debug("Max goroutines config", "max", maxGoroutines)
 
 	if numGoroutines >= maxGoroutines {
-		fmt.Printf("DEBUG: Goroutine limit exceeded: %d >= %d\n", numGoroutines, maxGoroutines)
+		mm.logger.Debug("Goroutine limit exceeded", "current", numGoroutines, "max", maxGoroutines)
 		mm.logger.Warn("Goroutine limit exceeded",
 			"current_goroutines", numGoroutines,
 			"max_goroutines", maxGoroutines,
@@ -225,7 +224,7 @@ func (mm *MemoryManager) CheckGoroutineLimit() error {
 		return fmt.Errorf("goroutine limit exceeded: %d current, %d max", numGoroutines, maxGoroutines)
 	}
 
-	fmt.Printf("DEBUG: Goroutine limit check passed: %d < %d\n", numGoroutines, maxGoroutines)
+	mm.logger.Debug("Goroutine limit check passed", "current", numGoroutines, "max", maxGoroutines)
 	return nil
 }
 

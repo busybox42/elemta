@@ -654,13 +654,13 @@ func NewResourceManager(limits *ResourceLimits, logger *slog.Logger) *ResourceMa
 
 // CanAcceptConnection checks if a new connection can be accepted
 func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
-	fmt.Printf("DEBUG: CanAcceptConnection called for %s\n", remoteAddr)
+	rm.logger.Debug("CanAcceptConnection called", "remote_addr", remoteAddr)
 
 	// Check memory limits first (most critical)
 	if rm.memoryManager != nil {
-		fmt.Printf("DEBUG: Checking memory limits\n")
+		rm.logger.Debug("Checking memory limits")
 		if err := rm.memoryManager.CheckMemoryLimit(); err != nil {
-			fmt.Printf("DEBUG: Memory limit check failed: %v\n", err)
+			rm.logger.Debug("Memory limit check failed", "error", err)
 			atomic.AddInt64(&rm.rejectedRequests, 1)
 			rm.logger.Warn("Connection rejected: memory limit exceeded",
 				"remote_addr", remoteAddr,
@@ -668,11 +668,11 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 			)
 			return false
 		}
-		fmt.Printf("DEBUG: Memory limit check passed\n")
+		rm.logger.Debug("Memory limit check passed")
 
 		// Check goroutine limits
 		if err := rm.memoryManager.CheckGoroutineLimit(); err != nil {
-			fmt.Printf("DEBUG: Goroutine limit check failed: %v\n", err)
+			rm.logger.Debug("Goroutine limit check failed", "error", err)
 			atomic.AddInt64(&rm.rejectedRequests, 1)
 			rm.logger.Warn("Connection rejected: goroutine limit exceeded",
 				"remote_addr", remoteAddr,
@@ -680,15 +680,15 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 			)
 			return false
 		}
-		fmt.Printf("DEBUG: Goroutine limit check passed\n")
+		rm.logger.Debug("Goroutine limit check passed")
 	} else {
-		fmt.Printf("DEBUG: Memory manager is nil, skipping memory checks\n")
+		rm.logger.Debug("Memory manager is nil, skipping memory checks")
 	}
 
 	// Check global connection limit
-	fmt.Printf("DEBUG: Checking global connection limit: %d/%d\n", atomic.LoadInt32(&rm.activeConnections), rm.limits.MaxConnections)
+	rm.logger.Debug("Checking global connection limit", "active", atomic.LoadInt32(&rm.activeConnections), "max", rm.limits.MaxConnections)
 	if atomic.LoadInt32(&rm.activeConnections) >= int32(rm.limits.MaxConnections) {
-		fmt.Printf("DEBUG: Global connection limit reached\n")
+		rm.logger.Debug("Global connection limit reached")
 		atomic.AddInt64(&rm.rejectedRequests, 1)
 		rm.logger.Warn("Connection rejected: global limit reached",
 			"active_connections", rm.activeConnections,
@@ -697,7 +697,7 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 		)
 		return false
 	}
-	fmt.Printf("DEBUG: Global connection limit check passed\n")
+	rm.logger.Debug("Global connection limit check passed")
 
 	// Extract IP from address
 	host, _, err := net.SplitHostPort(remoteAddr)
@@ -706,9 +706,9 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 	}
 
 	// Check per-IP connection limit
-	fmt.Printf("DEBUG: Checking per-IP connection limit for %s\n", host)
+	rm.logger.Debug("Checking per-IP connection limit", "host", host)
 	if !rm.ipTracker.CanConnect(host) {
-		fmt.Printf("DEBUG: Per-IP connection limit reached for %s\n", host)
+		rm.logger.Debug("Per-IP connection limit reached", "host", host)
 		atomic.AddInt64(&rm.rejectedRequests, 1)
 		rm.logger.Warn("Connection rejected: IP limit reached",
 			"ip", host,
@@ -717,36 +717,36 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 		)
 		return false
 	}
-	fmt.Printf("DEBUG: Per-IP connection limit check passed\n")
+	rm.logger.Debug("Per-IP connection limit check passed")
 
 	// Check global rate limiting
-	fmt.Printf("DEBUG: Checking global rate limiting\n")
+	rm.logger.Debug("Checking global rate limiting")
 	if !rm.globalRateLimiter.Allow() {
-		fmt.Printf("DEBUG: Global rate limit exceeded\n")
+		rm.logger.Debug("Global rate limit exceeded")
 		atomic.AddInt64(&rm.rejectedRequests, 1)
 		rm.logger.Warn("Connection rejected: global rate limit exceeded",
 			"remote_addr", remoteAddr,
 		)
 		return false
 	}
-	fmt.Printf("DEBUG: Global rate limit check passed\n")
+	rm.logger.Debug("Global rate limit check passed")
 
 	// Check per-IP rate limiting (local)
-	fmt.Printf("DEBUG: Checking per-IP rate limiting\n")
+	rm.logger.Debug("Checking per-IP rate limiting")
 	ipRateLimiter := rm.getOrCreateIPRateLimiter(host)
 	if !ipRateLimiter.Allow() {
-		fmt.Printf("DEBUG: Per-IP rate limit exceeded\n")
+		rm.logger.Debug("Per-IP rate limit exceeded")
 		atomic.AddInt64(&rm.rejectedRequests, 1)
 		rm.logger.Warn("Connection rejected: IP rate limit exceeded",
 			"ip", host,
 		)
 		return false
 	}
-	fmt.Printf("DEBUG: Per-IP rate limit check passed\n")
+	rm.logger.Debug("Per-IP rate limit check passed")
 
 	// Check distributed rate limiting via Valkey if enabled
 	if rm.valkeyClient != nil && rm.valkeyClient.enabled {
-		fmt.Printf("DEBUG: Checking Valkey distributed rate limiting for %s\n", host)
+		rm.logger.Debug("Checking Valkey distributed rate limiting", "host", host)
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
@@ -754,7 +754,7 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 		if err != nil {
 			rm.logger.Warn("Valkey rate limit check failed, allowing connection", "error", err, "ip", host)
 		} else if !allowed {
-			fmt.Printf("DEBUG: Valkey distributed rate limit exceeded for %s\n", host)
+			rm.logger.Debug("Valkey distributed rate limit exceeded", "host", host)
 			atomic.AddInt64(&rm.rejectedRequests, 1)
 			rm.logger.Warn("Connection rejected: distributed rate limit exceeded",
 				"ip", host,
@@ -762,10 +762,10 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 			)
 			return false
 		}
-		fmt.Printf("DEBUG: Valkey distributed rate limit check passed for %s\n", host)
+		rm.logger.Debug("Valkey distributed rate limit check passed", "host", host)
 	}
 
-	fmt.Printf("DEBUG: All connection checks passed, accepting connection\n")
+	rm.logger.Debug("All connection checks passed, accepting connection")
 	return true
 }
 
@@ -782,11 +782,11 @@ func (rm *ResourceManager) AcceptConnection(conn net.Conn) string {
 
 	// Check memory limits for new connection
 	if rm.memoryManager != nil {
-		fmt.Printf("DEBUG: Checking connection memory limit for session %s\n", sessionID)
+		rm.logger.Debug("Checking connection memory limit", "session_id", sessionID)
 		// Estimate memory usage for new connection (connection info + buffers)
 		estimatedMemory := int64(1024 * 1024) // 1MB estimate per connection
 		if err := rm.memoryManager.CheckConnectionMemoryLimit(sessionID, estimatedMemory); err != nil {
-			fmt.Printf("DEBUG: Connection memory limit check failed: %v\n", err)
+			rm.logger.Debug("Connection memory limit check failed", "error", err)
 			rm.logger.Warn("Connection rejected due to memory limit",
 				"remote_addr", remoteAddr,
 				"session_id", sessionID,
@@ -794,7 +794,7 @@ func (rm *ResourceManager) AcceptConnection(conn net.Conn) string {
 			)
 			return ""
 		}
-		fmt.Printf("DEBUG: Connection memory limit check passed\n")
+		rm.logger.Debug("Connection memory limit check passed")
 	}
 
 	// Atomic operation: Add IP connection tracking first
