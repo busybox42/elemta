@@ -319,4 +319,3 @@ func TestMessageEdgeCases(t *testing.T) {
 		assert.Equal(t, msg.Data, savedData, "Binary data should be preserved")
 	})
 }
-

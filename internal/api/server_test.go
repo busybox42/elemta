@@ -102,12 +102,12 @@ func TestServerQueueEndpoints(t *testing.T) {
 
 	// Create test router
 	router := http.NewServeMux()
-	
+
 	t.Run("Queue stats endpoint structure", func(t *testing.T) {
 		// The actual endpoint would be registered by setupRoutes()
 		// Here we verify the server has a queue manager
 		assert.NotNil(t, server.queueMgr, "Queue manager should be initialized")
-		
+
 		stats := server.queueMgr.GetStats()
 		assert.NotNil(t, stats)
 		t.Log("✓ Queue stats endpoint dependencies available")
@@ -573,4 +573,3 @@ func BenchmarkJSONEncode(b *testing.B) {
 		json.NewEncoder(w).Encode(data)
 	}
 }
-

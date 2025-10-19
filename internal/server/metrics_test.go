@@ -382,7 +382,7 @@ func TestCertificateMetricsEdgeCases(t *testing.T) {
 				CommonName: "future.example.com",
 			},
 			DNSNames:    []string{"future.example.com"},
-			NotBefore:   time.Now().Add(24 * time.Hour),  // Valid starting tomorrow
+			NotBefore:   time.Now().Add(24 * time.Hour), // Valid starting tomorrow
 			NotAfter:    time.Now().Add(365 * 24 * time.Hour),
 			KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 			ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -481,4 +481,3 @@ func generateBenchCertificate(b *testing.B, dnsName string, notAfter time.Time) 
 
 	return cert, certPEM
 }
-
