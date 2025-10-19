@@ -600,7 +600,7 @@ func NewResourceManager(limits *ResourceLimits, logger *slog.Logger) *ResourceMa
 	if maxConnections == 0 {
 		maxConnections = 1 // Minimum 1 connection for memory calculation
 	}
-	
+
 	memoryConfig := &MemoryConfig{
 		MaxMemoryUsage:             limits.MaxMemoryUsage,
 		MemoryWarningThreshold:     0.75, // 75% warning

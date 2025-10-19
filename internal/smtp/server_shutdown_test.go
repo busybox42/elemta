@@ -529,4 +529,3 @@ func createTestConfig(t *testing.T) *Config {
 		},
 	}
 }
-
