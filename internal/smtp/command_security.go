@@ -51,7 +51,7 @@ func DefaultCommandSecurityConfig() *CommandSecurityConfig {
 		MaxCommandLength:      512, // RFC 5321 limit
 		MaxParameterLength:    320, // RFC 5321 email address limit
 		AllowedCommandChars:   `^[A-Za-z0-9\-_]+$`,
-		AllowedParameterChars: `^[A-Za-z0-9\-_@\.:<>=\s]+$`,
+		AllowedParameterChars: `^[A-Za-z0-9\-_@\.:<>=\s\[\]]+$`, // Allow square brackets for IP literals (RFC 5321)
 		BlockedCommandPatterns: []string{
 			// SQL injection patterns
 			`(?i)(union|select|insert|update|delete|drop|create|alter|exec|execute)`,
@@ -352,6 +352,12 @@ func (csm *CommandSecurityManager) validateHostnameParameter(ctx context.Context
 		return fmt.Errorf("501 5.0.0 Hostname too long")
 	}
 
+	// Check if it's an IP address literal [x.x.x.x] or [IPv6:...] (RFC 5321)
+	if len(hostname) > 2 && hostname[0] == '[' && hostname[len(hostname)-1] == ']' {
+		// Valid IP address literal format - accept it
+		return nil
+	}
+
 	// Check for valid hostname characters
 	hostnameRegex := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`)
 	if !hostnameRegex.MatchString(hostname) {
@@ -376,7 +382,7 @@ func (csm *CommandSecurityManager) validateMailFromParameter(ctx context.Context
 		return fmt.Errorf("501 5.5.4 Syntax: MAIL FROM:<address>")
 	}
 
-	// Extract and validate email address safely
+	// Extract email address, handling SMTP extensions (SIZE, BODY, etc.)
 	addr := strings.TrimPrefix(args, "FROM:")
 	addr = strings.TrimPrefix(addr, "from:")
 	addr = strings.TrimSpace(addr)
@@ -386,12 +392,19 @@ func (csm *CommandSecurityManager) validateMailFromParameter(ctx context.Context
 		return fmt.Errorf("501 5.5.4 Syntax: MAIL FROM:<address>")
 	}
 
-	// Remove angle brackets if present (with bounds checking)
-	if len(addr) >= 2 && strings.HasPrefix(addr, "<") && strings.HasSuffix(addr, ">") {
-		addr = addr[1 : len(addr)-1]
+	// RFC 5321: MAIL FROM:<address> [SP <mail-parameters>]
+	// Extract just the email part, ignoring extensions like SIZE=, BODY=
+	addrPart := addr
+	if idx := strings.Index(addr, ">"); idx > 0 {
+		// Extract everything up to and including the closing bracket
+		addrPart = addr[:idx+1]
 	}
 
-	return csm.validateEmailAddress(ctx, addr)
+	// Remove angle brackets if present (with bounds checking)
+	addrPart = strings.Trim(addrPart, "<>")
+	addrPart = strings.TrimSpace(addrPart)
+
+	return csm.validateEmailAddress(ctx, addrPart)
 }
 
 // validateRcptToParameter validates RCPT TO parameters
@@ -484,11 +497,14 @@ func (csm *CommandSecurityManager) validateEmailAddress(ctx context.Context, add
 		return fmt.Errorf("501 5.1.3 Invalid email address format")
 	}
 
-	// Check for valid email characters (more strict)
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$`)
+	// Check for valid email characters (RFC 5321 compliant)
+	// Allow addresses without TLD for local/internal testing (e.g., user@host)
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*(\.[a-zA-Z]{2,})?$`)
 	if !emailRegex.MatchString(addr) {
 		csm.logger.WarnContext(ctx, "Invalid email address format",
 			"address", addr,
+			"addr_len", len(addr),
+			"addr_bytes", []byte(addr),
 		)
 		return fmt.Errorf("501 5.1.3 Invalid email address format")
 	}

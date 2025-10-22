@@ -520,6 +520,14 @@ func (ch *CommandHandler) validateHostname(ctx context.Context, hostname string)
 		return fmt.Errorf("hostname too long")
 	}
 
+	// Check if it's an IP address literal [x.x.x.x] or [IPv6:...] (RFC 5321 section 4.1.3)
+	// Examples: [127.0.0.1], [IPv6:2001:db8::1]
+	if len(hostname) > 2 && hostname[0] == '[' && hostname[len(hostname)-1] == ']' {
+		// Valid IP address literal format - accept it
+		ch.logger.DebugContext(ctx, "accepting IP address literal in EHLO/HELO", "hostname", hostname)
+		return nil
+	}
+
 	// Use regex for basic hostname validation
 	hostnameRegex := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`)
 	if !hostnameRegex.MatchString(hostname) {
