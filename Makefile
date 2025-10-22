@@ -1,4 +1,4 @@
-.PHONY: all help build clean install-bin install install-dev uninstall run test test-performance test-load docker docker-build docker-run docker-stop cli cli-install cli-test cli-docker api api-install api-test update update-backup update-restart lint fmt
+.PHONY: all help build clean install-bin install install-dev uninstall run test test-load docker docker-build docker-run docker-stop cli cli-install cli-test cli-docker api api-install api-test update update-backup update-restart lint fmt
 
 # Default target
 all: build
@@ -21,8 +21,7 @@ help:
 	@echo "  test-docker       - Test Docker deployment"
 	@echo "  test-auth         - Quick authentication test"
 	@echo "  test-security     - Run security tests"
-	@echo "  test-performance  - Run comprehensive performance/load tests"
-	@echo "  test-load         - Run basic SMTP load tests"
+	@echo "  test-load         - Run SMTP load tests"
 	@echo "  lint              - Run golangci-lint code quality checks"
 	@echo "  fmt               - Format code with gofmt and goimports"
 	@echo ""
@@ -102,13 +101,9 @@ test-security:
 	@echo "Running security tests..."
 	./tests/run_centralized_tests.sh --category security
 
-test-performance:
-	@echo "Running performance load tests..."
-	@echo "⚠️  Note: Requires Docker services running (make docker-setup)"
-	python3 tests/performance/comprehensive_load_test.py
-
 test-load:
-	@echo "Running basic SMTP load tests..."
+	@echo "Running SMTP load tests..."
+	@echo "⚠️  Note: Requires Docker services running (make docker-setup)"
 	python3 tests/performance/smtp_load_test.py
 
 test-all: test test-centralized
