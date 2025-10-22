@@ -328,21 +328,21 @@ func TestDefaultMemoryConfig(t *testing.T) {
 func BenchmarkMemoryManagerCheckMemoryLimit(b *testing.B) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	mm := NewMemoryManager(DefaultMemoryConfig(), logger)
-	defer func() { _ = mm.Close() }()
+	defer mm.Close()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		mm.CheckMemoryLimit()
+		_ = mm.CheckMemoryLimit()
 	}
 }
 
 func BenchmarkMemoryManagerGetMemoryStats(b *testing.B) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	mm := NewMemoryManager(DefaultMemoryConfig(), logger)
-	defer func() { _ = mm.Close() }()
+	defer mm.Close()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		mm.GetMemoryStats()
+		_ = mm.GetMemoryStats()
 	}
 }
