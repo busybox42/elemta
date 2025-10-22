@@ -74,59 +74,59 @@ func (s SessionState) IsValidTransition(newState SessionState) bool {
 
 // SessionStateMachine manages secure session state transitions
 type SessionStateMachine struct {
-	mu                sync.RWMutex
-	currentState      SessionState
-	previousState     SessionState
-	stateHistory      []SessionStateTransition
-	createdAt         time.Time
-	lastTransition    time.Time
-	expiresAt         time.Time
-	maxAge            time.Duration
-	failureCount      int
-	maxFailures       int
-	lockoutDuration   time.Duration
-	lockoutUntil      *time.Time
-	sessionID         string
-	username          string
-	ipAddress         string
-	userAgent         string
-	rbacContext       *RBACContext
-	logger            *slog.Logger
+	mu              sync.RWMutex
+	currentState    SessionState
+	previousState   SessionState
+	stateHistory    []SessionStateTransition
+	createdAt       time.Time
+	lastTransition  time.Time
+	expiresAt       time.Time
+	maxAge          time.Duration
+	failureCount    int
+	maxFailures     int
+	lockoutDuration time.Duration
+	lockoutUntil    *time.Time
+	sessionID       string
+	username        string
+	ipAddress       string
+	userAgent       string
+	rbacContext     *RBACContext
+	logger          *slog.Logger
 }
 
 // SessionStateTransition records a state transition
 type SessionStateTransition struct {
-	FromState   SessionState `json:"from_state"`
-	ToState     SessionState `json:"to_state"`
-	Timestamp   time.Time    `json:"timestamp"`
-	Reason      string       `json:"reason"`
-	IPAddress   string       `json:"ip_address"`
-	UserAgent   string       `json:"user_agent"`
+	FromState SessionState `json:"from_state"`
+	ToState   SessionState `json:"to_state"`
+	Timestamp time.Time    `json:"timestamp"`
+	Reason    string       `json:"reason"`
+	IPAddress string       `json:"ip_address"`
+	UserAgent string       `json:"user_agent"`
 }
 
 // RBACContext holds role-based access control information
 type RBACContext struct {
-	Username   string     `json:"username"`
-	Roles      []string   `json:"roles"`
+	Username    string       `json:"username"`
+	Roles       []string     `json:"roles"`
 	Permissions []Permission `json:"permissions"`
-	LastCheck  time.Time  `json:"last_check"`
+	LastCheck   time.Time    `json:"last_check"`
 }
 
 // SessionStateMachineConfig configures the session state machine
 type SessionStateMachineConfig struct {
-	MaxAge            time.Duration `json:"max_age"`
-	MaxFailures       int           `json:"max_failures"`
-	LockoutDuration   time.Duration `json:"lockout_duration"`
-	MaxStateHistory   int           `json:"max_state_history"`
+	MaxAge          time.Duration `json:"max_age"`
+	MaxFailures     int           `json:"max_failures"`
+	LockoutDuration time.Duration `json:"lockout_duration"`
+	MaxStateHistory int           `json:"max_state_history"`
 }
 
 // DefaultSessionStateMachineConfig returns sensible defaults
 func DefaultSessionStateMachineConfig() *SessionStateMachineConfig {
 	return &SessionStateMachineConfig{
-		MaxAge:            30 * time.Minute,
-		MaxFailures:       5,
-		LockoutDuration:   30 * time.Minute,
-		MaxStateHistory:   10,
+		MaxAge:          30 * time.Minute,
+		MaxFailures:     5,
+		LockoutDuration: 30 * time.Minute,
+		MaxStateHistory: 10,
 	}
 }
 
@@ -144,19 +144,19 @@ func NewSessionStateMachine(config *SessionStateMachineConfig, ipAddress, userAg
 
 	now := time.Now()
 	ssm := &SessionStateMachine{
-		currentState:   SessionStateInitial,
-		previousState:  SessionStateInitial,
-		stateHistory:   make([]SessionStateTransition, 0, config.MaxStateHistory),
-		createdAt:      now,
-		lastTransition: now,
-		expiresAt:      now.Add(config.MaxAge),
-		maxAge:         config.MaxAge,
-		maxFailures:    config.MaxFailures,
+		currentState:    SessionStateInitial,
+		previousState:   SessionStateInitial,
+		stateHistory:    make([]SessionStateTransition, 0, config.MaxStateHistory),
+		createdAt:       now,
+		lastTransition:  now,
+		expiresAt:       now.Add(config.MaxAge),
+		maxAge:          config.MaxAge,
+		maxFailures:     config.MaxFailures,
 		lockoutDuration: config.LockoutDuration,
-		sessionID:      sessionID,
-		ipAddress:      ipAddress,
-		userAgent:      userAgent,
-		logger:         logger.With("component", "session-state-machine", "session_id", sessionID),
+		sessionID:       sessionID,
+		ipAddress:       ipAddress,
+		userAgent:       userAgent,
+		logger:          logger.With("component", "session-state-machine", "session_id", sessionID),
 	}
 
 	// Record initial state

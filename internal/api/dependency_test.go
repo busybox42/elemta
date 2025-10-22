@@ -19,12 +19,12 @@ func TestMuxIntegration(t *testing.T) {
 	r.HandleFunc("/test/{id}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		id := vars["id"]
-		
+
 		response := map[string]string{
-			"id": id,
+			"id":      id,
 			"message": "test successful",
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}).Methods("GET")
@@ -62,7 +62,7 @@ func TestServerCreation(t *testing.T) {
 	}
 
 	queueDir := t.TempDir()
-	
+
 	server, err := NewServer(config, queueDir)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
@@ -95,7 +95,7 @@ func TestQueueTypeValidation(t *testing.T) {
 
 	for _, test := range tests {
 		result, err := parseQueueType(test.input)
-		
+
 		if test.hasError {
 			if err == nil {
 				t.Errorf("Expected error for input '%s', but got none", test.input)

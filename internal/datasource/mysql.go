@@ -54,7 +54,7 @@ func NewMySQL(config Config) *MySQL {
 
 	// Initialize security manager
 	securityManager := NewSQLSecurityManager(logger)
-	
+
 	// Register allowed tables and columns for MySQL
 	securityManager.RegisterTable(userTable, []string{
 		"username", "password", "email", "full_name", "is_active", "is_admin",
@@ -860,4 +860,3 @@ func (m *MySQL) Query(ctx context.Context, query string, args ...interface{}) (i
 		}, nil
 	}
 }
-

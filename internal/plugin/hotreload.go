@@ -292,7 +292,7 @@ func (hrm *HotReloadManager) performReload(pluginPath string, watched *WatchedPl
 			return fmt.Errorf("plugin validation failed: %v", result.Errors)
 		} else {
 			event.NewHash = result.FileHash
-			
+
 			// SECURITY: Verify new hash is different from old (prevent replay attacks)
 			if event.NewHash == watched.Hash && watched.ReloadCount > 0 {
 				hrm.logger.Info("Plugin hash unchanged, skipping reload",
@@ -311,7 +311,7 @@ func (hrm *HotReloadManager) performReload(pluginPath string, watched *WatchedPl
 		backupPath:   "",
 		reloadFailed: false,
 	}
-	
+
 	// Backup old version if enabled
 	if hrm.config.BackupOldVersions {
 		backupPath, err := hrm.backupPluginAtomic(pluginPath, watched.PluginName)
@@ -328,7 +328,7 @@ func (hrm *HotReloadManager) performReload(pluginPath string, watched *WatchedPl
 	// This prevents race conditions during plugin swap
 	unloadSuccess := false
 	loadSuccess := false
-	
+
 	// Unload the existing plugin gracefully
 	if err := hrm.unloadPluginGracefully(watched.PluginName); err != nil {
 		hrm.logger.Warn("Failed to unload plugin gracefully",
@@ -352,7 +352,7 @@ func (hrm *HotReloadManager) performReload(pluginPath string, watched *WatchedPl
 			hrm.logger.Error("Plugin reload failed, initiating rollback",
 				"plugin", watched.PluginName,
 				"error", err)
-			
+
 			if rollbackErr := hrm.rollbackPlugin(reloadState); rollbackErr != nil {
 				hrm.logger.Error("CRITICAL: Rollback failed - plugin in inconsistent state",
 					"plugin", watched.PluginName,
@@ -360,7 +360,7 @@ func (hrm *HotReloadManager) performReload(pluginPath string, watched *WatchedPl
 					"original_error", err)
 				return fmt.Errorf("reload and rollback both failed: reload=%v, rollback=%v", err, rollbackErr)
 			}
-			
+
 			hrm.logger.Info("Successfully rolled back to previous version",
 				"plugin", watched.PluginName)
 			return fmt.Errorf("failed to load new plugin version (rolled back): %w", err)
@@ -394,7 +394,7 @@ func (hrm *HotReloadManager) performReload(pluginPath string, watched *WatchedPl
 
 		return nil
 	}
-	
+
 	// If we get here, something went wrong
 	return fmt.Errorf("plugin reload incomplete: unload=%v, load=%v", unloadSuccess, loadSuccess)
 }
@@ -413,25 +413,25 @@ func (hrm *HotReloadManager) rollbackPlugin(state *pluginReloadState) error {
 	if state.backupPath == "" {
 		return fmt.Errorf("no backup available for rollback")
 	}
-	
+
 	hrm.logger.Info("Rolling back plugin to previous version",
 		"plugin", state.pluginName,
 		"backup", state.backupPath)
-	
+
 	// Restore from backup
 	if err := hrm.copyFile(state.backupPath, state.pluginPath); err != nil {
 		return fmt.Errorf("failed to restore from backup: %w", err)
 	}
-	
+
 	// Reload the old version
 	if err := hrm.pluginManager.LoadPlugin(state.pluginName); err != nil {
 		return fmt.Errorf("failed to reload old version after restore: %w", err)
 	}
-	
+
 	hrm.logger.Info("Plugin rolled back successfully",
 		"plugin", state.pluginName,
 		"restored_from", state.backupPath)
-	
+
 	return nil
 }
 
@@ -657,7 +657,7 @@ func (fw *FileWatcher) checkForChanges() {
 			fw.manager.UnwatchPlugin(pluginPath)
 			continue
 		}
-		
+
 		if fw.hasFileChanged(pluginPath, watched) {
 			fw.manager.logger.Info("Plugin file changed, triggering reload",
 				"plugin", watched.PluginName,
@@ -668,7 +668,7 @@ func (fw *FileWatcher) checkForChanges() {
 				fw.manager.logger.Error("Auto-reload failed",
 					"plugin", watched.PluginName,
 					"error", err)
-				
+
 				// SECURITY: Stop watching if multiple reloads fail
 				if watched.ReloadCount > 5 {
 					fw.manager.logger.Warn("Too many failed reloads, removing from watch list",
@@ -719,49 +719,49 @@ func (hrm *HotReloadManager) GetHotReloadStatus() map[string]interface{} {
 func (hrm *HotReloadManager) validatePluginPath(pluginPath string) error {
 	// Clean the path to prevent directory traversal
 	cleanPath := filepath.Clean(pluginPath)
-	
+
 	// Get absolute path
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
 		return fmt.Errorf("failed to resolve absolute path: %w", err)
 	}
-	
+
 	// Check if path contains suspicious patterns
 	if strings.Contains(absPath, "..") {
 		return fmt.Errorf("path contains directory traversal attempt: %s", pluginPath)
 	}
-	
+
 	// Check if file extension is .so
 	if !strings.HasSuffix(absPath, ".so") {
 		return fmt.Errorf("invalid plugin file extension (must be .so): %s", pluginPath)
 	}
-	
+
 	// Verify path is within plugin directory or its subdirectories
 	pluginDir, err := filepath.Abs(filepath.Dir(absPath))
 	if err != nil {
 		return fmt.Errorf("failed to resolve plugin directory: %w", err)
 	}
-	
+
 	// Check file is readable and not a symlink (prevent symlink attacks)
 	fileInfo, err := os.Lstat(absPath)
 	if err != nil {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
-	
+
 	if fileInfo.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("symlinks are not allowed for security reasons: %s", pluginPath)
 	}
-	
+
 	// Check file permissions (should not be world-writable)
 	if fileInfo.Mode().Perm()&0o002 != 0 {
 		return fmt.Errorf("plugin file is world-writable (security risk): %s", pluginPath)
 	}
-	
+
 	hrm.logger.Debug("Plugin path validated successfully",
 		"original_path", pluginPath,
 		"absolute_path", absPath,
 		"plugin_dir", pluginDir)
-	
+
 	return nil
 }
 
@@ -772,22 +772,22 @@ func (hrm *HotReloadManager) verifyPluginChecksum(pluginPath string, expectedHas
 		return fmt.Errorf("failed to open plugin file: %w", err)
 	}
 	defer file.Close()
-	
+
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
 		return fmt.Errorf("failed to calculate checksum: %w", err)
 	}
-	
+
 	actualHash := fmt.Sprintf("%x", hash.Sum(nil))
-	
+
 	if expectedHash != "" && actualHash != expectedHash {
 		return fmt.Errorf("checksum mismatch - possible tampering detected (expected: %s, got: %s)",
 			expectedHash, actualHash)
 	}
-	
+
 	hrm.logger.Debug("Plugin checksum verified",
 		"path", pluginPath,
 		"hash", actualHash)
-	
+
 	return nil
 }

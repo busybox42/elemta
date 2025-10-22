@@ -27,43 +27,43 @@ type SecurePluginManager struct {
 // SecurePluginConfig defines security configuration for the plugin manager
 type SecurePluginConfig struct {
 	// Security enforcement
-	EnforceSignatures     bool          `toml:"enforce_signatures" json:"enforce_signatures" yaml:"enforce_signatures"`
-	RequireCapabilities   bool          `toml:"require_capabilities" json:"require_capabilities" yaml:"require_capabilities"`
-	EnableSandboxing      bool          `toml:"enable_sandboxing" json:"enable_sandboxing" yaml:"enable_sandboxing"`
-	EnableAuditLogging    bool          `toml:"enable_audit_logging" json:"enable_audit_logging" yaml:"enable_audit_logging"`
-	
+	EnforceSignatures   bool `toml:"enforce_signatures" json:"enforce_signatures" yaml:"enforce_signatures"`
+	RequireCapabilities bool `toml:"require_capabilities" json:"require_capabilities" yaml:"require_capabilities"`
+	EnableSandboxing    bool `toml:"enable_sandboxing" json:"enable_sandboxing" yaml:"enable_sandboxing"`
+	EnableAuditLogging  bool `toml:"enable_audit_logging" json:"enable_audit_logging" yaml:"enable_audit_logging"`
+
 	// Signature verification
-	TrustedCertificates   []string      `toml:"trusted_certificates" json:"trusted_certificates" yaml:"trusted_certificates"`
-	SignatureCacheSize    int           `toml:"signature_cache_size" json:"signature_cache_size" yaml:"signature_cache_size"`
-	SignatureCacheTTL     time.Duration `toml:"signature_cache_ttl" json:"signature_cache_ttl" yaml:"signature_cache_ttl"`
-	
+	TrustedCertificates []string      `toml:"trusted_certificates" json:"trusted_certificates" yaml:"trusted_certificates"`
+	SignatureCacheSize  int           `toml:"signature_cache_size" json:"signature_cache_size" yaml:"signature_cache_size"`
+	SignatureCacheTTL   time.Duration `toml:"signature_cache_ttl" json:"signature_cache_ttl" yaml:"signature_cache_ttl"`
+
 	// Capability management
-	DefaultCapabilities   []string      `toml:"default_capabilities" json:"default_capabilities" yaml:"default_capabilities"`
-	RestrictedCapabilities []string     `toml:"restricted_capabilities" json:"restricted_capabilities" yaml:"restricted_capabilities"`
-	
+	DefaultCapabilities    []string `toml:"default_capabilities" json:"default_capabilities" yaml:"default_capabilities"`
+	RestrictedCapabilities []string `toml:"restricted_capabilities" json:"restricted_capabilities" yaml:"restricted_capabilities"`
+
 	// Sandbox configuration
-	SandboxConfig         SandboxConfig `toml:"sandbox_config" json:"sandbox_config" yaml:"sandbox_config"`
-	
+	SandboxConfig SandboxConfig `toml:"sandbox_config" json:"sandbox_config" yaml:"sandbox_config"`
+
 	// Audit configuration
-	AuditLogPath          string        `toml:"audit_log_path" json:"audit_log_path" yaml:"audit_log_path"`
-	AuditRetentionDays    int           `toml:"audit_retention_days" json:"audit_retention_days" yaml:"audit_retention_days"`
+	AuditLogPath       string `toml:"audit_log_path" json:"audit_log_path" yaml:"audit_log_path"`
+	AuditRetentionDays int    `toml:"audit_retention_days" json:"audit_retention_days" yaml:"audit_retention_days"`
 }
 
 // DefaultSecurePluginConfig returns secure default configuration
 func DefaultSecurePluginConfig() SecurePluginConfig {
 	return SecurePluginConfig{
-		EnforceSignatures:     true,
-		RequireCapabilities:   true,
-		EnableSandboxing:      true,
-		EnableAuditLogging:    true,
-		TrustedCertificates:   []string{},
-		SignatureCacheSize:    1000,
-		SignatureCacheTTL:     24 * time.Hour,
-		DefaultCapabilities:   []string{"read", "log"},
+		EnforceSignatures:      true,
+		RequireCapabilities:    true,
+		EnableSandboxing:       true,
+		EnableAuditLogging:     true,
+		TrustedCertificates:    []string{},
+		SignatureCacheSize:     1000,
+		SignatureCacheTTL:      24 * time.Hour,
+		DefaultCapabilities:    []string{"read", "log"},
 		RestrictedCapabilities: []string{"admin", "system", "network"},
-		SandboxConfig:         DefaultSandboxConfig(),
-		AuditLogPath:          "./logs/plugin_audit.log",
-		AuditRetentionDays:    30,
+		SandboxConfig:          DefaultSandboxConfig(),
+		AuditLogPath:           "./logs/plugin_audit.log",
+		AuditRetentionDays:     30,
 	}
 }
 
@@ -81,12 +81,12 @@ type SecurePlugin struct {
 
 // PluginSignature represents a cryptographic signature for a plugin
 type PluginSignature struct {
-	Algorithm    string    `json:"algorithm"`
-	Signature    []byte    `json:"signature"`
-	Certificate  []byte    `json:"certificate"`
-	Timestamp    time.Time `json:"timestamp"`
-	Hash         string    `json:"hash"`
-	Signer       string    `json:"signer"`
+	Algorithm   string    `json:"algorithm"`
+	Signature   []byte    `json:"signature"`
+	Certificate []byte    `json:"certificate"`
+	Timestamp   time.Time `json:"timestamp"`
+	Hash        string    `json:"hash"`
+	Signer      string    `json:"signer"`
 }
 
 // PluginSignatureStore manages plugin signatures and verification
@@ -101,12 +101,12 @@ type PluginSignatureStore struct {
 
 // CapabilityManager manages plugin capabilities and permissions
 type CapabilityManager struct {
-	capabilities     map[string]Capability
-	pluginCaps       map[string][]string
-	restrictedCaps   map[string]bool
-	defaultCaps      []string
-	mu               sync.RWMutex
-	logger           *slog.Logger
+	capabilities   map[string]Capability
+	pluginCaps     map[string][]string
+	restrictedCaps map[string]bool
+	defaultCaps    []string
+	mu             sync.RWMutex
+	logger         *slog.Logger
 }
 
 // Capability defines a permission that a plugin can have
@@ -120,18 +120,18 @@ type Capability struct {
 
 // SecurityAuditLogger logs security events for plugins
 type SecurityAuditLogger struct {
-	logPath        string
-	retentionDays  int
-	logger         *slog.Logger
-	mu             sync.RWMutex
-	eventCount     int64
+	logPath       string
+	retentionDays int
+	logger        *slog.Logger
+	mu            sync.RWMutex
+	eventCount    int64
 }
 
 // NewSecurePluginManager creates a new secure plugin manager
 func NewSecurePluginManager(pluginPath string, config SecurePluginConfig) (*SecurePluginManager, error) {
 	// Create base manager
 	baseManager := NewManager(pluginPath)
-	
+
 	// Create sandbox
 	sandbox := NewPluginSandbox(config.SandboxConfig)
 	if config.EnableSandboxing {
@@ -139,26 +139,26 @@ func NewSecurePluginManager(pluginPath string, config SecurePluginConfig) (*Secu
 			return nil, fmt.Errorf("failed to start plugin sandbox: %w", err)
 		}
 	}
-	
+
 	// Create validator
 	validator := NewPluginValidator()
 	validator.SetDevelopmentMode(!config.EnforceSignatures)
-	
+
 	// Create signature store
 	signatureStore, err := NewPluginSignatureStore(config.TrustedCertificates, config.SignatureCacheSize, config.SignatureCacheTTL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create signature store: %w", err)
 	}
-	
+
 	// Create capability manager
 	capabilityMgr := NewCapabilityManager(config.DefaultCapabilities, config.RestrictedCapabilities)
-	
+
 	// Create audit logger
 	auditLogger, err := NewSecurityAuditLogger(config.AuditLogPath, config.AuditRetentionDays)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create audit logger: %w", err)
 	}
-	
+
 	return &SecurePluginManager{
 		Manager:        baseManager,
 		sandbox:        sandbox,
@@ -175,15 +175,15 @@ func NewSecurePluginManager(pluginPath string, config SecurePluginConfig) (*Secu
 func (spm *SecurePluginManager) LoadSecurePlugin(pluginName string) error {
 	spm.mu.Lock()
 	defer spm.mu.Unlock()
-	
+
 	spm.auditLogger.LogEvent("plugin_load_attempt", map[string]interface{}{
 		"plugin_name": pluginName,
 		"timestamp":   time.Now(),
 	})
-	
+
 	// Construct plugin path
 	pluginPath := filepath.Join(spm.pluginPath, pluginName+".so")
-	
+
 	// 1. Validate plugin file
 	validationResult, err := spm.validator.ValidatePlugin(pluginPath)
 	if err != nil {
@@ -193,7 +193,7 @@ func (spm *SecurePluginManager) LoadSecurePlugin(pluginName string) error {
 		})
 		return fmt.Errorf("plugin validation failed: %w", err)
 	}
-	
+
 	if !validationResult.Valid {
 		spm.auditLogger.LogEvent("plugin_validation_errors", map[string]interface{}{
 			"plugin_name": pluginName,
@@ -201,7 +201,7 @@ func (spm *SecurePluginManager) LoadSecurePlugin(pluginName string) error {
 		})
 		return fmt.Errorf("plugin validation failed: %v", validationResult.Errors)
 	}
-	
+
 	// 2. Verify signature if enforcement is enabled
 	var signature *PluginSignature
 	if spm.config.EnforceSignatures {
@@ -215,7 +215,7 @@ func (spm *SecurePluginManager) LoadSecurePlugin(pluginName string) error {
 		}
 		signature = sig
 	}
-	
+
 	// 3. Load plugin using base manager
 	if err := spm.Manager.LoadPlugin(pluginName); err != nil {
 		spm.auditLogger.LogEvent("plugin_load_failed", map[string]interface{}{
@@ -224,23 +224,23 @@ func (spm *SecurePluginManager) LoadSecurePlugin(pluginName string) error {
 		})
 		return fmt.Errorf("failed to load plugin: %w", err)
 	}
-	
+
 	// 4. Get plugin info
 	pluginInfo := validationResult.Metadata["plugin_info"].(PluginInfo)
-	
+
 	// 5. Determine capabilities
 	capabilities := spm.capabilityMgr.GetPluginCapabilities(pluginName, &pluginInfo)
-	
+
 	// 6. Create secure plugin wrapper
 	securePlugin := &SecurePlugin{
-		Info:          &pluginInfo,
-		Capabilities:  capabilities,
-		Signature:     signature,
-		Sandboxed:     spm.config.EnableSandboxing,
-		LastValidated: time.Now(),
+		Info:           &pluginInfo,
+		Capabilities:   capabilities,
+		Signature:      signature,
+		Sandboxed:      spm.config.EnableSandboxing,
+		LastValidated:  time.Now(),
 		ViolationCount: 0,
 	}
-	
+
 	// 7. Initialize plugin with security context
 	if err := spm.initializeSecurePlugin(securePlugin, pluginName); err != nil {
 		spm.auditLogger.LogEvent("plugin_initialization_failed", map[string]interface{}{
@@ -249,18 +249,18 @@ func (spm *SecurePluginManager) LoadSecurePlugin(pluginName string) error {
 		})
 		return fmt.Errorf("failed to initialize secure plugin: %w", err)
 	}
-	
+
 	// 8. Register secure plugin
 	spm.securePlugins[pluginName] = securePlugin
-	
+
 	spm.auditLogger.LogEvent("plugin_loaded_securely", map[string]interface{}{
-		"plugin_name":   pluginName,
-		"capabilities":  capabilities,
-		"signature":     signature != nil,
-		"sandboxed":     spm.config.EnableSandboxing,
-		"validated_at":  time.Now(),
+		"plugin_name":  pluginName,
+		"capabilities": capabilities,
+		"signature":    signature != nil,
+		"sandboxed":    spm.config.EnableSandboxing,
+		"validated_at": time.Now(),
 	})
-	
+
 	return nil
 }
 
@@ -269,10 +269,10 @@ func (spm *SecurePluginManager) initializeSecurePlugin(securePlugin *SecurePlugi
 	// Get the actual plugin from the base manager
 	// This is a simplified approach - in practice, we'd need to track the plugin type
 	// and get the appropriate plugin instance
-	
+
 	// For now, we'll assume it's a generic plugin and initialize it
 	// In a real implementation, we'd need to handle different plugin types
-	
+
 	// Create a security context for the plugin
 	_ = &PluginSecurityContext{
 		PluginName:   pluginName,
@@ -280,10 +280,10 @@ func (spm *SecurePluginManager) initializeSecurePlugin(securePlugin *SecurePlugi
 		Sandboxed:    securePlugin.Sandboxed,
 		AuditLogger:  spm.auditLogger,
 	}
-	
+
 	// Initialize the plugin with the security context
 	// This would need to be implemented based on the specific plugin interface
-	
+
 	return nil
 }
 
@@ -292,26 +292,26 @@ func (spm *SecurePluginManager) ExecuteSecurePlugin(pluginName string, fn func()
 	spm.mu.RLock()
 	securePlugin, exists := spm.securePlugins[pluginName]
 	spm.mu.RUnlock()
-	
+
 	if !exists {
 		return nil, fmt.Errorf("secure plugin not found: %s", pluginName)
 	}
-	
+
 	// Check if plugin has been revoked due to violations
 	if securePlugin.ViolationCount > 10 {
 		spm.auditLogger.LogEvent("plugin_execution_blocked", map[string]interface{}{
-			"plugin_name":      pluginName,
-			"violation_count":  securePlugin.ViolationCount,
+			"plugin_name":     pluginName,
+			"violation_count": securePlugin.ViolationCount,
 			"reason":          "excessive_violations",
 		})
 		return nil, fmt.Errorf("plugin execution blocked due to security violations")
 	}
-	
+
 	// Execute in sandbox if enabled
 	if spm.config.EnableSandboxing {
 		return spm.sandbox.ExecuteInSandbox(pluginName, fn)
 	}
-	
+
 	// Execute directly with monitoring
 	return fn()
 }
@@ -320,12 +320,12 @@ func (spm *SecurePluginManager) ExecuteSecurePlugin(pluginName string, fn func()
 func (spm *SecurePluginManager) GetSecurePluginInfo(pluginName string) (*SecurePlugin, error) {
 	spm.mu.RLock()
 	defer spm.mu.RUnlock()
-	
+
 	securePlugin, exists := spm.securePlugins[pluginName]
 	if !exists {
 		return nil, fmt.Errorf("secure plugin not found: %s", pluginName)
 	}
-	
+
 	return securePlugin, nil
 }
 
@@ -333,12 +333,12 @@ func (spm *SecurePluginManager) GetSecurePluginInfo(pluginName string) (*SecureP
 func (spm *SecurePluginManager) RevokePlugin(pluginName string, reason string) error {
 	spm.mu.Lock()
 	defer spm.mu.Unlock()
-	
+
 	securePlugin, exists := spm.securePlugins[pluginName]
 	if !exists {
 		return fmt.Errorf("plugin not found: %s", pluginName)
 	}
-	
+
 	// Close the plugin
 	if err := securePlugin.Close(); err != nil {
 		spm.auditLogger.LogEvent("plugin_close_failed", map[string]interface{}{
@@ -346,19 +346,19 @@ func (spm *SecurePluginManager) RevokePlugin(pluginName string, reason string) e
 			"error":       err.Error(),
 		})
 	}
-	
+
 	// Remove from secure plugins
 	delete(spm.securePlugins, pluginName)
-	
+
 	// Remove from base manager
 	// This would need to be implemented in the base manager
-	
+
 	spm.auditLogger.LogEvent("plugin_revoked", map[string]interface{}{
 		"plugin_name": pluginName,
 		"reason":      reason,
 		"timestamp":   time.Now(),
 	})
-	
+
 	return nil
 }
 
@@ -366,29 +366,29 @@ func (spm *SecurePluginManager) RevokePlugin(pluginName string, reason string) e
 func (spm *SecurePluginManager) GetSecurityStatus() map[string]interface{} {
 	spm.mu.RLock()
 	defer spm.mu.RUnlock()
-	
+
 	status := map[string]interface{}{
-		"secure_plugins_count": len(spm.securePlugins),
-		"sandbox_enabled":      spm.config.EnableSandboxing,
-		"sandbox_status":       spm.sandbox.GetSandboxStatus(),
+		"secure_plugins_count":  len(spm.securePlugins),
+		"sandbox_enabled":       spm.config.EnableSandboxing,
+		"sandbox_status":        spm.sandbox.GetSandboxStatus(),
 		"signature_enforcement": spm.config.EnforceSignatures,
-		"audit_logging":        spm.config.EnableAuditLogging,
+		"audit_logging":         spm.config.EnableAuditLogging,
 		"capability_management": spm.config.RequireCapabilities,
 	}
-	
+
 	// Add plugin-specific security info
 	pluginSecurity := make(map[string]interface{})
 	for name, securePlugin := range spm.securePlugins {
 		pluginSecurity[name] = map[string]interface{}{
-			"capabilities":     securePlugin.Capabilities,
-			"sandboxed":        securePlugin.Sandboxed,
-			"last_validated":   securePlugin.LastValidated,
-			"violation_count":  securePlugin.ViolationCount,
-			"has_signature":    securePlugin.Signature != nil,
+			"capabilities":    securePlugin.Capabilities,
+			"sandboxed":       securePlugin.Sandboxed,
+			"last_validated":  securePlugin.LastValidated,
+			"violation_count": securePlugin.ViolationCount,
+			"has_signature":   securePlugin.Signature != nil,
 		}
 	}
 	status["plugins"] = pluginSecurity
-	
+
 	return status
 }
 
@@ -396,7 +396,7 @@ func (spm *SecurePluginManager) GetSecurityStatus() map[string]interface{} {
 func (spm *SecurePluginManager) Close() error {
 	spm.mu.Lock()
 	defer spm.mu.Unlock()
-	
+
 	// Close all secure plugins
 	for name, securePlugin := range spm.securePlugins {
 		if err := securePlugin.Close(); err != nil {
@@ -406,7 +406,7 @@ func (spm *SecurePluginManager) Close() error {
 			})
 		}
 	}
-	
+
 	// Stop sandbox
 	if spm.sandbox != nil {
 		if err := spm.sandbox.Stop(); err != nil {
@@ -415,16 +415,16 @@ func (spm *SecurePluginManager) Close() error {
 			})
 		}
 	}
-	
+
 	// Close base manager
 	if err := spm.Manager.Close(); err != nil {
 		return err
 	}
-	
+
 	spm.auditLogger.LogEvent("secure_plugin_manager_closed", map[string]interface{}{
 		"timestamp": time.Now(),
 	})
-	
+
 	return nil
 }
 
@@ -445,14 +445,14 @@ func NewPluginSignatureStore(trustedCerts []string, cacheSize int, cacheTTL time
 		cacheTTL:     cacheTTL,
 		logger:       slog.Default().With("component", "plugin-signature-store"),
 	}
-	
+
 	// Load trusted certificates
 	for _, certPath := range trustedCerts {
 		if err := store.loadTrustedCertificate(certPath); err != nil {
 			return nil, fmt.Errorf("failed to load trusted certificate %s: %w", certPath, err)
 		}
 	}
-	
+
 	return store, nil
 }
 
@@ -462,20 +462,20 @@ func (pss *PluginSignatureStore) loadTrustedCertificate(certPath string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	block, _ := pem.Decode(certData)
 	if block == nil {
 		return fmt.Errorf("failed to decode PEM block")
 	}
-	
+
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		return err
 	}
-	
+
 	pss.trustedCerts[cert.Subject.CommonName] = cert
 	pss.logger.Info("Loaded trusted certificate", "subject", cert.Subject.CommonName)
-	
+
 	return nil
 }
 
@@ -486,15 +486,15 @@ func (pss *PluginSignatureStore) VerifyPluginSignature(pluginPath string) (*Plug
 	// 1. Extract signature from plugin metadata or separate signature file
 	// 2. Verify the signature against trusted certificates
 	// 3. Check signature timestamp and validity
-	
+
 	// For now, return a mock signature
 	return &PluginSignature{
-		Algorithm: "SHA256-RSA",
-		Signature: []byte("mock_signature"),
+		Algorithm:   "SHA256-RSA",
+		Signature:   []byte("mock_signature"),
 		Certificate: []byte("mock_certificate"),
-		Timestamp: time.Now(),
-		Hash: "mock_hash",
-		Signer: "mock_signer",
+		Timestamp:   time.Now(),
+		Hash:        "mock_hash",
+		Signer:      "mock_signer",
 	}, nil
 }
 
@@ -507,15 +507,15 @@ func NewCapabilityManager(defaultCaps, restrictedCaps []string) *CapabilityManag
 		defaultCaps:    defaultCaps,
 		logger:         slog.Default().With("component", "capability-manager"),
 	}
-	
+
 	// Initialize default capabilities
 	cm.initializeDefaultCapabilities()
-	
+
 	// Mark restricted capabilities
 	for _, cap := range restrictedCaps {
 		cm.restrictedCaps[cap] = true
 	}
-	
+
 	return cm
 }
 
@@ -529,7 +529,7 @@ func (cm *CapabilityManager) initializeDefaultCapabilities() {
 		{Name: "admin", Description: "Administrative privileges", Level: 90, Privileges: []string{"admin"}, Restricted: true},
 		{Name: "system", Description: "System-level access", Level: 100, Privileges: []string{"system"}, Restricted: true},
 	}
-	
+
 	for _, cap := range defaultCaps {
 		cm.capabilities[cap.Name] = cap
 	}
@@ -539,11 +539,11 @@ func (cm *CapabilityManager) initializeDefaultCapabilities() {
 func (cm *CapabilityManager) GetPluginCapabilities(pluginName string, info *PluginInfo) []string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	
+
 	// Start with default capabilities
 	capabilities := make([]string, len(cm.defaultCaps))
 	copy(capabilities, cm.defaultCaps)
-	
+
 	// Add capabilities based on plugin type
 	switch info.Type {
 	case PluginTypeAntivirus, PluginTypeAntispam:
@@ -553,7 +553,7 @@ func (cm *CapabilityManager) GetPluginCapabilities(pluginName string, info *Plug
 	case PluginTypeAuth:
 		capabilities = append(capabilities, "network", "file")
 	}
-	
+
 	// Remove duplicates and restricted capabilities if not explicitly allowed
 	uniqueCaps := make(map[string]bool)
 	for _, cap := range capabilities {
@@ -561,12 +561,12 @@ func (cm *CapabilityManager) GetPluginCapabilities(pluginName string, info *Plug
 			uniqueCaps[cap] = true
 		}
 	}
-	
+
 	result := make([]string, 0, len(uniqueCaps))
 	for cap := range uniqueCaps {
 		result = append(result, cap)
 	}
-	
+
 	return result
 }
 
@@ -583,7 +583,7 @@ func NewSecurityAuditLogger(logPath string, retentionDays int) (*SecurityAuditLo
 	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create audit log directory: %w", err)
 	}
-	
+
 	return &SecurityAuditLogger{
 		logPath:       logPath,
 		retentionDays: retentionDays,
@@ -596,17 +596,17 @@ func NewSecurityAuditLogger(logPath string, retentionDays int) (*SecurityAuditLo
 func (sal *SecurityAuditLogger) LogEvent(eventType string, data map[string]interface{}) {
 	sal.mu.Lock()
 	defer sal.mu.Unlock()
-	
+
 	sal.eventCount++
-	
+
 	// Add common fields
 	data["event_type"] = eventType
 	data["event_id"] = sal.eventCount
 	data["timestamp"] = time.Now().UTC()
-	
+
 	// Log the event
 	sal.logger.Info("Security audit event", "event", data)
-	
+
 	// In a real implementation, we would also write to a dedicated audit log file
 	// and implement log rotation based on retentionDays
 }

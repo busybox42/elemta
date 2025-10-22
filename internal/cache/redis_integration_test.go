@@ -172,7 +172,7 @@ func TestRedisClientVersion(t *testing.T) {
 	}
 
 	redis := NewRedis(config)
-	
+
 	// Test that the client can be created without errors
 	if redis == nil {
 		t.Fatal("Failed to create Redis client")

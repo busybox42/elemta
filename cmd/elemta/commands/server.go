@@ -130,7 +130,7 @@ func startServer() {
 	slog.Debug("queue configuration",
 		"queue_dir_flat", cfg.QueueDir,
 		"queue_dir_nested", cfg.Queue.Dir)
-	
+
 	// Use Queue.Dir if QueueDir is empty (handle both config formats)
 	queueDir := cfg.QueueDir
 	if queueDir == "" && cfg.Queue.Dir != "" {
@@ -141,7 +141,7 @@ func startServer() {
 		queueDir = "/app/queue" // Fallback default
 		slog.Debug("using fallback queue directory", "queue_dir", queueDir)
 	}
-	
+
 	smtpConfig := &smtp.Config{
 		Hostname:     cfg.Hostname,     // Use top-level hostname
 		ListenAddr:   cfg.ListenAddr,   // Use top-level listen_addr

@@ -368,7 +368,7 @@ func (v *EnhancedValidator) validateEmailParameter(email string) *EnhancedValida
 	result.Valid = true
 	result.RFCCompliant = true
 	result.SanitizedValue = v.sanitizeEmailParameter(email)
-	
+
 	// Safely get lengths
 	parts := strings.Split(email, "@")
 	if len(parts) >= 1 {
@@ -580,9 +580,9 @@ func (v *EnhancedValidator) validateHeaderParameter(headers string) *EnhancedVal
 func (v *EnhancedValidator) containsObviousHeaderInjection(input string) bool {
 	// Only check for obvious injection patterns, not legitimate headers
 	obviousPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`\x00|\x01|\x02|\x03|\x04|\x05|\x06|\x07|\x08|\x0B|\x0C|\x0E|\x0F`), // Control chars
+		regexp.MustCompile(`\x00|\x01|\x02|\x03|\x04|\x05|\x06|\x07|\x08|\x0B|\x0C|\x0E|\x0F`),                       // Control chars
 		regexp.MustCompile(`(?i)\r?\n\r?\n.*\r?\n\s*(to|from|cc|bcc|subject|reply-to|return-path|message-id|date):`), // Header injection after body
-		regexp.MustCompile(`(?i)\r?\n\r?\n.*\r?\n\s*x-`), // X- header injection after body
+		regexp.MustCompile(`(?i)\r?\n\r?\n.*\r?\n\s*x-`),                                                             // X- header injection after body
 	}
 
 	for _, pattern := range obviousPatterns {

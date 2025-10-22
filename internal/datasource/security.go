@@ -29,7 +29,7 @@ type SQLSecurityManager struct {
 func NewSQLSecurityManager(logger *slog.Logger) *SQLSecurityManager {
 	// Check if debug mode is enabled via environment variable
 	debugMode := os.Getenv("ELEMTA_SQL_DEBUG") == "true" || os.Getenv("DEBUG") == "true"
-	
+
 	return &SQLSecurityManager{
 		preparedStatements: make(map[string]*sql.Stmt),
 		logger:             logger,
@@ -44,17 +44,17 @@ func NewSQLSecurityManager(logger *slog.Logger) *SQLSecurityManager {
 func (sm *SQLSecurityManager) RegisterTable(tableName string, columns []string) {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
-	
+
 	sm.allowedTables[tableName] = true
-	
+
 	if sm.allowedColumns[tableName] == nil {
 		sm.allowedColumns[tableName] = make(map[string]bool)
 	}
-	
+
 	for _, column := range columns {
 		sm.allowedColumns[tableName][column] = true
 	}
-	
+
 	sm.logger.Info("Registered secure table",
 		"table", tableName,
 		"columns", len(columns),
@@ -65,7 +65,7 @@ func (sm *SQLSecurityManager) RegisterTable(tableName string, columns []string) 
 func (sm *SQLSecurityManager) ValidateTableName(tableName string) error {
 	sm.mutex.RLock()
 	defer sm.mutex.RUnlock()
-	
+
 	if !sm.allowedTables[tableName] {
 		sm.logger.Warn("SQL injection attempt: unauthorized table access",
 			"table", tableName,
@@ -73,7 +73,7 @@ func (sm *SQLSecurityManager) ValidateTableName(tableName string) error {
 		)
 		return fmt.Errorf("table '%s' is not authorized for access", tableName)
 	}
-	
+
 	// Additional validation: table name must be alphanumeric with underscores only
 	if !regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`).MatchString(tableName) {
 		sm.logger.Warn("SQL injection attempt: invalid table name format",
@@ -82,7 +82,7 @@ func (sm *SQLSecurityManager) ValidateTableName(tableName string) error {
 		)
 		return fmt.Errorf("table name '%s' contains invalid characters", tableName)
 	}
-	
+
 	return nil
 }
 
@@ -90,12 +90,12 @@ func (sm *SQLSecurityManager) ValidateTableName(tableName string) error {
 func (sm *SQLSecurityManager) ValidateColumnName(tableName, columnName string) error {
 	sm.mutex.RLock()
 	defer sm.mutex.RUnlock()
-	
+
 	tableColumns, exists := sm.allowedColumns[tableName]
 	if !exists {
 		return fmt.Errorf("table '%s' is not registered", tableName)
 	}
-	
+
 	if !tableColumns[columnName] {
 		sm.logger.Warn("SQL injection attempt: unauthorized column access",
 			"table", tableName,
@@ -104,7 +104,7 @@ func (sm *SQLSecurityManager) ValidateColumnName(tableName, columnName string) e
 		)
 		return fmt.Errorf("column '%s' is not authorized for table '%s'", columnName, tableName)
 	}
-	
+
 	// Additional validation: column name must be alphanumeric with underscores only
 	if !regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`).MatchString(columnName) {
 		sm.logger.Warn("SQL injection attempt: invalid column name format",
@@ -114,7 +114,7 @@ func (sm *SQLSecurityManager) ValidateColumnName(tableName, columnName string) e
 		)
 		return fmt.Errorf("column name '%s' contains invalid characters", columnName)
 	}
-	
+
 	return nil
 }
 
@@ -123,7 +123,7 @@ func (sm *SQLSecurityManager) SanitizeInput(input string) (string, error) {
 	if input == "" {
 		return "", nil
 	}
-	
+
 	// Check for SQL injection patterns
 	dangerousPatterns := []struct {
 		pattern string
@@ -138,7 +138,7 @@ func (sm *SQLSecurityManager) SanitizeInput(input string) (string, error) {
 		{`--|\*\/|\/\*`, "comment_injection"},
 		{`\$\$|\$[a-zA-Z0-9_]+\$`, "dollar_quote_injection"},
 	}
-	
+
 	for _, pattern := range dangerousPatterns {
 		matched, err := regexp.MatchString(pattern.pattern, input)
 		if err != nil {
@@ -148,7 +148,7 @@ func (sm *SQLSecurityManager) SanitizeInput(input string) (string, error) {
 			)
 			continue
 		}
-		
+
 		if matched {
 			sm.logger.Warn("SQL injection attempt detected",
 				"input", input[:min(100, len(input))], // Limit log size
@@ -158,7 +158,7 @@ func (sm *SQLSecurityManager) SanitizeInput(input string) (string, error) {
 			return "", fmt.Errorf("input contains potentially malicious SQL patterns")
 		}
 	}
-	
+
 	// Length validation
 	if len(input) > 10000 { // Reasonable limit for most inputs
 		sm.logger.Warn("SQL injection attempt: input too long",
@@ -167,7 +167,7 @@ func (sm *SQLSecurityManager) SanitizeInput(input string) (string, error) {
 		)
 		return "", fmt.Errorf("input exceeds maximum allowed length")
 	}
-	
+
 	return input, nil
 }
 
@@ -176,7 +176,7 @@ func (sm *SQLSecurityManager) GetPreparedStatement(db *sql.DB, queryKey, query s
 	sm.mutex.RLock()
 	stmt, exists := sm.preparedStatements[queryKey]
 	sm.mutex.RUnlock()
-	
+
 	if exists && stmt != nil {
 		// Verify statement is still valid
 		if err := stmt.Close(); err == nil {
@@ -189,16 +189,16 @@ func (sm *SQLSecurityManager) GetPreparedStatement(db *sql.DB, queryKey, query s
 			return stmt, nil
 		}
 	}
-	
+
 	// Create new prepared statement
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
-	
+
 	// Double-check pattern to avoid race condition
 	if stmt, exists := sm.preparedStatements[queryKey]; exists && stmt != nil {
 		return stmt, nil
 	}
-	
+
 	stmt, err := db.Prepare(query)
 	if err != nil {
 		sm.logger.Error("Failed to prepare SQL statement",
@@ -207,9 +207,9 @@ func (sm *SQLSecurityManager) GetPreparedStatement(db *sql.DB, queryKey, query s
 		)
 		return nil, fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	
+
 	sm.preparedStatements[queryKey] = stmt
-	
+
 	// Log query in debug mode
 	if sm.debugMode {
 		sm.logger.Info("SQL Query Prepared (DEBUG MODE)",
@@ -223,7 +223,7 @@ func (sm *SQLSecurityManager) GetPreparedStatement(db *sql.DB, queryKey, query s
 			"total_statements", len(sm.preparedStatements),
 		)
 	}
-	
+
 	return stmt, nil
 }
 
@@ -231,7 +231,7 @@ func (sm *SQLSecurityManager) GetPreparedStatement(db *sql.DB, queryKey, query s
 func (sm *SQLSecurityManager) CleanupPreparedStatements() {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
-	
+
 	for key, stmt := range sm.preparedStatements {
 		if stmt != nil {
 			if err := stmt.Close(); err != nil {
@@ -242,9 +242,9 @@ func (sm *SQLSecurityManager) CleanupPreparedStatements() {
 			}
 		}
 	}
-	
+
 	sm.preparedStatements = make(map[string]*sql.Stmt)
-	
+
 	sm.logger.Info("Cleaned up all prepared statements")
 }
 
@@ -254,30 +254,30 @@ func (sm *SQLSecurityManager) BuildSecureQuery(operation string, tableName strin
 	if err := sm.ValidateTableName(tableName); err != nil {
 		return "", "", err
 	}
-	
+
 	// Validate all column names
 	for _, column := range columns {
 		if err := sm.ValidateColumnName(tableName, column); err != nil {
 			return "", "", err
 		}
 	}
-	
+
 	for _, column := range whereColumns {
 		if err := sm.ValidateColumnName(tableName, column); err != nil {
 			return "", "", err
 		}
 	}
-	
+
 	// Generate query key for caching
 	queryKey := generateQueryKey(operation, tableName, columns, whereColumns)
-	
+
 	var query string
-	
+
 	switch strings.ToUpper(operation) {
 	case "SELECT":
 		columnList := strings.Join(columns, ", ")
 		query = fmt.Sprintf("SELECT %s FROM %s", columnList, tableName)
-		
+
 		if len(whereColumns) > 0 {
 			whereClause := make([]string, len(whereColumns))
 			for i, col := range whereColumns {
@@ -285,20 +285,20 @@ func (sm *SQLSecurityManager) BuildSecureQuery(operation string, tableName strin
 			}
 			query += " WHERE " + strings.Join(whereClause, " AND ")
 		}
-		
+
 	case "INSERT":
 		columnList := strings.Join(columns, ", ")
 		placeholders := strings.Repeat("?,", len(columns))
 		placeholders = placeholders[:len(placeholders)-1] // Remove trailing comma
 		query = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableName, columnList, placeholders)
-		
+
 	case "UPDATE":
 		setClause := make([]string, len(columns))
 		for i, col := range columns {
 			setClause[i] = fmt.Sprintf("%s = ?", col)
 		}
 		query = fmt.Sprintf("UPDATE %s SET %s", tableName, strings.Join(setClause, ", "))
-		
+
 		if len(whereColumns) > 0 {
 			whereClause := make([]string, len(whereColumns))
 			for i, col := range whereColumns {
@@ -306,10 +306,10 @@ func (sm *SQLSecurityManager) BuildSecureQuery(operation string, tableName strin
 			}
 			query += " WHERE " + strings.Join(whereClause, " AND ")
 		}
-		
+
 	case "DELETE":
 		query = fmt.Sprintf("DELETE FROM %s", tableName)
-		
+
 		if len(whereColumns) > 0 {
 			whereClause := make([]string, len(whereColumns))
 			for i, col := range whereColumns {
@@ -317,11 +317,11 @@ func (sm *SQLSecurityManager) BuildSecureQuery(operation string, tableName strin
 			}
 			query += " WHERE " + strings.Join(whereClause, " AND ")
 		}
-		
+
 	default:
 		return "", "", fmt.Errorf("unsupported operation: %s", operation)
 	}
-	
+
 	return query, queryKey, nil
 }
 
@@ -333,12 +333,12 @@ func generateQueryKey(operation, tableName string, columns, whereColumns []strin
 		strings.Join(columns, ","),
 		strings.Join(whereColumns, ","),
 	}
-	
+
 	// Add random component to prevent key collisions
 	randomBytes := make([]byte, 4)
 	rand.Read(randomBytes)
 	randomHex := hex.EncodeToString(randomBytes)
-	
+
 	return strings.Join(parts, "|") + "|" + randomHex
 }
 
@@ -369,7 +369,7 @@ func (sdb *SecureDBConnection) ExecuteSecureQuery(ctx context.Context, operation
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Sanitize all input arguments
 	sanitizedArgs := make([]interface{}, len(args))
 	for i, arg := range args {
@@ -383,17 +383,17 @@ func (sdb *SecureDBConnection) ExecuteSecureQuery(ctx context.Context, operation
 			sanitizedArgs[i] = arg
 		}
 	}
-	
+
 	// Get prepared statement
 	stmt, err := sdb.securityManager.GetPreparedStatement(sdb.db, queryKey, query)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Execute with timeout
 	ctx, cancel := context.WithTimeout(ctx, sdb.queryTimeout)
 	defer cancel()
-	
+
 	rows, err := stmt.QueryContext(ctx, sanitizedArgs...)
 	if err != nil {
 		sdb.logger.Error("Secure query execution failed",
@@ -403,7 +403,7 @@ func (sdb *SecureDBConnection) ExecuteSecureQuery(ctx context.Context, operation
 		)
 		return nil, fmt.Errorf("query execution failed: %w", err)
 	}
-	
+
 	// Log query execution in debug mode
 	if sdb.securityManager.debugMode {
 		sdb.logger.Info("SQL Query Executed (DEBUG MODE)",
@@ -420,7 +420,7 @@ func (sdb *SecureDBConnection) ExecuteSecureQuery(ctx context.Context, operation
 			"args_count", len(args),
 		)
 	}
-	
+
 	return rows, nil
 }
 
@@ -431,7 +431,7 @@ func (sdb *SecureDBConnection) ExecuteSecureExec(ctx context.Context, operation,
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Sanitize all input arguments
 	sanitizedArgs := make([]interface{}, len(args))
 	for i, arg := range args {
@@ -445,17 +445,17 @@ func (sdb *SecureDBConnection) ExecuteSecureExec(ctx context.Context, operation,
 			sanitizedArgs[i] = arg
 		}
 	}
-	
+
 	// Get prepared statement
 	stmt, err := sdb.securityManager.GetPreparedStatement(sdb.db, queryKey, query)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Execute with timeout
 	ctx, cancel := context.WithTimeout(ctx, sdb.queryTimeout)
 	defer cancel()
-	
+
 	result, err := stmt.ExecContext(ctx, sanitizedArgs...)
 	if err != nil {
 		sdb.logger.Error("Secure exec execution failed",
@@ -465,7 +465,7 @@ func (sdb *SecureDBConnection) ExecuteSecureExec(ctx context.Context, operation,
 		)
 		return nil, fmt.Errorf("exec execution failed: %w", err)
 	}
-	
+
 	// Log exec execution in debug mode
 	if sdb.securityManager.debugMode {
 		sdb.logger.Info("SQL Exec Executed (DEBUG MODE)",
@@ -482,18 +482,18 @@ func (sdb *SecureDBConnection) ExecuteSecureExec(ctx context.Context, operation,
 			"args_count", len(args),
 		)
 	}
-	
+
 	return result, nil
 }
 
 // Close closes the secure database connection and cleans up resources
 func (sdb *SecureDBConnection) Close() error {
 	sdb.securityManager.CleanupPreparedStatements()
-	
+
 	if sdb.db != nil {
 		return sdb.db.Close()
 	}
-	
+
 	return nil
 }
 
@@ -502,7 +502,7 @@ func (sm *SQLSecurityManager) ValidateUsername(username string) error {
 	if username == "" {
 		return fmt.Errorf("username cannot be empty")
 	}
-	
+
 	// Length validation
 	if len(username) > 255 {
 		sm.logger.Warn("SQL injection attempt: username too long",
@@ -511,7 +511,7 @@ func (sm *SQLSecurityManager) ValidateUsername(username string) error {
 		)
 		return fmt.Errorf("username exceeds maximum allowed length")
 	}
-	
+
 	// Character validation - alphanumeric, underscore, hyphen, dot allowed
 	if !regexp.MustCompile(`^[a-zA-Z0-9._@-]+$`).MatchString(username) {
 		sm.logger.Warn("SQL injection attempt: invalid username format",
@@ -520,7 +520,7 @@ func (sm *SQLSecurityManager) ValidateUsername(username string) error {
 		)
 		return fmt.Errorf("username contains invalid characters")
 	}
-	
+
 	_, err := sm.SanitizeInput(username)
 	return err
 }
@@ -530,7 +530,7 @@ func (sm *SQLSecurityManager) ValidateEmail(email string) error {
 	if email == "" {
 		return nil // Email can be empty
 	}
-	
+
 	// Length validation
 	if len(email) > 320 { // RFC 5321 limit
 		sm.logger.Warn("SQL injection attempt: email too long",
@@ -539,7 +539,7 @@ func (sm *SQLSecurityManager) ValidateEmail(email string) error {
 		)
 		return fmt.Errorf("email exceeds maximum allowed length")
 	}
-	
+
 	// Basic email format validation
 	emailRegex := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
 	if !regexp.MustCompile(emailRegex).MatchString(email) {
@@ -549,7 +549,7 @@ func (sm *SQLSecurityManager) ValidateEmail(email string) error {
 		)
 		return fmt.Errorf("email format is invalid")
 	}
-	
+
 	_, err := sm.SanitizeInput(email)
 	return err
 }
@@ -559,7 +559,7 @@ func (sm *SQLSecurityManager) ValidateStringInput(input string, fieldName string
 	if input == "" {
 		return nil // Allow empty strings
 	}
-	
+
 	// Length validation
 	if len(input) > maxLength {
 		sm.logger.Warn("SQL injection attempt: input too long",
@@ -570,7 +570,7 @@ func (sm *SQLSecurityManager) ValidateStringInput(input string, fieldName string
 		)
 		return fmt.Errorf("%s exceeds maximum allowed length of %d characters", fieldName, maxLength)
 	}
-	
+
 	_, err := sm.SanitizeInput(input)
 	return err
 }
@@ -578,7 +578,7 @@ func (sm *SQLSecurityManager) ValidateStringInput(input string, fieldName string
 // ValidateIntegerInput validates integer input with range checking
 func (sm *SQLSecurityManager) ValidateIntegerInput(input interface{}, fieldName string, min, max int64) (int64, error) {
 	var value int64
-	
+
 	switch v := input.(type) {
 	case int:
 		value = int64(v)
@@ -600,7 +600,7 @@ func (sm *SQLSecurityManager) ValidateIntegerInput(input interface{}, fieldName 
 		)
 		return 0, fmt.Errorf("%s must be an integer value", fieldName)
 	}
-	
+
 	// Range validation
 	if value < min || value > max {
 		sm.logger.Warn("SQL injection attempt: integer out of range",
@@ -612,7 +612,7 @@ func (sm *SQLSecurityManager) ValidateIntegerInput(input interface{}, fieldName 
 		)
 		return 0, fmt.Errorf("%s must be between %d and %d", fieldName, min, max)
 	}
-	
+
 	return value, nil
 }
 
@@ -621,15 +621,15 @@ func (sm *SQLSecurityManager) ValidateFilterMap(tableName string, filter map[str
 	if filter == nil {
 		return nil, nil
 	}
-	
+
 	validatedFilter := make(map[string]interface{})
-	
+
 	for key, value := range filter {
 		// Validate column name
 		if err := sm.ValidateColumnName(tableName, key); err != nil {
 			return nil, err
 		}
-		
+
 		// Validate value based on type
 		switch v := value.(type) {
 		case string:
@@ -652,7 +652,7 @@ func (sm *SQLSecurityManager) ValidateFilterMap(tableName string, filter map[str
 			return nil, fmt.Errorf("unsupported value type for filter field %s", key)
 		}
 	}
-	
+
 	return validatedFilter, nil
 }
 
@@ -685,10 +685,10 @@ func (sm *SQLSecurityManager) HandleSecureError(operation, tableName, username s
 		"username", username,
 		"internal_error", internalError.Error(),
 	)
-	
+
 	// Log security event for monitoring
 	sm.LogSecureOperation(operation, tableName, username, false, internalError)
-	
+
 	// Return generic error to user to prevent information disclosure
 	if userMessage == "" {
 		return fmt.Errorf("database operation failed")
@@ -700,7 +700,7 @@ func (sm *SQLSecurityManager) HandleSecureError(operation, tableName, username s
 func (sm *SQLSecurityManager) EnableDebugMode(enabled bool) {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
-	
+
 	sm.debugMode = enabled
 	sm.logger.Info("SQL debug mode changed",
 		"debug_enabled", enabled,

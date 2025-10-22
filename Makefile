@@ -1,4 +1,4 @@
-.PHONY: all help build clean install-bin install install-dev uninstall run test docker docker-build docker-run docker-stop cli cli-install cli-test cli-docker api api-install api-test update update-backup update-restart
+.PHONY: all help build clean install-bin install install-dev uninstall run test test-performance test-load docker docker-build docker-run docker-stop cli cli-install cli-test cli-docker api api-install api-test update update-backup update-restart lint fmt
 
 # Default target
 all: build
@@ -15,12 +15,16 @@ help:
 	@echo "  docker-run     - Start containers"
 	@echo ""
 	@echo "🔧 Build & Test:"
-	@echo "  build          - Build Elemta binaries locally"
-	@echo "  clean          - Clean build artifacts"
-	@echo "  test           - Run Go tests"
-	@echo "  test-docker    - Test Docker deployment"
-	@echo "  test-auth      - Quick authentication test"
-	@echo "  test-security  - Run security tests"
+	@echo "  build             - Build Elemta binaries locally"
+	@echo "  clean             - Clean build artifacts"
+	@echo "  test              - Run Go tests"
+	@echo "  test-docker       - Test Docker deployment"
+	@echo "  test-auth         - Quick authentication test"
+	@echo "  test-security     - Run security tests"
+	@echo "  test-performance  - Run comprehensive performance/load tests"
+	@echo "  test-load         - Run basic SMTP load tests"
+	@echo "  lint              - Run golangci-lint code quality checks"
+	@echo "  fmt               - Format code with gofmt and goimports"
 	@echo ""
 	@echo "🛠️  Advanced:"
 	@echo "  cli            - Build CLI tools"
@@ -98,8 +102,37 @@ test-security:
 	@echo "Running security tests..."
 	./tests/run_centralized_tests.sh --category security
 
+test-performance:
+	@echo "Running performance load tests..."
+	@echo "⚠️  Note: Requires Docker services running (make docker-setup)"
+	python3 tests/performance/comprehensive_load_test.py
+
+test-load:
+	@echo "Running basic SMTP load tests..."
+	python3 tests/performance/smtp_load_test.py
+
 test-all: test test-centralized
 	@echo "All tests completed."
+
+# Code quality targets
+lint:
+	@echo "Running golangci-lint..."
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run ./...; \
+	else \
+		echo "⚠️  golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
+		exit 1; \
+	fi
+
+fmt:
+	@echo "Formatting Go code..."
+	@go fmt ./...
+	@echo "Running goimports..."
+	@if command -v goimports >/dev/null 2>&1; then \
+		goimports -w .; \
+	else \
+		echo "⚠️  goimports not installed. Install with: go install golang.org/x/tools/cmd/goimports@latest"; \
+	fi
 
 # Docker targets
 docker: docker-build docker-run

@@ -144,8 +144,7 @@ func InitializeLogging(levelStr string) {
 	}
 
 	globalLogLevelManager.SetLevel(level)
-	
+
 	slog.Info("logging initialized",
 		"log_level", levelToString(level))
 }
-

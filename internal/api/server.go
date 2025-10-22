@@ -177,7 +177,7 @@ func (s *Server) Start() error {
 
 	// Logging management endpoints (no auth required for GET, auth required for SET)
 	api.HandleFunc("/logging/level", s.HandleGetLogLevel).Methods("GET")
-	
+
 	// Protected logging endpoints (require auth)
 	if s.authMiddleware != nil {
 		loggingProtected := api.PathPrefix("/logging").Subrouter()

@@ -10,7 +10,7 @@ import (
 func TestCommandSecurityManager(t *testing.T) {
 	// Create a test logger
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	
+
 	// Create command security manager
 	csm := NewCommandSecurityManager(logger)
 	ctx := context.Background()
@@ -324,10 +324,10 @@ func TestCommandSecurityManager(t *testing.T) {
 
 	t.Run("GetSecurityStats", func(t *testing.T) {
 		stats := csm.GetSecurityStats()
-		
+
 		expectedKeys := []string{
 			"max_command_length",
-			"max_parameter_length", 
+			"max_parameter_length",
 			"strict_mode",
 			"log_suspicious",
 			"blocked_patterns",
@@ -343,7 +343,7 @@ func TestCommandSecurityManager(t *testing.T) {
 		if stats["max_command_length"] != 512 {
 			t.Errorf("Expected max_command_length to be 512, got %v", stats["max_command_length"])
 		}
-		
+
 		if stats["strict_mode"] != true {
 			t.Errorf("Expected strict_mode to be true, got %v", stats["strict_mode"])
 		}
@@ -399,7 +399,7 @@ func FuzzCommandValidation(f *testing.F) {
 
 		// Validate the command
 		err := csm.ValidateCommand(ctx, command)
-		
+
 		// If validation fails, the error should be a proper SMTP error
 		if err != nil {
 			errorStr := err.Error()

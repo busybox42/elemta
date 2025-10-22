@@ -88,10 +88,10 @@ func TestSessionStateMachineSecurity(t *testing.T) {
 	// Test 4: Failure count and lockout
 	t.Run("FailureCountAndLockout", func(t *testing.T) {
 		config := &SessionStateMachineConfig{
-			MaxAge:            30 * time.Minute,
-			MaxFailures:       3,
-			LockoutDuration:   1 * time.Minute,
-			MaxStateHistory:   10,
+			MaxAge:          30 * time.Minute,
+			MaxFailures:     3,
+			LockoutDuration: 1 * time.Minute,
+			MaxStateHistory: 10,
 		}
 
 		ssm, err := NewSessionStateMachine(config, "192.168.1.1:1234", "test-client", logger)
@@ -131,10 +131,10 @@ func TestSessionStateMachineSecurity(t *testing.T) {
 	// Test 5: Session expiration
 	t.Run("SessionExpiration", func(t *testing.T) {
 		config := &SessionStateMachineConfig{
-			MaxAge:            100 * time.Millisecond, // Very short expiration
-			MaxFailures:       5,
-			LockoutDuration:   1 * time.Minute,
-			MaxStateHistory:   10,
+			MaxAge:          100 * time.Millisecond, // Very short expiration
+			MaxFailures:     5,
+			LockoutDuration: 1 * time.Minute,
+			MaxStateHistory: 10,
 		}
 
 		ssm, err := NewSessionStateMachine(config, "192.168.1.1:1234", "test-client", logger)
@@ -180,10 +180,10 @@ func TestSessionStateMachineSecurity(t *testing.T) {
 
 		// Set RBAC context
 		rbacContext := &RBACContext{
-			Username:   "testuser",
-			Roles:      []string{"user", "admin"},
+			Username:    "testuser",
+			Roles:       []string{"user", "admin"},
 			Permissions: []Permission{PermissionSMTPAuth, PermissionSMTPSend},
-			LastCheck:  time.Now(),
+			LastCheck:   time.Now(),
 		}
 
 		if err := ssm.SetRBACContext(rbacContext); err != nil {

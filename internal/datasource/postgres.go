@@ -54,7 +54,7 @@ func NewPostgres(config Config) *Postgres {
 
 	// Initialize security manager
 	securityManager := NewSQLSecurityManager(logger)
-	
+
 	// Register allowed tables and columns for PostgreSQL
 	securityManager.RegisterTable(userTable, []string{
 		"username", "password", "email", "full_name", "is_active", "is_admin",

@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/sync/errgroup"
 	"github.com/sony/gobreaker"
+	"golang.org/x/sync/errgroup"
 )
 
 // QueueJob represents a queue processing job
@@ -78,21 +78,21 @@ type QueueWorkerStats struct {
 
 // QueueWorkerConfig configures the queue worker pool
 type QueueWorkerConfig struct {
-	Size                int
-	JobBufferSize       int
-	ResultBufferSize    int
-	CircuitBreakerName  string
-	MaxRequests         uint32
-	Interval            time.Duration
-	Timeout             time.Duration
-	RetryAttempts       int
-	RetryDelay          time.Duration
+	Size               int
+	JobBufferSize      int
+	ResultBufferSize   int
+	CircuitBreakerName string
+	MaxRequests        uint32
+	Interval           time.Duration
+	Timeout            time.Duration
+	RetryAttempts      int
+	RetryDelay         time.Duration
 }
 
 // DefaultQueueWorkerConfig returns default configuration for queue workers
 func DefaultQueueWorkerConfig() *QueueWorkerConfig {
 	return &QueueWorkerConfig{
-		Size:               5,  // Conservative default for queue processing
+		Size:               5, // Conservative default for queue processing
 		JobBufferSize:      50,
 		ResultBufferSize:   50,
 		CircuitBreakerName: "queue-processor",
@@ -171,23 +171,23 @@ func (qwp *QueueWorkerPool) Start() error {
 // Stop gracefully shuts down the queue worker pool
 func (qwp *QueueWorkerPool) Stop() error {
 	qwp.logger.Info("Stopping queue worker pool")
-	
+
 	// Close jobs channel to signal workers to stop
 	close(qwp.jobs)
-	
+
 	// Cancel context
 	qwp.cancel()
-	
+
 	// Wait for all workers to complete
 	err := qwp.errGroup.Wait()
-	
+
 	// Close results channel
 	close(qwp.results)
-	
+
 	qwp.logger.Info("Queue worker pool stopped",
 		"final_stats", qwp.GetStats(),
 	)
-	
+
 	return err
 }
 
@@ -211,11 +211,11 @@ func (qwp *QueueWorkerPool) Submit(job QueueJob) error {
 func (qwp *QueueWorkerPool) worker(workerID int) error {
 	workerLogger := qwp.logger.With("worker_id", workerID)
 	workerLogger.Debug("Queue worker started")
-	
+
 	qwp.stats.mu.Lock()
 	qwp.stats.ActiveWorkers++
 	qwp.stats.mu.Unlock()
-	
+
 	defer func() {
 		qwp.stats.mu.Lock()
 		qwp.stats.ActiveWorkers--
@@ -237,7 +237,7 @@ func (qwp *QueueWorkerPool) worker(workerID int) error {
 
 			// Process job with circuit breaker and retry logic
 			result := qwp.processJobWithRetry(job, workerLogger)
-			
+
 			// Send result
 			select {
 			case qwp.results <- result:
@@ -260,7 +260,7 @@ func (qwp *QueueWorkerPool) worker(workerID int) error {
 // processJobWithRetry processes a queue job with retry logic and circuit breaker
 func (qwp *QueueWorkerPool) processJobWithRetry(job QueueJob, logger *slog.Logger) QueueResult {
 	startTime := time.Now()
-	
+
 	logger.Debug("Processing queue job",
 		"job_id", job.ID(),
 		"message_id", job.message.ID,
@@ -270,7 +270,7 @@ func (qwp *QueueWorkerPool) processJobWithRetry(job QueueJob, logger *slog.Logge
 
 	var lastErr error
 	maxRetries := 3
-	
+
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
 			// Exponential backoff
@@ -280,31 +280,31 @@ func (qwp *QueueWorkerPool) processJobWithRetry(job QueueJob, logger *slog.Logge
 				"attempt", attempt+1,
 				"delay", delay,
 			)
-			
+
 			select {
 			case <-time.After(delay):
 			case <-qwp.ctx.Done():
 				break
 			}
 		}
-		
+
 		// Execute job with circuit breaker
 		_, err := qwp.circuitBreaker.Execute(func() (interface{}, error) {
 			return job.Process(qwp.ctx)
 		})
-		
+
 		if err == nil {
 			// Success
 			duration := time.Since(startTime)
 			qwp.updateStats(true, duration)
-			
+
 			logger.Debug("Queue job completed successfully",
 				"job_id", job.ID(),
 				"message_id", job.message.ID,
 				"duration", duration,
 				"attempts", attempt+1,
 			)
-			
+
 			return QueueResult{
 				JobID:     job.ID(),
 				MessageID: job.message.ID,
@@ -312,9 +312,9 @@ func (qwp *QueueWorkerPool) processJobWithRetry(job QueueJob, logger *slog.Logge
 				Duration:  duration,
 			}
 		}
-		
+
 		lastErr = err
-		
+
 		// Check if we should retry
 		if qwp.circuitBreaker.State() == gobreaker.StateOpen {
 			logger.Warn("Circuit breaker open, not retrying",
@@ -323,7 +323,7 @@ func (qwp *QueueWorkerPool) processJobWithRetry(job QueueJob, logger *slog.Logge
 			)
 			break
 		}
-		
+
 		logger.Warn("Queue job attempt failed",
 			"job_id", job.ID(),
 			"message_id", job.message.ID,
@@ -331,18 +331,18 @@ func (qwp *QueueWorkerPool) processJobWithRetry(job QueueJob, logger *slog.Logge
 			"error", err,
 		)
 	}
-	
+
 	// All attempts failed
 	duration := time.Since(startTime)
 	qwp.updateStats(false, duration)
-	
+
 	logger.Error("Queue job failed after all retries",
 		"job_id", job.ID(),
 		"message_id", job.message.ID,
 		"duration", duration,
 		"final_error", lastErr,
 	)
-	
+
 	return QueueResult{
 		JobID:     job.ID(),
 		MessageID: job.message.ID,
@@ -356,7 +356,7 @@ func (qwp *QueueWorkerPool) processJobWithRetry(job QueueJob, logger *slog.Logge
 func (qwp *QueueWorkerPool) updateStats(success bool, duration time.Duration) {
 	qwp.stats.mu.Lock()
 	defer qwp.stats.mu.Unlock()
-	
+
 	if success {
 		qwp.stats.CompletedJobs++
 		qwp.stats.CircuitBreaker.Successes++
@@ -364,7 +364,7 @@ func (qwp *QueueWorkerPool) updateStats(success bool, duration time.Duration) {
 		qwp.stats.FailedJobs++
 		qwp.stats.CircuitBreaker.Failures++
 	}
-	
+
 	// Update processing time stats
 	qwp.stats.ProcessingTime.Total += duration
 	if qwp.stats.ProcessingTime.Min == 0 || duration < qwp.stats.ProcessingTime.Min {
@@ -373,12 +373,12 @@ func (qwp *QueueWorkerPool) updateStats(success bool, duration time.Duration) {
 	if duration > qwp.stats.ProcessingTime.Max {
 		qwp.stats.ProcessingTime.Max = duration
 	}
-	
+
 	totalJobs := qwp.stats.CompletedJobs + qwp.stats.FailedJobs
 	if totalJobs > 0 {
 		qwp.stats.ProcessingTime.Average = qwp.stats.ProcessingTime.Total / time.Duration(totalJobs)
 	}
-	
+
 	// Update circuit breaker state
 	qwp.stats.CircuitBreaker.State = qwp.circuitBreaker.State().String()
 }
@@ -423,7 +423,7 @@ func (qwp *QueueWorkerPool) resultProcessor() error {
 func (qwp *QueueWorkerPool) GetStats() QueueWorkerStats {
 	qwp.stats.mu.RLock()
 	defer qwp.stats.mu.RUnlock()
-	
+
 	// Create a copy to avoid race conditions
 	stats := *qwp.stats
 	return stats
@@ -432,12 +432,12 @@ func (qwp *QueueWorkerPool) GetStats() QueueWorkerStats {
 // IsHealthy returns true if the queue worker pool is healthy
 func (qwp *QueueWorkerPool) IsHealthy() bool {
 	stats := qwp.GetStats()
-	
+
 	// Consider healthy if:
 	// - Circuit breaker is not open
 	// - At least one worker is active
 	// - Job queue is not completely full
 	return qwp.circuitBreaker.State() != gobreaker.StateOpen &&
-		   stats.ActiveWorkers > 0 &&
-		   len(qwp.jobs) < cap(qwp.jobs)
+		stats.ActiveWorkers > 0 &&
+		len(qwp.jobs) < cap(qwp.jobs)
 }
