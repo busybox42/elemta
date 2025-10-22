@@ -1,4 +1,4 @@
-.PHONY: all help build clean install-bin install install-dev uninstall run test test-load docker docker-build docker-run docker-stop up down down-volumes restart logs logs-elemta status rebuild cli cli-install cli-test cli-docker api api-install api-test update update-backup update-restart lint fmt
+.PHONY: all help build clean install install-dev uninstall run test test-load test-docker up down down-volumes restart logs logs-elemta status rebuild docker-build docker-run docker-stop update lint fmt
 
 # Default target
 all: build
@@ -20,24 +20,15 @@ help:
 	@echo "🚀 Setup & Installation:"
 	@echo "  install        - Production setup (interactive, creates .env)"
 	@echo "  install-dev    - Development setup (one command, auto-configures)"
-	@echo "  docker-build   - Rebuild Docker images only"
 	@echo ""
 	@echo "🔧 Build & Test:"
-	@echo "  build             - Build Elemta binaries locally"
+	@echo "  build             - Build all Elemta binaries (server, queue, cli)"
 	@echo "  clean             - Clean build artifacts"
-	@echo "  test              - Run Go tests"
-	@echo "  test-docker       - Test Docker deployment"
-	@echo "  test-auth         - Quick authentication test"
-	@echo "  test-security     - Run security tests"
-	@echo "  test-load         - Run SMTP load tests"
-	@echo "  lint              - Run golangci-lint code quality checks"
+	@echo "  test              - Run Go unit tests"
+	@echo "  test-load         - Run SMTP load/performance tests"
+	@echo "  test-docker       - Run full integration test suite (21 tests)"
+	@echo "  lint              - Run code quality checks (production code)"
 	@echo "  fmt               - Format code with gofmt and goimports"
-	@echo ""
-	@echo "🛠️  Advanced:"
-	@echo "  cli            - Build CLI tools"
-	@echo "  api            - Build API tools"
-	@echo "  run            - Run Elemta server locally"
-	@echo "  update         - Update configuration"
 	@echo ""
 	@echo "⚡ Quick Start:"
 	@echo "  Development:  make install-dev  # Auto-configured dev environment"
@@ -69,10 +60,11 @@ install-bin: build
 	cp bin/elemta-cli $(GOPATH)/bin/
 	@echo "Install complete."
 
-# Run targets
+# Local server run (for debugging outside Docker)
 run: build
-	@echo "Running elemta server..."
-	./bin/elemta server
+	@echo "Running Elemta server locally (not in Docker)..."
+	@echo "⚠️  For normal use, run: make up"
+	./bin/elemta server --dev
 
 # Test targets
 test:
@@ -159,44 +151,16 @@ docker-stop:
 	@echo "Stopping Docker containers..."
 	docker compose down
 
-# CLI targets
-cli: cli-build
+# Advanced/internal targets (not shown in help)
 
-cli-build:
-	@echo "Building elemta-cli..."
-	go build -o bin/elemta-cli ./cmd/elemta-cli
+# Legacy CLI targets (cli tools built by main 'build' target)
+cli-install: build
+	@echo "Installing elemta-cli to $(GOPATH)/bin..."
+	@cp bin/elemta-cli $(GOPATH)/bin/ 2>/dev/null || echo "⚠️  GOPATH not set, skipping install"
 
-cli-install: cli-build
-	@echo "Installing elemta-cli..."
-	cp bin/elemta-cli $(GOPATH)/bin/
-
-cli-test:
-	@echo "Testing elemta-cli..."
-	docker exec -it elemta-node0 /app/elemta-cli --api-url http://elemta-api:8081 status
-	docker exec -it elemta-node0 /app/elemta-cli --api-url http://elemta-api:8081 queue stats
-
-cli-docker:
-	@echo "Building Docker image for CLI..."
-	docker build -t elemta-cli:latest -f Dockerfile.cli .
-
-# API targets
-api: api-install
-
-api-install:
-	@echo "Installing API server..."
-	chmod +x scripts/api_server.py
-	chmod +x scripts/elemta-api.sh
-	@if [ -d "$(GOPATH)/bin" ]; then \
-		cp scripts/api_server.py $(GOPATH)/bin/; \
-		cp scripts/elemta-api.sh $(GOPATH)/bin/elemta-api; \
-	fi
-
-api-test:
-	@echo "Testing API server..."
-	curl -s http://localhost:8081/api/queue/stats | json_pp
-	@echo "\nTesting API helper script..."
-	./scripts/elemta-api.sh stats
-	./scripts/elemta-api.sh --format json list | head -n 20
+# Legacy docker targets (use 'up'/'down' instead)
+docker-run: up
+docker-stop: down
 
 # Kibana setup targets
 setup-kibana:
@@ -352,14 +316,7 @@ uninstall:
 	@echo "🗑️  Uninstalling Elemta..."
 	./install/uninstall.sh
 
-update:
-	@echo "🔄 Updating Elemta configuration..."
-	./install/update.sh
-
-update-backup:
-	@echo "🔄 Updating Elemta with backup..."
-	./install/update.sh -b
-
-update-restart:
-	@echo "🔄 Restarting Elemta services..."
-	./install/update.sh -r 
+# Legacy update targets (use 'make rebuild' instead)
+update: rebuild
+update-backup: rebuild  
+update-restart: restart 
