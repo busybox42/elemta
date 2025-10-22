@@ -1,4 +1,4 @@
-.PHONY: all help build clean install-bin install install-dev uninstall run test test-load docker docker-build docker-run docker-stop cli cli-install cli-test cli-docker api api-install api-test update update-backup update-restart lint fmt
+.PHONY: all help build clean install-bin install install-dev uninstall run test test-load docker docker-build docker-run docker-stop up down down-volumes restart logs logs-elemta status rebuild cli cli-install cli-test cli-docker api api-install api-test update update-backup update-restart lint fmt
 
 # Default target
 all: build
@@ -7,12 +7,21 @@ all: build
 help:
 	@echo "Elemta - High Performance SMTP Server"
 	@echo ""
-	@echo "🐳 Docker Development (Recommended):"
-	@echo "  docker-setup   - Build and start full dev stack (Elemta + Valkey + LDAP + Dovecot + Roundcube)"
-	@echo "  docker-down    - Stop all services and remove volumes"
-	@echo "  docker-stop    - Stop services (keep volumes)"
+	@echo "🐳 Docker Commands:"
+	@echo "  up             - Start services (requires .env)"
+	@echo "  down           - Stop services (keep volumes)"
+	@echo "  down-volumes   - Stop services and remove volumes"
+	@echo "  restart        - Restart all services"
+	@echo "  rebuild        - Rebuild images and restart"
+	@echo "  logs           - Show all logs (follow mode)"
+	@echo "  logs-elemta    - Show Elemta SMTP logs only"
+	@echo "  status         - Show service status"
+	@echo ""
+	@echo "🚀 Setup & Installation:"
+	@echo "  install        - Production setup (interactive, creates .env)"
+	@echo "  install-dev    - Development setup (auto-configures)"
+	@echo "  docker-setup   - Build and start dev stack"
 	@echo "  docker-build   - Rebuild Docker images"
-	@echo "  docker-run     - Start containers"
 	@echo ""
 	@echo "🔧 Build & Test:"
 	@echo "  build             - Build Elemta binaries locally"
@@ -28,13 +37,16 @@ help:
 	@echo "🛠️  Advanced:"
 	@echo "  cli            - Build CLI tools"
 	@echo "  api            - Build API tools"
-	@echo "  install        - Legacy: Interactive installation"
 	@echo "  run            - Run Elemta server locally"
+	@echo "  update         - Update configuration"
 	@echo ""
 	@echo "⚡ Quick Start:"
-	@echo "  make docker-setup    # Start development environment"
-	@echo "  make test-docker     # Test the deployment"
-	@echo "  make docker-down     # Clean shutdown"
+	@echo "  Development:  make install-dev  # Auto-configured dev environment"
+	@echo "  Production:   make install      # Interactive production setup"
+	@echo "  Start:        make up           # Start services"
+	@echo "  Stop:         make down         # Stop services"
+	@echo "  Logs:         make logs         # View logs"
+	@echo "  Status:       make status       # Check services"
 
 # Build targets
 build:
@@ -193,20 +205,135 @@ setup-kibana:
 	./scripts/setup-kibana-data-views.sh
 
 docker-setup: docker-build
+	@echo "🚀 Setting up Elemta development environment..."
+	@if [ ! -f .env ]; then \
+		echo "📝 Creating .env for development..."; \
+		echo "# Elemta Development Environment - Auto-generated" > .env; \
+		echo "ENVIRONMENT=development" >> .env; \
+		echo "HOSTNAME=mail.dev.evil-admin.com" >> .env; \
+		echo "LISTEN_PORT=2525" >> .env; \
+		echo "LOG_LEVEL=DEBUG" >> .env; \
+		echo "DEV_MODE=true" >> .env; \
+		echo "TEST_MODE=true" >> .env; \
+		echo "AUTH_REQUIRED=false" >> .env; \
+		echo "LDAP_HOST=elemta-ldap" >> .env; \
+		echo "DELIVERY_HOST=elemta-dovecot" >> .env; \
+		echo "COMPOSE_PROJECT_NAME=elemta" >> .env; \
+		echo "COMPOSE_FILE=deployments/compose/docker-compose.yml" >> .env; \
+		echo "✅ .env created for development"; \
+	fi
 	@echo "🚀 Starting Elemta stack..."
 	docker compose -f deployments/compose/docker-compose.yml up -d
 	@echo "⏳ Initializing LDAP users..."
 	@./scripts/init-ldap-if-needed.sh
 	@echo "✅ Elemta stack running!"
+	@echo "   • SMTP: localhost:2525"
+	@echo "   • Metrics: http://localhost:8080/metrics"
+	@echo "   • Web UI: http://localhost:8025"
+	@echo "   • Roundcube: http://localhost:8026"
 
-docker-down:
-	@echo "🛑 Stopping all Elemta services..."
+# Modern Docker commands using .env
+up:
+	@echo "🚀 Starting Elemta services..."
+	@if [ ! -f .env ]; then \
+		echo "⚠️  No .env file found. Run 'make install' or 'make docker-setup' first."; \
+		exit 1; \
+	fi
+	docker compose -f deployments/compose/docker-compose.yml up -d
+	@echo "✅ Services started"
+
+down:
+	@echo "🛑 Stopping Elemta services..."
+	docker compose -f deployments/compose/docker-compose.yml down
+	@echo "✅ Services stopped"
+
+down-volumes:
+	@echo "🛑 Stopping Elemta services and removing volumes..."
 	docker compose -f deployments/compose/docker-compose.yml down -v
+	@echo "✅ Services stopped and volumes removed"
+
+restart:
+	@echo "🔄 Restarting Elemta services..."
+	docker compose -f deployments/compose/docker-compose.yml restart
+	@echo "✅ Services restarted"
+
+logs:
+	@echo "📋 Showing Elemta logs (Ctrl+C to exit)..."
+	docker compose -f deployments/compose/docker-compose.yml logs -f
+
+logs-elemta:
+	@echo "📋 Showing Elemta SMTP server logs..."
+	docker logs -f elemta-node0
+
+status:
+	@echo "📊 Elemta Services Status:"
+	@docker compose -f deployments/compose/docker-compose.yml ps
+
+rebuild:
+	@echo "🔨 Rebuilding and restarting Elemta..."
+	@make down
+	@make docker-build
+	@make up
+	@echo "✅ Rebuild complete"
+
+docker-down: down-volumes
 
 # Installation and update targets
 install:
-	@echo "🚀 Running Elemta installer..."
-	./install/install.sh
+	@echo "🚀 Elemta Production Installation"
+	@echo "=================================="
+	@if [ -f .env ]; then \
+		echo "⚠️  .env file already exists."; \
+		read -p "Overwrite? (y/N): " confirm; \
+		if [ "$$confirm" != "y" ] && [ "$$confirm" != "Y" ]; then \
+			echo "Installation cancelled."; \
+			exit 1; \
+		fi; \
+	fi
+	@echo ""
+	@echo "📝 Production Configuration"
+	@echo "This will create a production-ready .env file."
+	@echo ""
+	@read -p "Hostname [mail.example.com]: " hostname; \
+	hostname=$${hostname:-mail.example.com}; \
+	read -p "SMTP Port [25]: " smtp_port; \
+	smtp_port=$${smtp_port:-25}; \
+	read -p "Admin Email [admin@example.com]: " admin_email; \
+	admin_email=$${admin_email:-admin@example.com}; \
+	read -p "Enable Let's Encrypt? (y/N): " letsencrypt; \
+	if [ "$$letsencrypt" = "y" ] || [ "$$letsencrypt" = "Y" ]; then \
+		letsencrypt_enabled=true; \
+	else \
+		letsencrypt_enabled=false; \
+	fi; \
+	read -p "LDAP Host [ldap]: " ldap_host; \
+	ldap_host=$${ldap_host:-ldap}; \
+	read -p "LDAP Base DN [dc=example,dc=com]: " ldap_base; \
+	ldap_base=$${ldap_base:-dc=example,dc=com}; \
+	echo ""; \
+	echo "📝 Generating .env..."; \
+	cat .env.example | sed \
+		-e "s/HOSTNAME=.*/HOSTNAME=$$hostname/" \
+		-e "s/LISTEN_PORT=.*/LISTEN_PORT=$$smtp_port/" \
+		-e "s/LETSENCRYPT_EMAIL=.*/LETSENCRYPT_EMAIL=$$admin_email/" \
+		-e "s/LETSENCRYPT_DOMAIN=.*/LETSENCRYPT_DOMAIN=$$hostname/" \
+		-e "s/LETSENCRYPT_ENABLED=.*/LETSENCRYPT_ENABLED=$$letsencrypt_enabled/" \
+		-e "s/LDAP_HOST=.*/LDAP_HOST=$$ldap_host/" \
+		-e "s/LDAP_BASE_DN=.*/LDAP_BASE_DN=$$ldap_base/" \
+		> .env
+	@echo "✅ .env created successfully"
+	@echo ""
+	@echo "📋 Next Steps:"
+	@echo "   1. Review and edit .env for your environment"
+	@echo "   2. Configure TLS certificates (or enable Let's Encrypt)"
+	@echo "   3. Update LDAP credentials in .env"
+	@echo "   4. Run: make up"
+	@echo ""
+	@echo "🔐 Security Reminders:"
+	@echo "   • Change default passwords in .env"
+	@echo "   • Configure TLS certificates for production"
+	@echo "   • Review memory and connection limits"
+	@echo "   • Set up monitoring and alerts"
 
 install-dev: docker-setup
 	@echo "✅ Development environment ready!"

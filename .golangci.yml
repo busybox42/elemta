@@ -1,0 +1,33 @@
+run:
+  timeout: 10m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+
+issues:
+  exclude-rules:
+    # Exclude test files from errcheck
+    - path: _test\.go
+      linters:
+        - errcheck
+        - unused
+    # Exclude examples from all linters
+    - path: examples/
+      linters:
+        - errcheck
+        - govet
+        - staticcheck
+        - unused
+    # Allow deprecated TLS cipher preference (kept for compatibility)
+    - text: "PreferServerCipherSuites"
+      linters:
+        - staticcheck
+    # Allow Let's Encrypt capitalization  
+    - text: "Let's Encrypt"
+      linters:
+        - staticcheck
+
