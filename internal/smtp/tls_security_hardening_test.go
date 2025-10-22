@@ -10,11 +10,11 @@ import (
 
 func TestParseCipherSuitesSecurity(t *testing.T) {
 	tests := []struct {
-		name           string
-		ciphers        []string
-		expectError    bool
-		expectedCount  int
-		errorContains  string
+		name          string
+		ciphers       []string
+		expectError   bool
+		expectedCount int
+		errorContains string
 	}{
 		{
 			name:          "Secure AEAD ciphers should be allowed",
@@ -160,10 +160,10 @@ func TestTLSSecurityLevels(t *testing.T) {
 		expectedMaxVer  uint16
 		expectedCiphers int
 	}{
-		{SecurityLevelMinimum, tls.VersionTLS12, tls.VersionTLS13, 10}, // Includes CBC for compatibility
+		{SecurityLevelMinimum, tls.VersionTLS12, tls.VersionTLS13, 10},    // Includes CBC for compatibility
 		{SecurityLevelRecommended, tls.VersionTLS12, tls.VersionTLS13, 6}, // AEAD only
-		{SecurityLevelStrict, tls.VersionTLS12, tls.VersionTLS13, 4}, // ECDSA and ChaCha20 only
-		{SecurityLevelMaximum, tls.VersionTLS13, tls.VersionTLS13, 0}, // TLS 1.3 handles ciphers
+		{SecurityLevelStrict, tls.VersionTLS12, tls.VersionTLS13, 4},      // ECDSA and ChaCha20 only
+		{SecurityLevelMaximum, tls.VersionTLS13, tls.VersionTLS13, 0},     // TLS 1.3 handles ciphers
 	}
 
 	for _, level := range levels {
@@ -261,9 +261,9 @@ func TestSMTPSTSSecurity(t *testing.T) {
 // Helper functions
 
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || (len(s) > len(substr) && 
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || 
-		 contains(s[1:], substr))))
+	return len(s) >= len(substr) && (s == substr || (len(s) > len(substr) &&
+		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
+			contains(s[1:], substr))))
 }
 
 func isWeakCipherSuite(cipher uint16) bool {

@@ -31,10 +31,10 @@ const (
 
 // CertificatePin represents a certificate pin for a specific hostname
 type CertificatePin struct {
-	Hostname      string   `json:"hostname"`
-	Pins          []string `json:"pins"`          // SHA-256 hashes of public keys or certificates
-	IncludeSubdomains bool  `json:"include_subdomains"`
-	MaxAge        int      `json:"max_age"`       // Pin validity in seconds
+	Hostname          string   `json:"hostname"`
+	Pins              []string `json:"pins"` // SHA-256 hashes of public keys or certificates
+	IncludeSubdomains bool     `json:"include_subdomains"`
+	MaxAge            int      `json:"max_age"` // Pin validity in seconds
 }
 
 // OCSPConfig represents OCSP (Online Certificate Status Protocol) configuration
@@ -49,12 +49,12 @@ type OCSPConfig struct {
 
 // OCSPResponse represents an OCSP response
 type OCSPResponse struct {
-	Status       string    `json:"status"`        // "good", "revoked", "unknown"
-	SerialNumber string    `json:"serial_number"`
-	ThisUpdate   time.Time `json:"this_update"`
-	NextUpdate   time.Time `json:"next_update"`
-	RevokedAt    time.Time `json:"revoked_at,omitempty"`
-	RevocationReason string `json:"revocation_reason,omitempty"`
+	Status           string    `json:"status"` // "good", "revoked", "unknown"
+	SerialNumber     string    `json:"serial_number"`
+	ThisUpdate       time.Time `json:"this_update"`
+	NextUpdate       time.Time `json:"next_update"`
+	RevokedAt        time.Time `json:"revoked_at,omitempty"`
+	RevocationReason string    `json:"revocation_reason,omitempty"`
 }
 
 // TLSSecurity provides TLS security hardening capabilities
@@ -193,7 +193,7 @@ func (ts *TLSSecurity) applyCommonSecuritySettings(config *tls.Config) {
 			"attempted_version", ts.getTLSVersionName(config.MinVersion),
 			"enforced_version", "TLS 1.2")
 	}
-	
+
 	// CRITICAL SECURITY: Ensure maximum version is at least TLS 1.2
 	if config.MaxVersion < tls.VersionTLS12 {
 		config.MaxVersion = tls.VersionTLS12
@@ -233,13 +233,13 @@ func (ts *TLSSecurity) applyCommonSecuritySettings(config *tls.Config) {
 
 	// Add comprehensive certificate validation
 	config.VerifyPeerCertificate = ts.createCertificateValidator()
-	
+
 	// Enable OCSP stapling for better certificate validation
 	config.NextProtos = []string{"smtp"}
-	
+
 	// Set secure random source (Go handles this automatically, but explicit is better)
 	// config.Rand is typically left nil to use crypto/rand.Reader
-	
+
 	ts.logger.Info("Enhanced TLS security settings applied",
 		"min_version", ts.getTLSVersionName(config.MinVersion),
 		"max_version", ts.getTLSVersionName(config.MaxVersion),
@@ -768,7 +768,7 @@ type SMTPSTSPolicy struct {
 // GetSMTPSTSPolicy returns the SMTP STS policy for enhanced security
 func (ts *TLSSecurity) GetSMTPSTSPolicy() *SMTPSTSPolicy {
 	return &SMTPSTSPolicy{
-		Mode:   "enforce", // Enforce TLS for all SMTP connections
+		Mode:   "enforce",           // Enforce TLS for all SMTP connections
 		MaxAge: 30 * 24 * time.Hour, // 30 days policy lifetime
 		MXMatches: []string{
 			"*.example.com", // Configure based on your domain
@@ -779,11 +779,11 @@ func (ts *TLSSecurity) GetSMTPSTSPolicy() *SMTPSTSPolicy {
 // ValidateSMTPSTSCompliance validates SMTP STS compliance
 func (ts *TLSSecurity) ValidateSMTPSTSCompliance(hostname string, tlsUsed bool) error {
 	policy := ts.GetSMTPSTSPolicy()
-	
+
 	if policy.Mode == "enforce" && !tlsUsed {
 		return fmt.Errorf("SMTP STS policy violation: TLS required but not used for %s", hostname)
 	}
-	
+
 	// Check if hostname matches MX patterns
 	matched := false
 	for _, pattern := range policy.MXMatches {
@@ -792,20 +792,20 @@ func (ts *TLSSecurity) ValidateSMTPSTSCompliance(hostname string, tlsUsed bool) 
 			break
 		}
 	}
-	
+
 	if !matched && policy.Mode == "enforce" {
 		ts.logger.Warn("SMTP STS hostname not in MX matches",
 			"hostname", hostname,
 			"policy_mode", policy.Mode,
 		)
 	}
-	
+
 	ts.logger.Debug("SMTP STS compliance validated",
 		"hostname", hostname,
 		"tls_used", tlsUsed,
 		"policy_mode", policy.Mode,
 	)
-	
+
 	return nil
 }
 
@@ -814,13 +814,13 @@ func (ts *TLSSecurity) matchHostname(hostname, pattern string) bool {
 	if pattern == hostname {
 		return true
 	}
-	
+
 	// Handle wildcard patterns
 	if strings.HasPrefix(pattern, "*.") {
 		domain := pattern[2:]
 		return strings.HasSuffix(hostname, "."+domain) || hostname == domain
 	}
-	
+
 	return false
 }
 
@@ -833,18 +833,18 @@ func (ts *TLSSecurity) validateCipherSuites(cipherSuites []uint16) error {
 	// Define weak cipher suites that must NEVER be accepted
 	weakCiphers := map[uint16]string{
 		// RC4 ciphers - completely broken
-		tls.TLS_RSA_WITH_RC4_128_SHA:                     "RC4 ciphers are cryptographically broken",
-		tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA:             "RC4 ciphers are cryptographically broken",
-		tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA:               "RC4 ciphers are cryptographically broken",
-		
+		tls.TLS_RSA_WITH_RC4_128_SHA:         "RC4 ciphers are cryptographically broken",
+		tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA: "RC4 ciphers are cryptographically broken",
+		tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA:   "RC4 ciphers are cryptographically broken",
+
 		// 3DES ciphers - deprecated and weak
-		tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA:                "3DES ciphers are deprecated and weak",
-		tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA:          "3DES ciphers are deprecated and weak",
-		
+		tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA:       "3DES ciphers are deprecated and weak",
+		tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA: "3DES ciphers are deprecated and weak",
+
 		// NULL ciphers - provide no encryption
 		0x0001: "NULL ciphers provide no encryption",
 		0x0002: "NULL ciphers provide no encryption",
-		
+
 		// Export ciphers - intentionally weak (using numeric values since constants may not exist)
 		0x0003: "Export ciphers are intentionally weak",
 		0x0004: "Export ciphers are intentionally weak",
@@ -880,10 +880,10 @@ func (ts *TLSSecurity) getSecureCipherSuites() []uint16 {
 // AddCertificatePin adds a certificate pin for a specific hostname
 func (ts *TLSSecurity) AddCertificatePin(hostname string, pins []string, includeSubdomains bool, maxAge int) {
 	ts.certPins[hostname] = &CertificatePin{
-		Hostname:           hostname,
-		Pins:               pins,
-		IncludeSubdomains:  includeSubdomains,
-		MaxAge:             maxAge,
+		Hostname:          hostname,
+		Pins:              pins,
+		IncludeSubdomains: includeSubdomains,
+		MaxAge:            maxAge,
 	}
 	ts.logger.Info("Certificate pin added",
 		"hostname", hostname,
@@ -925,7 +925,7 @@ func (ts *TLSSecurity) ValidateCertificatePin(hostname string, cert *x509.Certif
 
 	// Generate certificate pin (SHA-256 of the public key)
 	certPin := ts.generateCertificatePin(cert)
-	
+
 	// Check if the certificate matches any of the pinned certificates
 	for _, expectedPin := range pin.Pins {
 		if certPin == expectedPin {
@@ -955,7 +955,7 @@ func (ts *TLSSecurity) generateCertificatePin(cert *x509.Certificate) string {
 		ts.logger.Error("Failed to marshal public key for pinning", "error", err)
 		return ""
 	}
-	
+
 	// Calculate SHA-256 hash
 	hash := sha256.Sum256(pubKeyDER)
 	return base64.StdEncoding.EncodeToString(hash[:])
@@ -1045,7 +1045,7 @@ func (ts *TLSSecurity) performOCSPRequest(cert, issuer *x509.Certificate, ocspUR
 	// For now, implement a basic OCSP check that returns "good" status
 	// In a full implementation, this would create and parse actual OCSP requests
 	// This is a placeholder that ensures the TLS security framework is in place
-	
+
 	ts.logger.Debug("OCSP request placeholder - returning good status",
 		"serial_number", cert.SerialNumber.Text(16),
 		"ocsp_url", ocspURL)
@@ -1054,7 +1054,7 @@ func (ts *TLSSecurity) performOCSPRequest(cert, issuer *x509.Certificate, ocspUR
 	response := &OCSPResponse{
 		SerialNumber: cert.SerialNumber.Text(16),
 		Status:       "good",
-		ThisUpdate:   time.Now().Add(-time.Hour), // 1 hour ago
+		ThisUpdate:   time.Now().Add(-time.Hour),     // 1 hour ago
 		NextUpdate:   time.Now().Add(24 * time.Hour), // 24 hours from now
 	}
 

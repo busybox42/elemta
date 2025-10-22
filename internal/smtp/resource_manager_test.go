@@ -29,7 +29,7 @@ func TestResourceManagerAtomicOperations(t *testing.T) {
 	// Test concurrent connection acceptance
 	var wg sync.WaitGroup
 	connections := make([]string, 10)
-	
+
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func(index int) {
@@ -39,24 +39,24 @@ func TestResourceManagerAtomicOperations(t *testing.T) {
 			connections[index] = sessionID
 		}(i)
 	}
-	
+
 	wg.Wait()
-	
+
 	// Verify atomic operations
 	stats := resourceManager.GetStats()
 	activeConnections := stats["active_connections"].(int32)
-	
+
 	acceptedCount := 0
 	for _, sessionID := range connections {
 		if sessionID != "" {
 			acceptedCount++
 		}
 	}
-	
+
 	if int32(acceptedCount) != activeConnections {
 		t.Errorf("Atomic operation failed: accepted=%d, active=%d", acceptedCount, activeConnections)
 	}
-	
+
 	// Cleanup
 	for _, sessionID := range connections {
 		if sessionID != "" {
@@ -91,19 +91,19 @@ func TestResourceManagerConnectionLimits(t *testing.T) {
 			connections = append(connections, sessionID)
 		}
 	}
-	
+
 	// Try to accept one more connection (should fail)
 	conn := &testConn{}
 	sessionID := resourceManager.AcceptConnection(conn)
 	if sessionID != "" {
 		t.Error("Should not accept connection when pool is full")
 	}
-	
+
 	// Cleanup
 	for _, sessionID := range connections {
 		resourceManager.ReleaseConnection(sessionID)
 	}
-	
+
 	// Test IP-based connection limit
 	var ipConnections []string
 	for i := 0; i < 2; i++ { // MaxConnectionsPerIP is 2
@@ -113,14 +113,14 @@ func TestResourceManagerConnectionLimits(t *testing.T) {
 			ipConnections = append(ipConnections, sessionID)
 		}
 	}
-	
+
 	// Try to accept one more connection from the same IP (should fail)
 	conn = &testConn{remoteAddr: "192.168.1.1:1235"}
 	sessionID = resourceManager.AcceptConnection(conn)
 	if sessionID != "" {
 		t.Error("Should not accept connection when IP limit is reached")
 	}
-	
+
 	// Cleanup
 	for _, sessionID := range ipConnections {
 		resourceManager.ReleaseConnection(sessionID)

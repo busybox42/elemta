@@ -51,11 +51,11 @@ type AccountLockInfo struct {
 
 // AuthenticationSecurityManager handles authentication security
 type AuthenticationSecurityManager struct {
-	mu                sync.RWMutex
-	config            *AuthSecurityConfig
-	ipFailures        map[string]*AuthFailureInfo
-	accountLockouts   map[string]*AccountLockInfo
-	logger            *slog.Logger
+	mu              sync.RWMutex
+	config          *AuthSecurityConfig
+	ipFailures      map[string]*AuthFailureInfo
+	accountLockouts map[string]*AccountLockInfo
+	logger          *slog.Logger
 }
 
 // NewAuthenticationSecurityManager creates a new authentication security manager
@@ -81,13 +81,13 @@ func NewAuthenticationSecurityManager(config *AuthSecurityConfig, logger *slog.L
 
 // AuthHandler manages SMTP authentication for a session
 type AuthHandler struct {
-	session         *Session
-	state           *SessionState
-	authenticator   Authenticator
-	securityManager *AuthenticationSecurityManager
+	session             *Session
+	state               *SessionState
+	authenticator       Authenticator
+	securityManager     *AuthenticationSecurityManager
 	sessionStateMachine *auth.SessionStateMachine
-	logger          *slog.Logger
-	conn            net.Conn
+	logger              *slog.Logger
+	conn                net.Conn
 }
 
 // NewAuthHandler creates a new authentication handler
@@ -113,13 +113,13 @@ func NewAuthHandler(session *Session, state *SessionState, authenticator Authent
 	}
 
 	return &AuthHandler{
-		session:         session,
-		state:           state,
-		authenticator:   authenticator,
-		securityManager: securityManager,
+		session:             session,
+		state:               state,
+		authenticator:       authenticator,
+		securityManager:     securityManager,
 		sessionStateMachine: sessionStateMachine,
-		logger:          logger.With("component", "session-auth"),
-		conn:            conn,
+		logger:              logger.With("component", "session-auth"),
+		conn:                conn,
 	}
 }
 
@@ -157,7 +157,7 @@ func (ah *AuthHandler) HandleAuth(ctx context.Context, cmd string) error {
 
 	// Validate authentication method
 	if !ah.isMethodEnabled(method) {
-		ah.logger.WarnContext(ctx, "Authentication method not supported", 
+		ah.logger.WarnContext(ctx, "Authentication method not supported",
 			"method", string(method),
 			"enabled_methods", ah.securityManager.config.EnabledMethods,
 		)
@@ -172,7 +172,7 @@ func (ah *AuthHandler) HandleAuth(ctx context.Context, cmd string) error {
 	// Increment auth attempts
 	attempts := ah.state.IncrementAuthAttempts(ctx)
 	if attempts > ah.securityManager.config.MaxAuthAttempts {
-		ah.logger.WarnContext(ctx, "Too many authentication attempts", 
+		ah.logger.WarnContext(ctx, "Too many authentication attempts",
 			"attempts", attempts,
 			"max_attempts", ah.securityManager.config.MaxAuthAttempts,
 		)
@@ -204,7 +204,7 @@ func (ah *AuthHandler) handleAuthPlain(ctx context.Context, cmd string) error {
 	}
 
 	parts := strings.Fields(cmd)
-	
+
 	var authData string
 	if len(parts) == 3 {
 		// AUTH PLAIN <base64-data>
@@ -214,7 +214,7 @@ func (ah *AuthHandler) handleAuthPlain(ctx context.Context, cmd string) error {
 		if err := ah.session.write("334 "); err != nil {
 			return fmt.Errorf("failed to write auth prompt: %w", err)
 		}
-		
+
 		line, _, err := ah.session.reader.ReadLine()
 		if err != nil {
 			ah.logger.ErrorContext(ctx, "Failed to read auth data", "error", err)
@@ -326,7 +326,7 @@ func (ah *AuthHandler) performAuthentication(ctx context.Context, username, pass
 
 	// Check account lockout
 	if ah.isAccountLocked(username) {
-		ah.logger.WarnContext(ctx, "Account is locked", 
+		ah.logger.WarnContext(ctx, "Account is locked",
 			"username", username,
 			"method", string(method),
 		)
@@ -339,7 +339,7 @@ func (ah *AuthHandler) performAuthentication(ctx context.Context, username, pass
 	duration := time.Since(startTime)
 
 	if err != nil || !authenticated {
-		ah.logger.WarnContext(ctx, "Authentication failed", 
+		ah.logger.WarnContext(ctx, "Authentication failed",
 			"username", username,
 			"method", string(method),
 			"error", err,
@@ -388,7 +388,7 @@ func (ah *AuthHandler) performAuthentication(ctx context.Context, username, pass
 		}
 	}
 
-	ah.logger.InfoContext(ctx, "Authentication successful", 
+	ah.logger.InfoContext(ctx, "Authentication successful",
 		"username", username,
 		"method", string(method),
 		"duration", duration,
@@ -411,10 +411,10 @@ func (ah *AuthHandler) setupRBACContext(ctx context.Context, username string) er
 
 	// Create basic RBAC context (in a real implementation, this would query the user's roles)
 	rbacContext := &auth.RBACContext{
-		Username:   username,
-		Roles:      []string{"user"}, // Default role
+		Username:    username,
+		Roles:       []string{"user"}, // Default role
 		Permissions: []auth.Permission{auth.PermissionSMTPAuth, auth.PermissionSMTPSend},
-		LastCheck:  time.Now(),
+		LastCheck:   time.Now(),
 	}
 
 	// Set RBAC context in session state machine
@@ -453,10 +453,10 @@ func (ah *AuthHandler) validateBase64Input(input string) error {
 
 	// Check for valid base64 characters
 	for _, char := range input {
-		if !((char >= 'A' && char <= 'Z') || 
-			 (char >= 'a' && char <= 'z') || 
-			 (char >= '0' && char <= '9') || 
-			 char == '+' || char == '/' || char == '=') {
+		if !((char >= 'A' && char <= 'Z') ||
+			(char >= 'a' && char <= 'z') ||
+			(char >= '0' && char <= '9') ||
+			char == '+' || char == '/' || char == '=') {
 			return fmt.Errorf("invalid base64 character")
 		}
 	}
@@ -487,7 +487,7 @@ func (ah *AuthHandler) validateAuthenticationData(ctx context.Context, username,
 	usernameUpper := strings.ToUpper(username)
 	for _, pattern := range suspiciousPatterns {
 		if strings.Contains(usernameUpper, strings.ToUpper(pattern)) {
-			ah.logger.WarnContext(ctx, "Suspicious pattern in username", 
+			ah.logger.WarnContext(ctx, "Suspicious pattern in username",
 				"username", username,
 				"pattern", pattern,
 			)

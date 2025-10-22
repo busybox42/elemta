@@ -47,35 +47,35 @@ func (p SMTPPhase) String() string {
 
 // SessionState manages the state of an SMTP session with thread safety
 type SessionState struct {
-	mu                sync.RWMutex
-	phase             SMTPPhase
-	authenticated     bool
-	username          string
-	mailFrom          string
-	rcptTo            []string
-	dataSize          int64
-	tlsActive         bool
-	authAttempts      int
-	lastAuthAttempt   time.Time
-	sessionStartTime  time.Time
-	lastActivityTime  time.Time
-	messageCount      int64
-	bytesSent         int64
-	bytesReceived     int64
-	errors            []error
-	logger            *slog.Logger
+	mu               sync.RWMutex
+	phase            SMTPPhase
+	authenticated    bool
+	username         string
+	mailFrom         string
+	rcptTo           []string
+	dataSize         int64
+	tlsActive        bool
+	authAttempts     int
+	lastAuthAttempt  time.Time
+	sessionStartTime time.Time
+	lastActivityTime time.Time
+	messageCount     int64
+	bytesSent        int64
+	bytesReceived    int64
+	errors           []error
+	logger           *slog.Logger
 }
 
 // NewSessionState creates a new session state manager
 func NewSessionState(logger *slog.Logger) *SessionState {
 	now := time.Now()
 	return &SessionState{
-		phase:             PhaseInit,
-		authenticated:     false,
-		rcptTo:            make([]string, 0),
-		sessionStartTime:  now,
-		lastActivityTime:  now,
-		logger:            logger.With("component", "session-state"),
+		phase:            PhaseInit,
+		authenticated:    false,
+		rcptTo:           make([]string, 0),
+		sessionStartTime: now,
+		lastActivityTime: now,
+		logger:           logger.With("component", "session-state"),
 	}
 }
 
@@ -104,7 +104,7 @@ func (ss *SessionState) SetPhase(ctx context.Context, phase SMTPPhase) error {
 
 	ss.phase = phase
 	ss.lastActivityTime = time.Now()
-	
+
 	ss.logger.DebugContext(ctx, "SMTP phase transition",
 		"old_phase", oldPhase.String(),
 		"new_phase", phase.String(),
@@ -377,7 +377,7 @@ func (ss *SessionState) AddError(ctx context.Context, err error) {
 func (ss *SessionState) GetErrors() []error {
 	ss.mu.RLock()
 	defer ss.mu.RUnlock()
-	
+
 	errors := make([]error, len(ss.errors))
 	copy(errors, ss.errors)
 	return errors
@@ -403,20 +403,20 @@ func (ss *SessionState) GetStateSnapshot() map[string]interface{} {
 	defer ss.mu.RUnlock()
 
 	return map[string]interface{}{
-		"phase":              ss.phase.String(),
-		"authenticated":      ss.authenticated,
-		"username":           ss.username,
-		"mail_from":          ss.mailFrom,
-		"rcpt_count":         len(ss.rcptTo),
-		"data_size":          ss.dataSize,
-		"tls_active":         ss.tlsActive,
-		"auth_attempts":      ss.authAttempts,
-		"session_duration":   time.Since(ss.sessionStartTime).String(),
-		"idle_time":          time.Since(ss.lastActivityTime).String(),
-		"message_count":      ss.messageCount,
-		"bytes_sent":         ss.bytesSent,
-		"bytes_received":     ss.bytesReceived,
-		"error_count":        len(ss.errors),
+		"phase":            ss.phase.String(),
+		"authenticated":    ss.authenticated,
+		"username":         ss.username,
+		"mail_from":        ss.mailFrom,
+		"rcpt_count":       len(ss.rcptTo),
+		"data_size":        ss.dataSize,
+		"tls_active":       ss.tlsActive,
+		"auth_attempts":    ss.authAttempts,
+		"session_duration": time.Since(ss.sessionStartTime).String(),
+		"idle_time":        time.Since(ss.lastActivityTime).String(),
+		"message_count":    ss.messageCount,
+		"bytes_sent":       ss.bytesSent,
+		"bytes_received":   ss.bytesReceived,
+		"error_count":      len(ss.errors),
 	}
 }
 
@@ -430,7 +430,7 @@ func (ss *SessionState) isValidPhaseTransition(from, to SMTPPhase) bool {
 		PhaseData: {PhaseInit, PhaseQuit},                       // Back to init after data
 		PhaseAuth: {PhaseInit, PhaseMail, PhaseQuit},            // After successful auth
 		PhaseTLS:  {PhaseInit, PhaseAuth, PhaseMail, PhaseQuit}, // After TLS upgrade
-		PhaseQuit: {}, // Terminal state
+		PhaseQuit: {},                                           // Terminal state
 	}
 
 	allowedTransitions, exists := validTransitions[from]

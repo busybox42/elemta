@@ -80,7 +80,7 @@ func NewTLSManager(config *Config) (*TLSManager, error) {
 	// Initialize security hardening and monitoring components
 	manager.security = NewTLSSecurity(config.TLS, slogger)
 	manager.monitor = NewTLSMonitor(slogger)
-	
+
 	// Initialize certificate monitor with default alerter
 	alerter := NewDefaultCertificateAlerter(slogger)
 	manager.certMonitor = NewCertificateMonitor(slogger, alerter)
@@ -324,27 +324,27 @@ func parseCipherSuites(ciphers []string) ([]uint16, error) {
 		"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256": tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
 		"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256":   tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
 		// Secure CBC cipher suites (for compatibility, but not recommended)
-		"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256":       tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
-		"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256":         tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
-		"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA":          tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-		"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA":            tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-		"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA":          tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-		"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA":            tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+		"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256": tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
+		"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256":   tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
+		"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA":    tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+		"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA":      tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+		"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA":    tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+		"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA":      tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
 		// Secure RSA cipher suites (for compatibility, but not recommended)
-		"TLS_RSA_WITH_AES_128_GCM_SHA256":               tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
-		"TLS_RSA_WITH_AES_256_GCM_SHA384":               tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
-		"TLS_RSA_WITH_AES_128_CBC_SHA256":               tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
-		"TLS_RSA_WITH_AES_128_CBC_SHA":                  tls.TLS_RSA_WITH_AES_128_CBC_SHA,
-		"TLS_RSA_WITH_AES_256_CBC_SHA":                  tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+		"TLS_RSA_WITH_AES_128_GCM_SHA256": tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+		"TLS_RSA_WITH_AES_256_GCM_SHA384": tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+		"TLS_RSA_WITH_AES_128_CBC_SHA256": tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
+		"TLS_RSA_WITH_AES_128_CBC_SHA":    tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+		"TLS_RSA_WITH_AES_256_CBC_SHA":    tls.TLS_RSA_WITH_AES_256_CBC_SHA,
 	}
 
 	// Define weak cipher suites that are explicitly blocked
 	weakCiphers := map[string]bool{
-		"TLS_RSA_WITH_RC4_128_SHA":                      true,
-		"TLS_RSA_WITH_3DES_EDE_CBC_SHA":                 true,
-		"TLS_ECDHE_ECDSA_WITH_RC4_128_SHA":              true,
-		"TLS_ECDHE_RSA_WITH_RC4_128_SHA":                true,
-		"TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA":           true,
+		"TLS_RSA_WITH_RC4_128_SHA":            true,
+		"TLS_RSA_WITH_3DES_EDE_CBC_SHA":       true,
+		"TLS_ECDHE_ECDSA_WITH_RC4_128_SHA":    true,
+		"TLS_ECDHE_RSA_WITH_RC4_128_SHA":      true,
+		"TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA": true,
 		// Add more weak ciphers as they are discovered
 	}
 
@@ -967,11 +967,11 @@ func (m *TLSManager) GetSecurityReport(ctx context.Context, duration time.Durati
 	if m.certMonitor != nil {
 		certHealthReport := m.certMonitor.GetCertificateHealthReport()
 		report["certificate_health"] = certHealthReport
-		
+
 		// Get all certificate statuses
 		certStatuses := m.certMonitor.GetAllCertificateStatuses()
 		report["certificate_count"] = len(certStatuses)
-		
+
 		// Count certificates by status
 		statusCounts := make(map[string]int)
 		for _, status := range certStatuses {

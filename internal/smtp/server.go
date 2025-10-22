@@ -265,22 +265,22 @@ func NewServer(config *Config) (*Server, error) {
 				maxConnPerIP = 50 // Final fallback default
 			}
 		}
-		
+
 		goroutinePoolSize := config.Resources.GoroutinePoolSize
 		if goroutinePoolSize == 0 {
 			goroutinePoolSize = 100 // Default pool size
 		}
-		
+
 		rateLimitWindow := time.Duration(config.Resources.RateLimitWindow) * time.Second
 		if rateLimitWindow == 0 {
 			rateLimitWindow = time.Minute // Default 1 minute window
 		}
-		
+
 		maxRequestsPerWindow := config.Resources.MaxRequestsPerWindow
 		if maxRequestsPerWindow == 0 {
 			maxRequestsPerWindow = config.Resources.MaxConnections * 10 // Default: 10 requests per connection
 		}
-		
+
 		resourceLimits = &ResourceLimits{
 			MaxConnections:            config.Resources.MaxConnections,
 			MaxConnectionsPerIP:       maxConnPerIP,
@@ -290,7 +290,7 @@ func NewServer(config *Config) (*Server, error) {
 			IdleTimeout:               time.Duration(config.Resources.IdleTimeout) * time.Second,
 			RateLimitWindow:           rateLimitWindow,
 			MaxRequestsPerWindow:      maxRequestsPerWindow,
-			MaxMemoryUsage:            memoryConfig.MaxMemoryUsage,          // Use configured memory limit
+			MaxMemoryUsage:            memoryConfig.MaxMemoryUsage, // Use configured memory limit
 			GoroutinePoolSize:         goroutinePoolSize,
 			CircuitBreakerEnabled:     true,
 			ResourceMonitoringEnabled: true,

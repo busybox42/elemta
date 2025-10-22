@@ -1059,7 +1059,7 @@ func (dh *DataHandler) performContentAnalysis(ctx context.Context, data []byte, 
 	// For external connections, use enhanced validator for comprehensive content analysis
 	// Separate headers and body to avoid false positives on legitimate headers
 	headers, body := dh.separateHeadersAndBody(content)
-	
+
 	// Validate headers separately (more permissive for legitimate headers)
 	if headers != "" {
 		headerValidationResult := dh.enhancedValidator.ValidateSMTPParameter("HEADER", headers)
@@ -1077,7 +1077,7 @@ func (dh *DataHandler) performContentAnalysis(ctx context.Context, data []byte, 
 			)
 		}
 	}
-	
+
 	// Validate body content (strict validation for message body)
 	if body != "" {
 		bodyValidationResult := dh.enhancedValidator.ValidateSMTPParameter("DATA_LINE", body)
@@ -1180,7 +1180,7 @@ func (dh *DataHandler) separateHeadersAndBody(content string) (headers, body str
 	// Find the double CRLF that separates headers from body
 	doubleCRLF := "\r\n\r\n"
 	separatorIndex := strings.Index(content, doubleCRLF)
-	
+
 	if separatorIndex == -1 {
 		// Try single CRLF as fallback
 		singleCRLF := "\n\n"
@@ -1195,7 +1195,7 @@ func (dh *DataHandler) separateHeadersAndBody(content string) (headers, body str
 		headers = content[:separatorIndex]
 		body = content[separatorIndex+len(doubleCRLF):]
 	}
-	
+
 	return headers, body
 }
 
