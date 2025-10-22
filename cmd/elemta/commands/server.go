@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -10,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/busybox42/elemta/internal/api"
 	"github.com/busybox42/elemta/internal/server"
 	"github.com/busybox42/elemta/internal/smtp"
 	"github.com/spf13/cobra"
@@ -54,6 +56,22 @@ func startServer() {
 		fmt.Fprintf(os.Stderr, "Error: Configuration not loaded\n")
 		os.Exit(1)
 	}
+
+	// Initialize logging with configured level
+	logLevel := "INFO" // Default to INFO for production
+	if cfg.Logging.Level != "" {
+		logLevel = cfg.Logging.Level
+	}
+	if devMode {
+		logLevel = "DEBUG" // Override to DEBUG in dev mode
+	}
+	api.InitializeLogging(logLevel)
+
+	slog.Info("Elemta MTA server starting",
+		"hostname", cfg.Hostname,
+		"listen_addr", cfg.ListenAddr,
+		"log_level", logLevel,
+		"dev_mode", devMode)
 
 	// Apply flag overrides
 	if devMode {
@@ -109,18 +127,19 @@ func startServer() {
 	}
 
 	// Create SMTP server configuration
-	fmt.Printf("[DEBUG] cfg.QueueDir (flat): '%s'\n", cfg.QueueDir)
-	fmt.Printf("[DEBUG] cfg.Queue.Dir (nested): '%s'\n", cfg.Queue.Dir)
+	slog.Debug("queue configuration",
+		"queue_dir_flat", cfg.QueueDir,
+		"queue_dir_nested", cfg.Queue.Dir)
 	
 	// Use Queue.Dir if QueueDir is empty (handle both config formats)
 	queueDir := cfg.QueueDir
 	if queueDir == "" && cfg.Queue.Dir != "" {
-		fmt.Printf("[DEBUG] Using cfg.Queue.Dir since cfg.QueueDir is empty\n")
+		slog.Debug("using nested queue directory configuration")
 		queueDir = cfg.Queue.Dir
 	}
 	if queueDir == "" {
 		queueDir = "/app/queue" // Fallback default
-		fmt.Printf("[DEBUG] Both queue configs empty, using fallback: %s\n", queueDir)
+		slog.Debug("using fallback queue directory", "queue_dir", queueDir)
 	}
 	
 	smtpConfig := &smtp.Config{
@@ -147,20 +166,26 @@ func startServer() {
 	// Map metrics config
 	smtpConfig.Metrics = cfg.Metrics
 	if cfg.Metrics != nil {
-		fmt.Printf("[DEBUG] Metrics config mapped: enabled=%v, listen_addr=%s\n", cfg.Metrics.Enabled, cfg.Metrics.ListenAddr)
+		slog.Debug("metrics configuration mapped",
+			"enabled", cfg.Metrics.Enabled,
+			"listen_addr", cfg.Metrics.ListenAddr)
 	} else {
-		fmt.Printf("[DEBUG] cfg.Metrics is nil\n")
+		slog.Debug("metrics configuration not present")
 	}
 
 	if cfg.TLS != nil {
-		fmt.Printf("[DEBUG] cfg.TLS: %+v\n", *cfg.TLS)
+		slog.Debug("TLS configuration present",
+			"enabled", cfg.TLS.Enabled,
+			"cert_file", cfg.TLS.CertFile,
+			"key_file", cfg.TLS.KeyFile)
 	} else {
-		fmt.Printf("[DEBUG] cfg.TLS is nil\n")
+		slog.Debug("TLS configuration not present")
 	}
 	if smtpConfig.TLS != nil {
-		fmt.Printf("[DEBUG] smtpConfig.TLS: %+v\n", *smtpConfig.TLS)
+		slog.Debug("SMTP TLS configuration mapped",
+			"enabled", smtpConfig.TLS.Enabled)
 	} else {
-		fmt.Printf("[DEBUG] smtpConfig.TLS is nil\n")
+		slog.Debug("SMTP TLS configuration not present")
 	}
 
 	// Map plugins config

@@ -175,6 +175,19 @@ func (s *Server) Start() error {
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
 
+	// Logging management endpoints (no auth required for GET, auth required for SET)
+	api.HandleFunc("/logging/level", s.HandleGetLogLevel).Methods("GET")
+	
+	// Protected logging endpoints (require auth)
+	if s.authMiddleware != nil {
+		loggingProtected := api.PathPrefix("/logging").Subrouter()
+		loggingProtected.Use(s.authMiddleware.RequireAuth)
+		loggingProtected.HandleFunc("/level", s.HandleSetLogLevel).Methods("POST", "PUT")
+	} else {
+		// If no auth middleware, still allow setting log level (development mode)
+		api.HandleFunc("/logging/level", s.HandleSetLogLevel).Methods("POST", "PUT")
+	}
+
 	// Read-only queue operations (no authentication required for web interface)
 	api.HandleFunc("/queue/stats", s.handleGetQueueStats).Methods("GET")
 	api.HandleFunc("/queue/message/{id}", s.handleGetMessage).Methods("GET")
