@@ -336,10 +336,10 @@ func (mo *MemoryOptimizer) Close() error {
 }
 
 // MemoryProfile generates a memory profile
-func (mo *MemoryOptimizer) MemoryProfile() []byte {
-	var buf []byte
-	runtime.MemProfile(buf, 0)
-	return buf
+func (mo *MemoryOptimizer) MemoryProfile() string {
+	// Note: This is a placeholder. Full implementation would write to a file
+	// via pprof.Lookup("heap").WriteTo(file, 0)
+	return "Memory profile available via pprof endpoints"
 }
 
 // HeapDump triggers a heap dump

@@ -158,8 +158,8 @@ func (q *DistributedQueue) Dequeue(ctx context.Context, leaseDuration time.Durat
 		return nil, fmt.Errorf("failed to marshal updated item: %w", err)
 	}
 
-	setCmd = q.client.B().Set().Key(dataKey).Value(string(updatedData)).Build()
-	if err := q.client.Do(ctx, setCmd).Error(); err != nil {
+	updateCmd := q.client.B().Set().Key(dataKey).Value(string(updatedData)).Build()
+	if err := q.client.Do(ctx, updateCmd).Error(); err != nil {
 		return nil, fmt.Errorf("failed to update item: %w", err)
 	}
 
