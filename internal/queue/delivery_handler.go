@@ -187,7 +187,7 @@ func (h *SMTPDeliveryHandler) deliverToAddress(ctx context.Context, address stri
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", address, err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Set sender
 	if err := client.Mail(msg.From); err != nil {

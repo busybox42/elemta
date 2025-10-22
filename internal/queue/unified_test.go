@@ -13,7 +13,7 @@ func TestUnifiedQueueSystem(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	// Create configuration
 	config := QueueConfiguration{
@@ -298,7 +298,7 @@ func TestQueueSystemIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	// Test with minimal configuration
 	config := QueueConfiguration{
@@ -365,7 +365,7 @@ func TestStorageBackendDirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	storage := NewFileStorageBackend(tempDir)
 	if err := storage.EnsureDirectories(); err != nil {

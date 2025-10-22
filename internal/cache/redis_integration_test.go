@@ -28,7 +28,7 @@ func TestRedisIntegration(t *testing.T) {
 	if err != nil {
 		t.Skipf("Redis not available, skipping test: %v", err)
 	}
-	defer redis.Close()
+	defer func() { _ = redis.Close() }()
 
 	ctx := context.Background()
 

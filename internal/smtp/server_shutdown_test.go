@@ -28,7 +28,7 @@ func TestGracefulShutdown(t *testing.T) {
 		config := createTestConfig(t)
 		server, err := NewServer(config)
 		require.NoError(t, err, "Failed to create server")
-		defer server.Close()
+		defer func() { _ = server.Close() }()
 
 		// Start server in goroutine
 		serverErr := make(chan error, 1)
@@ -72,7 +72,7 @@ func TestGracefulShutdown(t *testing.T) {
 		config := createTestConfig(t)
 		server, err := NewServer(config)
 		require.NoError(t, err, "Failed to create server")
-		defer server.Close()
+		defer func() { _ = server.Close() }()
 
 		// Setup signal handling
 		sigChan := make(chan os.Signal, 1)
@@ -138,7 +138,7 @@ func TestConnectionDraining(t *testing.T) {
 		config := createTestConfig(t)
 		server, err := NewServer(config)
 		require.NoError(t, err)
-		defer server.Close()
+		defer func() { _ = server.Close() }()
 
 		// Start server
 		go server.Start()
@@ -159,7 +159,7 @@ func TestConnectionDraining(t *testing.T) {
 					t.Logf("Connection %d failed to dial: %v", id, err)
 					return
 				}
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 
 				// Send EHLO command
 				fmt.Fprintf(conn, "EHLO test%d.example.com\r\n", id)
@@ -236,7 +236,7 @@ func TestQueuePersistence(t *testing.T) {
 		// Create and start first server
 		server1, err := NewServer(config)
 		require.NoError(t, err)
-		defer server1.Close()
+		defer func() { _ = server1.Close() }()
 
 		// Enqueue test messages
 		numMessages := 10
@@ -270,7 +270,7 @@ func TestQueuePersistence(t *testing.T) {
 		// Create second server with same queue directory
 		server2, err := NewServer(config)
 		require.NoError(t, err)
-		defer server2.Close()
+		defer func() { _ = server2.Close() }()
 
 		// Check queue stats on second server
 		stats2 := server2.queueManager.GetStats()
@@ -288,7 +288,7 @@ func TestQueuePersistence(t *testing.T) {
 
 		server, err := NewServer(config)
 		require.NoError(t, err)
-		defer server.Close()
+		defer func() { _ = server.Close() }()
 
 		// Enqueue messages
 		numMessages := 20
@@ -415,7 +415,7 @@ func TestKubernetesTermination(t *testing.T) {
 		config := createTestConfig(t)
 		server, err := NewServer(config)
 		require.NoError(t, err)
-		defer server.Close()
+		defer func() { _ = server.Close() }()
 
 		// Start server
 		go server.Start()
@@ -438,7 +438,7 @@ func TestKubernetesTermination(t *testing.T) {
 		config := createTestConfig(t)
 		server, err := NewServer(config)
 		require.NoError(t, err)
-		defer server.Close()
+		defer func() { _ = server.Close() }()
 
 		// Start server
 		go server.Start()
@@ -460,7 +460,7 @@ func TestKubernetesTermination(t *testing.T) {
 		config := createTestConfig(t)
 		server, err := NewServer(config)
 		require.NoError(t, err)
-		defer server.Close()
+		defer func() { _ = server.Close() }()
 
 		// Start server
 		go server.Start()
@@ -474,7 +474,7 @@ func TestKubernetesTermination(t *testing.T) {
 				t.Logf("Failed to dial: %v", err)
 				return
 			}
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 
 			fmt.Fprintf(conn, "EHLO k8s-test.example.com\r\n")
 			buf := make([]byte, 1024)

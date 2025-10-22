@@ -553,13 +553,13 @@ func (hrm *HotReloadManager) copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	_, err = dstFile.ReadFrom(srcFile)
 	return err
@@ -771,7 +771,7 @@ func (hrm *HotReloadManager) verifyPluginChecksum(pluginPath string, expectedHas
 	if err != nil {
 		return fmt.Errorf("failed to open plugin file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {

@@ -12,7 +12,7 @@ func main() {
 		fmt.Println("Error connecting to server:", err)
 		return
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	// Set the sender and recipient
 	if err := c.Mail("sender@example.com"); err != nil {
@@ -30,7 +30,7 @@ func main() {
 		fmt.Println("Error getting data writer:", err)
 		return
 	}
-	defer wc.Close()
+	defer func() { _ = wc.Close() }()
 
 	// EICAR test virus pattern
 	msg := []byte("To: recipient@example.com\r\n" +

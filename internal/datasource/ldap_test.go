@@ -37,7 +37,7 @@ func TestLDAPDataSource(t *testing.T) {
 			t.Fatal("Expected IsConnected() to return true after Connect()")
 		}
 
-		defer ldap.Close()
+		defer func() { _ = ldap.Close() }()
 	})
 
 	// Test user operations

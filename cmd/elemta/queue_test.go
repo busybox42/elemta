@@ -65,7 +65,7 @@ func createTestMessage(t *testing.T, queueDir string, id string, queueType strin
 
 func TestQueueOperations(t *testing.T) {
 	qo, tempDir := setupTestQueue(t)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	// Create a test message
 	createTestMessage(t, tempDir, "test-msg-1", "active")

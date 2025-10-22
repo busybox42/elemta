@@ -50,7 +50,7 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 	if err != nil {
 		return fmt.Errorf("failed to connect to LMTP server %s: %w", addr, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Set connection deadline
 	deadline := time.Now().Add(h.timeout)

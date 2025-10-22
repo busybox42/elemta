@@ -30,7 +30,7 @@ func TestSMTPAuthenticator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create authenticator: %v", err)
 	}
-	defer auth.Close()
+	defer func() { _ = auth.Close() }()
 
 	// Create a test user directly in database (bypassing datasource which may hash)
 	// This test is for SMTP authentication, not datasource testing
@@ -116,7 +116,7 @@ func TestSMTPAuthenticatorDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create authenticator: %v", err)
 	}
-	defer auth.Close()
+	defer func() { _ = auth.Close() }()
 
 	// Test authentication when disabled
 	t.Run("AuthenticationDisabled", func(t *testing.T) {

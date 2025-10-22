@@ -14,7 +14,7 @@ func TestFileStorageBackendSecurity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create storage backend
 	backend := NewFileStorageBackend(tmpDir)

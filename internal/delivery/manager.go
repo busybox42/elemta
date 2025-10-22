@@ -388,7 +388,7 @@ func (m *Manager) deliverToHost(ctx context.Context, msg *Message, host string, 
 	if err != nil {
 		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Say EHLO
 	if err := client.Hello(m.config.Hostname); err != nil {

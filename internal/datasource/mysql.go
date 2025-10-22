@@ -207,7 +207,7 @@ func (m *MySQL) Authenticate(ctx context.Context, username, password string) (bo
 		)
 		return false, fmt.Errorf("authentication query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var foundUsername string
 	success := false
@@ -265,7 +265,7 @@ func (m *MySQL) GetUser(ctx context.Context, username string) (User, error) {
 		)
 		return User{}, fmt.Errorf("failed to get user: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var user User
 	var createdAt, updatedAt, lastLoginAt sql.NullInt64
@@ -318,7 +318,7 @@ func (m *MySQL) GetUser(ctx context.Context, username string) (User, error) {
 	if err != nil {
 		return user, fmt.Errorf("failed to get user groups: %w", err)
 	}
-	defer groupRows.Close()
+	defer func() { _ = groupRows.Close() }()
 
 	for groupRows.Next() {
 		var groupName string
@@ -343,7 +343,7 @@ func (m *MySQL) GetUser(ctx context.Context, username string) (User, error) {
 	if err != nil {
 		return user, fmt.Errorf("failed to get user attributes: %w", err)
 	}
-	defer attrRows.Close()
+	defer func() { _ = attrRows.Close() }()
 
 	user.Attributes = make(map[string]interface{})
 	for attrRows.Next() {
@@ -436,7 +436,7 @@ func (m *MySQL) ListUsers(ctx context.Context, filter map[string]interface{}, li
 		)
 		return nil, fmt.Errorf("failed to list users: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var users []User
 	for rows.Next() {
@@ -791,7 +791,7 @@ func (m *MySQL) Query(ctx context.Context, query string, args ...interface{}) (i
 		if err != nil {
 			return nil, fmt.Errorf("failed to execute query: %w", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		// Get column names
 		columns, err := rows.Columns()

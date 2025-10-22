@@ -12,7 +12,7 @@ func TestConfigEnsureQueueDirectorySecurity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create config with queue directory
 	cfg := &Config{

@@ -122,7 +122,7 @@ func (s *SpamAssassin) ScanBytes(ctx context.Context, data []byte) (*ScanResult,
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SpamAssassin: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send CHECK command
 	cmd := fmt.Sprintf("CHECK SPAMC/1.5\r\nContent-length: %d\r\n\r\n", len(data))

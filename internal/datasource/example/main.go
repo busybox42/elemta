@@ -16,7 +16,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	dbPath := filepath.Join(tempDir, "elemta.db")
 

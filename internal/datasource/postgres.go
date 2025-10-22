@@ -203,7 +203,7 @@ func (p *Postgres) Authenticate(ctx context.Context, username, password string) 
 		)
 		return false, fmt.Errorf("authentication query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var foundUsername string
 	success := false
@@ -292,7 +292,7 @@ func (p *Postgres) GetUser(ctx context.Context, username string) (User, error) {
 	if err != nil {
 		return user, fmt.Errorf("failed to get user groups: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var groupName string
@@ -317,7 +317,7 @@ func (p *Postgres) GetUser(ctx context.Context, username string) (User, error) {
 	if err != nil {
 		return user, fmt.Errorf("failed to get user attributes: %w", err)
 	}
-	defer attrRows.Close()
+	defer func() { _ = attrRows.Close() }()
 
 	user.Attributes = make(map[string]interface{})
 	for attrRows.Next() {
@@ -381,7 +381,7 @@ func (p *Postgres) ListUsers(ctx context.Context, filter map[string]interface{},
 	if err != nil {
 		return nil, fmt.Errorf("failed to list users: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var users []User
 	for rows.Next() {
@@ -724,7 +724,7 @@ func (p *Postgres) Query(ctx context.Context, query string, args ...interface{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to execute query: %w", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		// Get column names
 		columns, err := rows.Columns()

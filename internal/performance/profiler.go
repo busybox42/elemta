@@ -180,7 +180,7 @@ func (p *Profiler) GenerateHeapProfile() error {
 	if err != nil {
 		return fmt.Errorf("failed to create heap profile: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	runtime.GC() // Get up-to-date statistics
 
@@ -206,7 +206,7 @@ func (p *Profiler) GenerateGoroutineProfile() error {
 	if err != nil {
 		return fmt.Errorf("failed to create goroutine profile: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	profile := pprof.Lookup("goroutine")
 	if profile == nil {
@@ -241,7 +241,7 @@ func (p *Profiler) GenerateBlockProfile() error {
 	if err != nil {
 		return fmt.Errorf("failed to create block profile: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	profile := pprof.Lookup("block")
 	if profile == nil {
@@ -273,7 +273,7 @@ func (p *Profiler) GenerateMutexProfile() error {
 	if err != nil {
 		return fmt.Errorf("failed to create mutex profile: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	profile := pprof.Lookup("mutex")
 	if profile == nil {

@@ -43,7 +43,7 @@ func (f *FileDataSource) Connect() error {
 	if err != nil {
 		return fmt.Errorf("failed to open user file %s: %w", f.path, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	f.users = make(map[string]string)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {

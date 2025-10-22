@@ -278,7 +278,7 @@ func TestMemoryCacheBasicOperations(t *testing.T) {
 func TestMemoryCacheExpiration(t *testing.T) {
 	cache := NewMemory(Config{Name: "expiration-test"})
 	cache.Connect()
-	defer cache.Close()
+	defer func() { _ = cache.Close() }()
 
 	ctx := context.Background()
 
@@ -347,7 +347,7 @@ func TestMemoryCacheExpiration(t *testing.T) {
 func TestMemoryCacheNumericOperations(t *testing.T) {
 	cache := NewMemory(Config{Name: "numeric-test"})
 	cache.Connect()
-	defer cache.Close()
+	defer func() { _ = cache.Close() }()
 
 	ctx := context.Background()
 
@@ -410,7 +410,7 @@ func TestMemoryCacheNumericOperations(t *testing.T) {
 func TestMemoryCacheFlushAll(t *testing.T) {
 	cache := NewMemory(Config{Name: "flush-test"})
 	cache.Connect()
-	defer cache.Close()
+	defer func() { _ = cache.Close() }()
 
 	ctx := context.Background()
 
@@ -469,7 +469,7 @@ func TestMemoryCacheConcurrency(t *testing.T) {
 
 	cache := NewMemory(Config{Name: "concurrent"})
 	cache.Connect()
-	defer cache.Close()
+	defer func() { _ = cache.Close() }()
 
 	ctx := context.Background()
 
@@ -569,7 +569,7 @@ func TestMemoryCacheConcurrency(t *testing.T) {
 func TestMemoryCacheEdgeCases(t *testing.T) {
 	cache := NewMemory(Config{Name: "edge-cases"})
 	cache.Connect()
-	defer cache.Close()
+	defer func() { _ = cache.Close() }()
 
 	ctx := context.Background()
 
@@ -671,7 +671,7 @@ func TestCacheErrors(t *testing.T) {
 func BenchmarkMemoryCacheSet(b *testing.B) {
 	cache := NewMemory(Config{Name: "bench"})
 	cache.Connect()
-	defer cache.Close()
+	defer func() { _ = cache.Close() }()
 
 	ctx := context.Background()
 
@@ -684,7 +684,7 @@ func BenchmarkMemoryCacheSet(b *testing.B) {
 func BenchmarkMemoryCacheGet(b *testing.B) {
 	cache := NewMemory(Config{Name: "bench"})
 	cache.Connect()
-	defer cache.Close()
+	defer func() { _ = cache.Close() }()
 
 	ctx := context.Background()
 	cache.Set(ctx, "bench-key", "value", 0)
@@ -698,7 +698,7 @@ func BenchmarkMemoryCacheGet(b *testing.B) {
 func BenchmarkMemoryCacheIncrement(b *testing.B) {
 	cache := NewMemory(Config{Name: "bench"})
 	cache.Connect()
-	defer cache.Close()
+	defer func() { _ = cache.Close() }()
 
 	ctx := context.Background()
 	cache.Set(ctx, "counter", int64(0), 0)

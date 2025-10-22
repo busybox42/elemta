@@ -15,7 +15,7 @@ func main() {
 	if err := os.MkdirAll(queueDir, 0755); err != nil {
 		log.Fatalf("Failed to create queue directory: %v", err)
 	}
-	defer os.RemoveAll(queueDir)
+	defer func() { _ = os.RemoveAll(queueDir) }()
 
 	// Initialize queue manager
 	manager := queue.NewManager(queueDir)
