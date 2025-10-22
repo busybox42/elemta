@@ -41,7 +41,7 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 		"server", fmt.Sprintf("%s:%d", h.host, h.port))
 
 	// Create context with timeout
-	ctx, cancel := context.WithTimeout(ctx, h.timeout)
+	timeoutCtx, cancel := context.WithTimeout(ctx, h.timeout)
 	defer cancel()
 
 	// Connect to LMTP server

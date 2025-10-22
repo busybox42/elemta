@@ -104,7 +104,7 @@ func NewCluster(config ClusterConfig) (*Cluster, error) {
 		return nil, fmt.Errorf("node ID is required")
 	}
 	if config.ValkeyURL == "" {
-		return nil, fmt.Errorf("Valkey URL is required")
+		return nil, fmt.Errorf("valkey URL is required")
 	}
 
 	// Set defaults

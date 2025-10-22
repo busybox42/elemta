@@ -457,9 +457,9 @@ func (p *ConnectionPool) performMaintenance() {
 		"idle", currentIdle,
 		"active", atomic.LoadInt32(&p.activeConns),
 		"total", currentTotal,
-		"created", stats.Created,
-		"reused", stats.Reused,
-		"destroyed", stats.Destroyed)
+		"created", stats.Created.Load(),
+		"reused", stats.Reused.Load(),
+		"destroyed", stats.Destroyed.Load())
 }
 
 // GetStatistics returns pool statistics
