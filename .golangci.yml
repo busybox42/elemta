@@ -1,40 +1,124 @@
-run:
-  # timeout for analysis, e.g. 30s, 5m, default is 1m
-  timeout: 5m
+linters-settings:
+  dupl:
+    threshold: 100
+  funlen:
+    lines: 100
+    statements: 50
+  gci:
+    local-prefixes: github.com/busybox42/elemta
+  goconst:
+    min-len: 2
+    min-occurrences: 2
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - dupImport
+      - ifElseChain
+      - octalLiteral
+      - whyNoLint
+      - wrapperFunc
+  gocyclo:
+    min-complexity: 15
+  goimports:
+    local-prefixes: github.com/busybox42/elemta
+  golint:
+    min-confidence: 0
+  gomnd:
+    settings:
+      mnd:
+        checks: argument,case,condition,return
+  govet:
+    check-shadowing: true
+    settings:
+      printf:
+        funcs:
+          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Infof
+          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Warnf
+          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Errorf
+          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Fatalf
+  lll:
+    line-length: 140
+  maligned:
+    suggest-new: true
+  misspell:
+    locale: US
+  nolintlint:
+    allow-leading-space: true
+    allow-unused: false
+    require-explanation: false
+    require-specific: false
 
 linters:
-  # Enable default linters + specific ones
+  disable-all: true
   enable:
-    - unused # Checks for unused code
-    # You can add other specific linters here, or enable presets like:
-    # - errcheck
-    # - govet
-    # - staticcheck
-    # - typecheck
-  # Or, enable all available linters (can be noisy)
-  # enable-all: true
-  # Or, use the default set and just add/remove specifics
-  # presets:
-  #  - bugs
-  #  - unused
-  #  - format
-
-# Linters-settings has been renamed/restructured in recent versions.
-# Specific settings are often placed under 'linters:' or within a 'settings:' block
-# for each linter if needed. For 'unused', default settings are usually fine.
-
-# Example for a specific linter setting (if you were using 'errcheck'):
-# settings:
-#   errcheck:
-#     check-type-assertions: true
+    - bodyclose
+    - dogsled
+    - dupl
+    - errcheck
+    - exportloopref
+    - funlen
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    - gomnd
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - revive
+    - staticcheck
+    - stylecheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
 
 issues:
-  # Maximum issues count per one linter. Set to 0 to disable. Default is 50.
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gomnd
+        - funlen
+        - gocyclo
+
+    - path: internal/plugin/
+      linters:
+        - gosec
+
+    - text: "weak cryptographic primitive"
+      linters:
+        - gosec
+
+    - text: "ST1000:"
+      linters:
+        - stylecheck
+
   max-issues-per-linter: 0
-  # Maximum count of issues with the same text. Set to 0 to disable. Default is 3.
   max-same-issues: 0
-  # Exclude specific issues or paths if necessary
-  # exclude-rules:
-  #   - path: _test\\.go
-  #     linters:
-  #       - funlen 
+
+run:
+  timeout: 5m
+  skip-dirs:
+    - vendor
+    - venv
+    - tests/fixtures
+    - examples/external-plugins
+    - bin
+    - build
+  skip-files:
+    - ".*\\.pb\\.go$"
