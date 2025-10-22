@@ -603,7 +603,9 @@ func (csm *CommandSecurityManager) checkMemoryUsage(ctx context.Context, initial
 			"memory_increase", memoryIncrease,
 			"max_memory_per_command", csm.config.MaxMemoryPerCommand,
 		)
-		return fmt.Errorf("554 5.7.1 Command rejected: memory limit exceeded")
+		// 452 = temporary failure (4xx), client should retry later
+		// This is a resource constraint, not a permanent rejection
+		return fmt.Errorf("452 4.3.1 Insufficient system storage, try again later")
 	}
 
 	// Log high memory usage for monitoring
