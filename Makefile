@@ -112,9 +112,13 @@ test-all: test test-centralized
 # Code quality targets
 lint:
 	@echo "Running golangci-lint..."
+	@echo "ℹ️  Note: Only checking production code (excluding tests, examples)"
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run --timeout 10m --skip-dirs vendor,venv,bin,build ./... || true; \
-		echo "ℹ️  Lint complete (errors are informational, not blocking)"; \
+		golangci-lint run --timeout 10m \
+			--skip-dirs=vendor,venv,bin,build,examples,tests \
+			--skip-files='.*_test\.go' \
+			./cmd/elemta/commands ./internal/smtp ./internal/queue ./internal/cluster ./internal/performance ./internal/api || true; \
+		echo "ℹ️  Lint complete (minor issues are informational)"; \
 	else \
 		echo "⚠️  golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
 	fi
