@@ -14,12 +14,13 @@ max_size = 26214400  # 25MB
 local_domains = ["example.com", "mail.example.com", "localhost"]
 dev_mode = true  # Enable development mode for XDEBUG command
 
-# TLS Configuration - Enable STARTTLS
+# TLS Configuration - disabled by default in container builds
+# TLS certs/keys should be mounted and enabled via custom config in production.
 [tls]
-enabled = true
-enable_starttls = true
-cert_file = "/app/certs/test.crt"
-key_file = "/app/certs/test.key"
+enabled = false
+enable_starttls = false
+cert_file = ""
+key_file = ""
 
 queue_dir = "/app/queue"
 
