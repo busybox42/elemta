@@ -79,14 +79,14 @@ func NewFileLogger(config Config) (*FileLogger, error) {
 		return nil, fmt.Errorf("file path must be specified for file logger")
 	}
 
-	// Create directory if it doesn't exist
+	// Create directory if it doesn't exist (restrictive permissions)
 	dir := filepath.Dir(config.Output)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
 
-	// Open log file
-	file, err := os.OpenFile(config.Output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	// Open log file with restrictive permissions
+	file, err := os.OpenFile(config.Output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
@@ -249,6 +249,10 @@ func (l *FileLogger) log(level Level, msg string, fields ...Field) {
 		}
 	}
 
+	// Sanitize message and fields to prevent log injection and sensitive data leaks
+	msg = sanitizeMessage(msg)
+	fields = sanitizeFields(fields)
+
 	// Create log entry
 	entry := &LogEntry{
 		Time:    time.Now(),
@@ -305,8 +309,8 @@ func (l *FileLogger) rotate() error {
 		return err
 	}
 
-	// Open new file
-	file, err := os.OpenFile(l.filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	// Open new file with restrictive permissions
+	file, err := os.OpenFile(l.filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}

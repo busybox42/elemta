@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
+	"unicode"
 )
 
 // Level represents the severity level of a log message
@@ -50,6 +52,64 @@ type Field struct {
 // F creates a new log field
 func F(key string, value interface{}) Field {
 	return Field{Key: key, Value: value}
+}
+
+// sanitizeMessage normalizes a log message to a single line and removes
+// potentially dangerous control characters that can be used for log injection.
+func sanitizeMessage(msg string) string {
+	// Replace CR/LF with spaces to avoid multi-line injection
+	msg = strings.ReplaceAll(msg, "\r", " ")
+	msg = strings.ReplaceAll(msg, "\n", " ")
+
+	// Drop other control characters except tab
+	var b strings.Builder
+	for _, r := range msg {
+		if r == '\t' || !unicode.IsControl(r) {
+			b.WriteRune(r)
+		}
+	}
+
+	return b.String()
+}
+
+var sensitiveFieldKeys = []string{
+	"password",
+	"pass",
+	"token",
+	"secret",
+	"authorization",
+	"auth_header",
+}
+
+// sanitizeFields returns a sanitized copy of the provided fields with
+// sensitive values redacted and string values normalized.
+func sanitizeFields(fields []Field) []Field {
+	if len(fields) == 0 {
+		return nil
+	}
+
+	sanitized := make([]Field, len(fields))
+	copy(sanitized, fields)
+
+	for i, f := range sanitized {
+		keyLower := strings.ToLower(f.Key)
+		for _, sk := range sensitiveFieldKeys {
+			if strings.Contains(keyLower, sk) {
+				// Redact sensitive values completely
+				sanitized[i].Value = "***REDACTED***"
+				goto nextField
+			}
+		}
+
+		// Normalize string values to avoid multi-line injection
+		if v, ok := f.Value.(string); ok {
+			sanitized[i].Value = sanitizeMessage(v)
+		}
+
+	nextField:
+	}
+
+	return sanitized
 }
 
 // Logger defines the interface that all logger implementations must satisfy

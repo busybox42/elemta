@@ -243,6 +243,10 @@ func (l *ConsoleLogger) log(level Level, msg string, fields ...Field) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	// Sanitize message and fields to prevent log injection and sensitive data leaks
+	msg = sanitizeMessage(msg)
+	fields = sanitizeFields(fields)
+
 	// Create log entry
 	entry := &LogEntry{
 		Time:    time.Now(),
