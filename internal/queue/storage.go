@@ -307,8 +307,8 @@ func (fs *FileStorageBackend) Cleanup(retentionHours int) (int, error) {
 				if err := fs.Delete(msg.ID); err == nil {
 					deletedCount++
 				}
-				// Also delete content
-				fs.DeleteContent(msg.ID)
+				// Also delete content (best effort)
+				_ = fs.DeleteContent(msg.ID)
 			}
 		}
 	}

@@ -109,7 +109,7 @@ func NewManagerWithStorage(storage StorageBackend) *Manager {
 
 	// Ensure directories exist if using file storage
 	if fileStorage, ok := storage.(*FileStorageBackend); ok {
-		fileStorage.EnsureDirectories()
+		_ = fileStorage.EnsureDirectories() // Best effort, will fail on first operation if needed
 	}
 
 	// Start background stats updater
@@ -286,8 +286,8 @@ func (m *Manager) EnqueueMessage(from string, to []string, subject string, data 
 
 	// Store message metadata
 	if err := m.storageBackend.Store(msg); err != nil {
-		// Try to clean up content on error
-		m.storageBackend.DeleteContent(id)
+		// Try to clean up content on error (best effort)
+		_ = m.storageBackend.DeleteContent(id)
 		return "", fmt.Errorf("failed to store message metadata: %w", err)
 	}
 

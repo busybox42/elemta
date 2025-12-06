@@ -242,7 +242,7 @@ func (uqs *UnifiedQueueSystem) Start() error {
 	}
 
 	if err := uqs.DeliveryManager.Start(); err != nil {
-		uqs.ProcessorManager.Stop()
+		_ = uqs.ProcessorManager.Stop() // Best effort cleanup
 		return err
 	}
 
@@ -251,9 +251,9 @@ func (uqs *UnifiedQueueSystem) Start() error {
 
 // Stop gracefully shuts down all components of the queue system
 func (uqs *UnifiedQueueSystem) Stop() error {
-	uqs.ProcessorManager.Stop()
-	uqs.DeliveryManager.Stop()
-	uqs.QueueManager.Stop()
+	_ = uqs.ProcessorManager.Stop() // Best effort
+	_ = uqs.DeliveryManager.Stop()  // Best effort
+	uqs.QueueManager.Stop()         // No error return
 	return nil
 }
 

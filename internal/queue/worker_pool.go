@@ -17,7 +17,6 @@ type QueueJob struct {
 	message   *Message
 	processor func(ctx context.Context, msg *Message) error
 	priority  int
-	createdAt time.Time
 }
 
 func (qj *QueueJob) Process(ctx context.Context) (interface{}, error) {
@@ -43,7 +42,6 @@ type QueueWorkerPool struct {
 	circuitBreaker *gobreaker.CircuitBreaker
 	logger         *slog.Logger
 	stats          *QueueWorkerStats
-	mu             sync.RWMutex
 }
 
 // QueueResult represents the result of processing a queue job
@@ -424,9 +422,15 @@ func (qwp *QueueWorkerPool) GetStats() QueueWorkerStats {
 	qwp.stats.mu.RLock()
 	defer qwp.stats.mu.RUnlock()
 
-	// Create a copy to avoid race conditions
-	stats := *qwp.stats
-	return stats
+	// Return a copy of values to avoid exposing internal state
+	return QueueWorkerStats{
+		TotalJobs:     qwp.stats.TotalJobs,
+		CompletedJobs: qwp.stats.CompletedJobs,
+		FailedJobs:    qwp.stats.FailedJobs,
+		ActiveWorkers: qwp.stats.ActiveWorkers,
+		QueuedJobs:    qwp.stats.QueuedJobs,
+		// Don't copy mutex or ProcessingTime struct
+	}
 }
 
 // IsHealthy returns true if the queue worker pool is healthy
