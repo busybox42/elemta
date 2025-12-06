@@ -1,74 +1,64 @@
-version: "2"
-
 run:
   timeout: 10m
+  skip-dirs:
+    - vendor
+    - examples
 
 linters:
-  default: none
+  disable-all: true
   enable:
     - errcheck
     - govet
     - staticcheck
     - unused
     - ineffassign
-  settings:
-    errcheck:
-      exclude-functions:
-        - fmt.Fprint
-        - fmt.Fprintf
-        - fmt.Fprintln
-        - (io.Writer).Write
-        - (*text/tabwriter.Writer).Flush
-        - (net.Conn).Close
-        - (io.Closer).Close
-        - os.Setenv
-        - os.Unsetenv
-        - os.Chdir
-        - os.Remove
-        - os.RemoveAll
-        - (*os.File).Close
-  exclusions:
-    generated: lax
-    presets:
-      - comments
-      - std-error-handling
-    rules:
-      - path: "_test\\.go$"
-        linters:
-          - errcheck
-          - govet
-      - path: "examples/"
-        linters:
-          - errcheck
-          - unused
-      - path: "vendor/"
-        linters:
-          - errcheck
-      - text: "PreferServerCipherSuites"
-        linters:
-          - staticcheck
-      - text: "ST1005"
-        linters:
-          - staticcheck
-      - text: "QF1003|QF1001|QF1002|QF1004|QF1008"
-        linters:
-          - staticcheck
-      - text: "ST1023"
-        linters:
-          - staticcheck
-      - text: "SA5011"
-        linters:
-          - staticcheck
-      - text: "SA4010"
-        linters:
-          - staticcheck
-      - text: "SA4024"
-        linters:
-          - staticcheck
-      - text: "SA6005"
-        linters:
-          - staticcheck
+
+linters-settings:
+  errcheck:
+    exclude-functions:
+      - fmt.Fprint
+      - fmt.Fprintf
+      - fmt.Fprintln
+      - (io.Writer).Write
+      - (*text/tabwriter.Writer).Flush
+      - (net.Conn).Close
+      - (io.Closer).Close
+      - os.Setenv
+      - os.Unsetenv
+      - os.Chdir
+      - os.Remove
+      - os.RemoveAll
+      - (*os.File).Close
 
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+  exclude-rules:
+    - path: "_test\\.go$"
+      linters:
+        - errcheck
+        - govet
+    - text: "PreferServerCipherSuites"
+      linters:
+        - staticcheck
+    - text: "ST1005"
+      linters:
+        - staticcheck
+    - text: "QF1003|QF1001|QF1002|QF1004|QF1008"
+      linters:
+        - staticcheck
+    - text: "ST1023"
+      linters:
+        - staticcheck
+    - text: "SA5011"
+      linters:
+        - staticcheck
+    - text: "SA4010"
+      linters:
+        - staticcheck
+    - text: "SA4024"
+      linters:
+        - staticcheck
+    - text: "SA6005"
+      linters:
+        - staticcheck
