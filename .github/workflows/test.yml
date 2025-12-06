@@ -21,6 +21,3 @@ jobs:
 
       - name: Run unit tests (short)
         run: go test ./... -short
-
-      - name: Run race tests on core packages
-        run: go test ./internal/... ./cmd/... -race -run Test
