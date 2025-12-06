@@ -61,11 +61,8 @@ COPY --chown=elemta:elemta config/elemta.toml /app/config/elemta.toml
 COPY --chown=elemta:elemta config/dev.toml /app/config/dev.toml
 # Note: Using LDAP authentication, no local database needed
 
-# Copy TLS cert and key (for dev/test with self-signed certs)
-# For production, mount real certs via volumes or secrets
-COPY --chown=elemta:elemta config/test.crt /app/certs/test.crt
-COPY --chown=elemta:elemta config/test.key /app/certs/test.key
-RUN chmod 644 /app/certs/test.crt && chmod 600 /app/certs/test.key
+# TLS certificates are expected to be mounted into /app/certs at runtime
+# (CI builds do not embed test certificates.)
 
 # Copy web files with proper ownership
 COPY --chown=elemta:elemta web /app/web
