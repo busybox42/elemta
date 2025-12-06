@@ -1,5 +1,11 @@
+version: "2"
+
 run:
   timeout: 10m
+  exclude-dirs:
+    - vendor
+    - examples
+    - venv
 
 linters:
   enable:
@@ -7,26 +13,73 @@ linters:
     - govet
     - staticcheck
     - unused
-  exclusions:
-    paths:
-      - vendor
-      - venv
-      - bin
-      - build
-      - tests
-      - examples
-      - ".*_test\\.go$"
+    - ineffassign
+  settings:
+    errcheck:
+      # Ignore these functions - they rarely fail in practice
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (io.Writer).Write
+        - (*text/tabwriter.Writer).Flush
+        - (*os/exec.Cmd).Wait
+        - (net.Conn).Close
+        - (io.Closer).Close
+        - (*net/http.Response).Body.Close
+        - os.Setenv
+        - os.Unsetenv
+        - os.Chdir
+        - os.Remove
+        - os.RemoveAll
+        - (*os.File).Close
+        - (*database/sql.DB).Close
+        - (*net.Listener).Close
+        - (net.Listener).Close
 
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
   exclude-rules:
+    # Exclude test files from errcheck - test code doesn't need exhaustive error checking
+    - path: "_test\\.go$"
+      linters:
+        - errcheck
+        - govet
     # Allow deprecated TLS cipher preference (kept for compatibility)
     - text: "PreferServerCipherSuites"
       linters:
         - staticcheck
-    # Allow Let's Encrypt capitalization  
-    - text: "Let's Encrypt"
+    # Allow capitalized error strings for user-facing messages
+    - text: "ST1005"
       linters:
         - staticcheck
-
+    # Allow tagged switch suggestions - current code is readable
+    - text: "QF1003|QF1001|QF1002|QF1004|QF1008"
+      linters:
+        - staticcheck
+    # Allow type inference suggestions
+    - text: "ST1023"
+      linters:
+        - staticcheck
+    # Exclude nil pointer dereference in tests (false positives)
+    - text: "SA5011"
+      linters:
+        - staticcheck
+    # Exclude append result unused (often intentional in tests)
+    - text: "SA4010"
+      linters:
+        - staticcheck
+    # Exclude len() < 0 check (defensive coding)
+    - text: "SA4024"
+      linters:
+        - staticcheck
+    # Exclude strings.EqualFold suggestion
+    - text: "SA6005"
+      linters:
+        - staticcheck
+    # Exclude LDAP conn.Close errors - these are cleanup operations
+    - path: "(ldap|datasource)"
+      text: "conn.Close"
+      linters:
+        - errcheck

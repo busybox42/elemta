@@ -59,7 +59,6 @@ type WorkerPool struct {
 	errGroup       *errgroup.Group
 	circuitBreaker *gobreaker.CircuitBreaker
 	logger         *slog.Logger
-	wg             sync.WaitGroup
 	stats          *WorkerPoolStats
 	mu             sync.RWMutex
 	shutdown       int32
@@ -427,6 +426,9 @@ func (wp *WorkerPool) processJobWithTimeout(job Job, logger *slog.Logger) Result
 }
 
 // processJob processes a single job with circuit breaker protection (legacy method)
+// Currently unused but kept for backward compatibility
+//
+//nolint:unused
 func (wp *WorkerPool) processJob(job Job, logger *slog.Logger) Result {
 	return wp.processJobWithTimeout(job, logger)
 }

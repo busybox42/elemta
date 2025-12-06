@@ -201,6 +201,9 @@ func (m *TLSManager) configureCertificates(tlsConfig *tls.Config) (*tls.Config, 
 }
 
 // setupTLSConfig sets up the TLS configuration (legacy method for backward compatibility)
+// Currently unused but kept for backward compatibility
+//
+//nolint:unused
 func (m *TLSManager) setupTLSConfig() (*tls.Config, error) {
 	// Start with default secure settings
 	tlsConfig := &tls.Config{

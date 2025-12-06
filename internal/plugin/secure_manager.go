@@ -94,7 +94,7 @@ type PluginSignatureStore struct {
 	cache        map[string]*PluginSignature
 	cacheSize    int
 	cacheTTL     time.Duration
-	mu           sync.RWMutex
+	mu           sync.RWMutex //nolint:unused // Reserved for future thread-safe cache operations
 	logger       *slog.Logger
 }
 

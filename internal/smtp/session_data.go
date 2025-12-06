@@ -12,7 +12,6 @@ import (
 	"net"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/busybox42/elemta/internal/plugin"
@@ -61,7 +60,6 @@ type DataHandler struct {
 	queueManager      queue.QueueManager
 	builtinPlugins    *plugin.BuiltinPlugins
 	enhancedValidator *EnhancedValidator
-	mu                sync.RWMutex
 }
 
 // NewDataHandler creates a new data handler
@@ -461,7 +459,7 @@ func (dh *DataHandler) addServerHeaders(ctx context.Context, data []byte, metada
 		if scanResult.SpamScore > 5.0 {
 			spamStatus = "Yes"
 		}
-		additionalHeaders = append(additionalHeaders, fmt.Sprintf("X-Spam-Scanned: Yes"))
+		additionalHeaders = append(additionalHeaders, "X-Spam-Scanned: Yes")
 		additionalHeaders = append(additionalHeaders, fmt.Sprintf("X-Spam-Status: %s, score=%.1f/10.0", spamStatus, scanResult.SpamScore))
 		additionalHeaders = append(additionalHeaders, fmt.Sprintf("X-Spam-Score: %.1f", scanResult.SpamScore))
 	}

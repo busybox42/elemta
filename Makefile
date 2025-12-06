@@ -1,4 +1,4 @@
-.PHONY: all help build clean clean-certs certs install install-dev uninstall run test test-load test-docker up down down-volumes restart logs logs-elemta status rebuild rebuild-dev docker-build docker-run docker-stop update lint fmt
+.PHONY: all help build clean clean-certs certs install install-dev uninstall run test test-load test-docker up down down-volumes restart logs logs-elemta status rebuild rebuild-dev docker-build docker-run docker-stop update lint lint-fix fmt
 
 # Default target
 all: build
@@ -139,12 +139,22 @@ test-all: test test-centralized
 # Code quality targets
 lint:
 	@echo "Running golangci-lint..."
-	@echo "ℹ️  Note: Production code only (tests/examples excluded via .golangci.yml)"
+	@echo "ℹ️  Run this before committing to catch lint errors early"
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run ./... || true; \
-		echo "ℹ️  Lint complete (minor issues are informational)"; \
+		golangci-lint run ./... --timeout=10m; \
 	else \
-		echo "⚠️  golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
+		echo "⚠️  golangci-lint not installed. Install with:"; \
+		echo "    go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
+		exit 1; \
+	fi
+
+lint-fix:
+	@echo "Running golangci-lint with auto-fix..."
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run ./... --fix --timeout=10m; \
+	else \
+		echo "⚠️  golangci-lint not installed"; \
+		exit 1; \
 	fi
 
 fmt:

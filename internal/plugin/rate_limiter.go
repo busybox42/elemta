@@ -673,8 +673,8 @@ func parseSize(sizeStr string) (int64, error) {
 
 	// Simple parser for common size units
 	// This could be enhanced to support more formats
-	var multiplier int64 = 1
 	sizeStr = sizeStr[:len(sizeStr)-2] // Remove last 2 characters (unit)
+	var multiplier int64
 
 	switch sizeStr[len(sizeStr)-1:] {
 	case "B":

@@ -1097,6 +1097,10 @@ func (c *Config) validateRateLimiter(result *ValidationResult, sv *SecurityValid
 
 // Helper functions for validation
 
+// isValidHostname validates hostname format
+// Currently unused but kept for future validation enhancements
+//
+//nolint:unused
 func isValidHostname(hostname string) bool {
 	if len(hostname) == 0 || len(hostname) > 253 {
 		return false
@@ -1112,6 +1116,10 @@ func isValidHostname(hostname string) bool {
 	return hostnameRegex.MatchString(hostname)
 }
 
+// isValidListenAddress validates listen address format
+// Currently unused but kept for future validation enhancements
+//
+//nolint:unused
 func isValidListenAddress(addr string) bool {
 	// Handle :port format
 	if strings.HasPrefix(addr, ":") {
