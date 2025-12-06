@@ -283,6 +283,8 @@ func isWeakCipherSuite(cipher uint16) bool {
 	return false
 }
 
+// createTestCertificates creates temporary test certificate files
+// nolint:unused // Reserved for future TLS hardening tests
 func createTestCertificates(t *testing.T) (string, string) {
 	// Create temporary files for test certificates
 	certFile, err := os.CreateTemp("", "test-*.crt")

@@ -91,7 +91,7 @@ func TestGetCertificateMetrics(t *testing.T) {
 		require.NoError(t, err)
 
 		// GetCertificateMetrics logs error but returns nil (by design)
-		err = GetCertificateMetrics(certPath, "test.example.com")
+		_ = GetCertificateMetrics(certPath, "test.example.com")
 		t.Log("✓ Handles invalid PEM gracefully (logs error, returns nil)")
 	})
 
@@ -108,7 +108,7 @@ func TestGetCertificateMetrics(t *testing.T) {
 		require.NoError(t, err)
 
 		// GetCertificateMetrics logs error but returns nil (by design)
-		err = GetCertificateMetrics(certPath, "test.example.com")
+		_ = GetCertificateMetrics(certPath, "test.example.com")
 		t.Log("✓ Handles non-certificate PEM gracefully (logs error, returns nil)")
 	})
 }
