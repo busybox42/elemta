@@ -20,6 +20,20 @@ Messages are processed by the queue processor, which runs as part of the SMTP se
 3. Moving messages to the appropriate queue based on delivery status
 4. Retrying delivery of messages according to the retry schedule
 
+### Per-Domain Delivery Concurrency
+
+Elemta applies a per-domain concurrency limit when delivering messages (e.g. via LMTP to Dovecot). Each queued message is tagged with a primary routing domain derived from the first recipient address. The delivery layer enforces a maximum number of in-flight deliveries per domain;
+additional messages for that domain will temporarily fail and be retried via the deferred queue according to the retry schedule.
+
+The limit is controlled by the SMTP configuration option:
+
+```toml
+# SMTP configuration (elemta.conf / elemta.toml)
+max_connections_per_domain = 10  # Maximum concurrent deliveries per domain
+```
+
+When `max_connections_per_domain` is not set or is <= 0, Elemta uses a safe default (currently 10). This protects remote domains from overload and prevents a single domain from monopolizing delivery workers.
+
 ### Queue Processor Configuration
 
 The queue processor can be configured with the following options:

@@ -7,28 +7,36 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"time"
 )
 
 // LMTPDeliveryHandler implements DeliveryHandler for LMTP delivery (e.g., to Dovecot)
 type LMTPDeliveryHandler struct {
-	logger  *slog.Logger
-	timeout time.Duration
-	host    string
-	port    int
+	logger   *slog.Logger
+	timeout  time.Duration
+	host     string
+	port     int
+	limiter  *domainLimiter
+	maxInFly int
 }
 
 // NewLMTPDeliveryHandler creates a new LMTP delivery handler
-func NewLMTPDeliveryHandler(host string, port int) *LMTPDeliveryHandler {
+func NewLMTPDeliveryHandler(host string, port int, maxPerDomain int) *LMTPDeliveryHandler {
 	if port == 0 {
 		port = 2424 // Default LMTP port (common for Dovecot)
 	}
+	if maxPerDomain <= 0 {
+		maxPerDomain = 10
+	}
 
 	return &LMTPDeliveryHandler{
-		logger:  slog.Default().With("component", "lmtp-delivery"),
-		timeout: 30 * time.Second,
-		host:    host,
-		port:    port,
+		logger:   slog.Default().With("component", "lmtp-delivery"),
+		timeout:  30 * time.Second,
+		host:     host,
+		port:     port,
+		limiter:  newDomainLimiter(maxPerDomain),
+		maxInFly: maxPerDomain,
 	}
 }
 
@@ -39,6 +47,20 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 		"from", msg.From,
 		"to", msg.To,
 		"server", fmt.Sprintf("%s:%d", h.host, h.port))
+
+	// Determine routing domain for per-domain limiting
+	domain := msg.Domain
+	if domain == "" && len(msg.To) > 0 {
+		domain = extractDomain(msg.To[0])
+	}
+
+	// Apply simple per-domain in-flight limiter
+	if domain != "" && h.limiter != nil {
+		if !h.limiter.TryAcquire(domain) {
+			return fmt.Errorf("temporary failure: domain %s is over concurrent delivery limit", domain)
+		}
+		defer h.limiter.Release(domain)
+	}
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(ctx, h.timeout)
@@ -229,4 +251,45 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 	}
 
 	return nil
+}
+
+// domainLimiter implements a simple in-memory per-domain in-flight limiter
+type domainLimiter struct {
+	maxPerDomain int
+	mu           sync.Mutex
+	inFlight     map[string]int
+}
+
+func newDomainLimiter(max int) *domainLimiter {
+	if max <= 0 {
+		max = 1
+	}
+	return &domainLimiter{
+		maxPerDomain: max,
+		inFlight:     make(map[string]int),
+	}
+}
+
+func (l *domainLimiter) TryAcquire(domain string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.inFlight[domain] >= l.maxPerDomain {
+		return false
+	}
+	l.inFlight[domain]++
+	return true
+}
+
+func (l *domainLimiter) Release(domain string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if current, ok := l.inFlight[domain]; ok {
+		if current <= 1 {
+			delete(l.inFlight, domain)
+		} else {
+			l.inFlight[domain] = current - 1
+		}
+	}
 }

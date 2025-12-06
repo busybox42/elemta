@@ -216,8 +216,14 @@ func NewServer(config *Config) (*Server, error) {
 			}
 		}
 
-		logger.Printf("Creating LMTP delivery handler: %s:%d", deliveryHost, deliveryPort)
-		lmtpHandler := queue.NewLMTPDeliveryHandler(deliveryHost, deliveryPort)
+		// Determine per-domain concurrency limit for LMTP deliveries
+		maxPerDomain := config.MaxConnectionsPerDomain
+		if maxPerDomain <= 0 {
+			maxPerDomain = 10
+		}
+
+		logger.Printf("Creating LMTP delivery handler: %s:%d (max_per_domain=%d)", deliveryHost, deliveryPort, maxPerDomain)
+		lmtpHandler := queue.NewLMTPDeliveryHandler(deliveryHost, deliveryPort, maxPerDomain)
 
 		// Create processor configuration
 		processorConfig := queue.ProcessorConfig{

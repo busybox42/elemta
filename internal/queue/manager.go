@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -69,6 +70,7 @@ type Message struct {
 	FilePath    string            `json:"file_path"`
 	From        string            `json:"from"`
 	To          []string          `json:"to"`
+	Domain      string            `json:"domain,omitempty"`
 	Subject     string            `json:"subject"`
 	Size        int64             `json:"size"`
 	Priority    Priority          `json:"priority"`
@@ -251,12 +253,19 @@ func (m *Manager) EnqueueMessage(from string, to []string, subject string, data 
 		"enqueue_time", time.Now().Format(time.RFC3339),
 	)
 
+	// Derive primary routing domain from first recipient
+	var domain string
+	if len(to) > 0 {
+		domain = extractDomain(to[0])
+	}
+
 	// Create message metadata
 	msg := Message{
 		ID:          id,
 		QueueType:   Active,
 		From:        from,
 		To:          to,
+		Domain:      domain,
 		Subject:     subject,
 		Size:        int64(len(data)),
 		Priority:    priority,
@@ -534,6 +543,18 @@ func (m *Manager) SetAnnotation(id string, key, value string) error {
 func generateUniqueID() string {
 	// Format: timestamp-random
 	return fmt.Sprintf("%d-%07d", time.Now().UnixNano(), time.Now().Nanosecond())
+}
+
+// extractDomain returns the domain portion of an email address, or empty string if invalid
+func extractDomain(addr string) string {
+	if addr == "" {
+		return ""
+	}
+	at := strings.LastIndex(addr, "@")
+	if at == -1 || at == len(addr)-1 {
+		return ""
+	}
+	return strings.ToLower(addr[at+1:])
 }
 
 // calculateNextRetry determines when to retry a message based on retry count
