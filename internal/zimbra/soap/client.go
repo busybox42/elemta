@@ -294,7 +294,10 @@ func (c *Client) makeRequest(ctx context.Context, url string, request interface{
 	return nil
 }
 
-// makeAuthenticatedRequest performs a SOAP request with authentication
+// makeAuthenticatedRequest makes an authenticated SOAP request
+// Currently unused but reserved for future Zimbra integration
+//
+//nolint:unused
 func (c *Client) makeAuthenticatedRequest(ctx context.Context, request interface{}, response interface{}) error {
 	// Ensure we have a valid auth token
 	err := c.ensureAuthenticated(ctx)
@@ -324,7 +327,10 @@ func (c *Client) makeAuthenticatedRequest(ctx context.Context, request interface
 	return c.makeRequest(ctx, c.config.URL, envelope, response)
 }
 
-// ensureAuthenticated ensures we have a valid authentication token
+// ensureAuthenticated ensures the client is authenticated
+// Currently unused but reserved for future Zimbra integration
+//
+//nolint:unused
 func (c *Client) ensureAuthenticated(ctx context.Context) error {
 	c.authMutex.RLock()
 	hasToken := c.authToken != ""

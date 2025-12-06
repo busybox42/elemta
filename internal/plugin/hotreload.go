@@ -478,6 +478,9 @@ func (hrm *HotReloadManager) unloadPluginGracefully(pluginName string) error {
 }
 
 // backupPlugin creates a backup of the current plugin version
+// Currently unused but reserved for future hot-reload functionality
+//
+//nolint:unused
 func (hrm *HotReloadManager) backupPlugin(pluginPath, pluginName string) error {
 	backupPath := filepath.Join(hrm.config.BackupDirectory,
 		fmt.Sprintf("%s_%d.so", pluginName, time.Now().Unix()))
@@ -495,6 +498,9 @@ func (hrm *HotReloadManager) backupPlugin(pluginPath, pluginName string) error {
 }
 
 // restorePluginFromBackup restores a plugin from its most recent backup
+// Currently unused but reserved for future hot-reload functionality
+//
+//nolint:unused
 func (hrm *HotReloadManager) restorePluginFromBackup(pluginName string) error {
 	// Find most recent backup
 	pattern := filepath.Join(hrm.config.BackupDirectory, pluginName+"_*.so")

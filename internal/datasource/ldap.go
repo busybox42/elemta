@@ -68,8 +68,9 @@ func (l *LDAP) Connect() error {
 		return nil
 	}
 
-	// Connect to LDAP server
-	conn, err := ldap.Dial("tcp", fmt.Sprintf("%s:%d", l.config.Host, l.config.Port))
+	// Connect to LDAP server using DialURL (replaces deprecated Dial)
+	ldapURL := fmt.Sprintf("ldap://%s:%d", l.config.Host, l.config.Port)
+	conn, err := ldap.DialURL(ldapURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to LDAP server: %w", err)
 	}
@@ -191,8 +192,9 @@ func (l *LDAP) Authenticate(ctx context.Context, username, password string) (boo
 
 	userDN = searchResult.Entries[0].DN
 
-	// Try to bind with the user's credentials
-	conn, err := ldap.Dial("tcp", fmt.Sprintf("%s:%d", l.config.Host, l.config.Port))
+	// Try to bind with the user's credentials using DialURL (replaces deprecated Dial)
+	ldapURL := fmt.Sprintf("ldap://%s:%d", l.config.Host, l.config.Port)
+	conn, err := ldap.DialURL(ldapURL)
 	if err != nil {
 		return false, fmt.Errorf("failed to connect to LDAP server: %w", err)
 	}

@@ -336,7 +336,10 @@ func generateQueryKey(operation, tableName string, columns, whereColumns []strin
 
 	// Add random component to prevent key collisions
 	randomBytes := make([]byte, 4)
-	rand.Read(randomBytes)
+	if _, err := rand.Read(randomBytes); err != nil {
+		// Fallback to timestamp-based randomness if crypto/rand fails
+		randomBytes = []byte(fmt.Sprintf("%d", time.Now().UnixNano()%10000))
+	}
 	randomHex := hex.EncodeToString(randomBytes)
 
 	return strings.Join(parts, "|") + "|" + randomHex

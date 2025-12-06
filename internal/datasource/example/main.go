@@ -44,7 +44,9 @@ func main() {
 	}
 
 	// Register the datasource with the manager
-	manager.Register(sqliteDS)
+	if err := manager.Register(sqliteDS); err != nil {
+		log.Fatalf("Failed to register SQLite datasource: %v", err)
+	}
 
 	// Create a mock datasource for testing
 	mockConfig := datasource.Config{
@@ -63,7 +65,9 @@ func main() {
 	}
 
 	// Register the mock datasource with the manager
-	manager.Register(mockDS)
+	if err := manager.Register(mockDS); err != nil {
+		log.Fatalf("Failed to register mock datasource: %v", err)
+	}
 
 	// List all registered datasources
 	fmt.Println("Registered datasources:")
@@ -236,7 +240,9 @@ func main() {
 
 	// Close all datasources
 	fmt.Println("\nClosing all datasources...")
-	manager.CloseAll()
+	if err := manager.CloseAll(); err != nil {
+		log.Printf("Warning: Error closing datasources: %v", err)
+	}
 
 	fmt.Println("Example completed successfully")
 }
