@@ -17,17 +17,14 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
-
-      - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+          cache: true
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          args: >-
-            ./...
+          version: latest
+          args: --timeout=10m ./...
+          skip-cache: false
 
       - name: Check gofmt
         run: |
