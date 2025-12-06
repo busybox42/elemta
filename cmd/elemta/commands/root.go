@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/busybox42/elemta/internal/config"
 	"github.com/spf13/cobra"
@@ -12,6 +13,8 @@ var (
 	// Global configuration
 	configPath string
 	cfg        *config.Config
+	configOnce sync.Once
+	configErr  error
 
 	// Root command
 	rootCmd = &cobra.Command{
@@ -25,16 +28,17 @@ Elemta is a high-performance, carrier-grade MTA with modular architecture and pl
 				return
 			}
 
-			// Load configuration
-			var err error
-			cfg, err = config.LoadConfig(configPath)
-			if err != nil {
+			// Load configuration exactly once in a thread-safe way
+			configOnce.Do(func() {
+				cfg, configErr = config.LoadConfig(configPath)
+			})
+			if configErr != nil {
 				// In test mode (ELEMTA_TEST env var set), just warn and skip
 				if os.Getenv("ELEMTA_TEST") != "" {
-					fmt.Fprintf(os.Stderr, "Warning: config loading failed in test mode: %v\n", err)
+					fmt.Fprintf(os.Stderr, "Warning: config loading failed in test mode: %v\n", configErr)
 					return
 				}
-				fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error loading config: %v\n", configErr)
 				os.Exit(1)
 			}
 

@@ -255,7 +255,8 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Try to find the config file
 	configFile, err := FindConfigFile(configPath)
 	if err != nil {
-		fmt.Println("No config file found, using defaults")
+		// No config file is not fatal; run with secure defaults
+		fmt.Fprintln(os.Stderr, "No config file found, using defaults")
 		return cfg, nil
 	}
 
@@ -280,8 +281,6 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("config file too large: %d bytes (max: %d)", len(data), securityValidator.config.MaxConfigFileSize)
 	}
 
-	// Debug: config file loaded successfully (comment only for production)
-
 	// Pre-initialize TLS pointer for TOML mapping
 	cfg.TLS = &smtp.TLSConfig{}
 
@@ -291,7 +290,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("error parsing TOML configuration: %w", err)
 	}
 
-	fmt.Println("Configuration loaded successfully (TOML format)")
+	fmt.Fprintln(os.Stderr, "Configuration loaded successfully (TOML format)")
 
 	// Make sure queue directory is set
 	if cfg.Queue.Dir == "" {

@@ -370,18 +370,18 @@ func NewServer(config *Config) (*Server, error) {
 		logger.Printf("TLS enabled, initializing TLS manager")
 		tlsManager, err := NewTLSManager(config)
 		if err != nil {
-			logger.Printf("Warning: Failed to initialize TLS manager: %v", err)
-		} else {
-			server.tlsManager = tlsManager
-			logger.Printf("TLS manager initialized successfully")
+			// TLS is explicitly enabled; failing to initialize it is a hard error
+			return nil, fmt.Errorf("failed to initialize TLS manager: %w", err)
+		}
+		server.tlsManager = tlsManager
+		logger.Printf("TLS manager initialized successfully")
 
-			// Log certificate information
-			if config.TLS.CertFile != "" {
-				logger.Printf("Using TLS certificate: %s", config.TLS.CertFile)
-			}
-			if config.TLS.LetsEncrypt != nil && config.TLS.LetsEncrypt.Enabled {
-				logger.Printf("Let's Encrypt enabled for domain: %s", config.TLS.LetsEncrypt.Domain)
-			}
+		// Log certificate information
+		if config.TLS.CertFile != "" {
+			logger.Printf("Using TLS certificate: %s", config.TLS.CertFile)
+		}
+		if config.TLS.LetsEncrypt != nil && config.TLS.LetsEncrypt.Enabled {
+			logger.Printf("Let's Encrypt enabled for domain: %s", config.TLS.LetsEncrypt.Domain)
 		}
 	} else {
 		logger.Printf("TLS disabled")
