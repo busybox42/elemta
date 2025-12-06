@@ -223,12 +223,20 @@ func (ch *CommandHandler) HandleMAIL(ctx context.Context, args string) error {
 
 	// Set mail from in state
 	if err := ch.state.SetMailFrom(ctx, mailFrom); err != nil {
-		return fmt.Errorf("503 5.5.1 %s", err.Error())
+		ch.logger.ErrorContext(ctx, "Failed to set MAIL FROM in session state",
+			"mail_from", mailFrom,
+			"error", err,
+		)
+		return fmt.Errorf("503 5.5.1 Bad sequence of commands")
 	}
 
 	// Transition to RCPT phase to allow RCPT TO commands
 	if err := ch.state.SetPhase(ctx, PhaseRcpt); err != nil {
-		return fmt.Errorf("451 4.3.0 Internal server error")
+		ch.logger.ErrorContext(ctx, "Failed to transition to RCPT phase",
+			"mail_from", mailFrom,
+			"error", err,
+		)
+		return fmt.Errorf("503 5.5.1 Bad sequence of commands")
 	}
 
 	ch.logger.InfoContext(ctx, "mail_from_accepted",
@@ -266,7 +274,11 @@ func (ch *CommandHandler) HandleRCPT(ctx context.Context, args string) error {
 
 	// Add recipient to state
 	if err := ch.state.AddRecipient(ctx, rcptTo); err != nil {
-		return fmt.Errorf("503 5.5.1 %s", err.Error())
+		ch.logger.ErrorContext(ctx, "Failed to add recipient to session state",
+			"recipient", rcptTo,
+			"error", err,
+		)
+		return fmt.Errorf("503 5.5.1 Bad sequence of commands")
 	}
 
 	ch.logger.InfoContext(ctx, "rcpt_to_accepted",
@@ -294,7 +306,12 @@ func (ch *CommandHandler) HandleDATA(ctx context.Context) error {
 
 	// Set phase to data
 	if err := ch.state.SetPhase(ctx, PhaseData); err != nil {
-		return fmt.Errorf("503 5.5.1 %s", err.Error())
+		ch.logger.ErrorContext(ctx, "Failed to transition to DATA phase",
+			"mail_from", ch.state.GetMailFrom(),
+			"recipient_count", ch.state.GetRecipientCount(),
+			"error", err,
+		)
+		return fmt.Errorf("503 5.5.1 Bad sequence of commands")
 	}
 
 	// Send data prompt
