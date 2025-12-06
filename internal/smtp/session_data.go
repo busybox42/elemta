@@ -100,11 +100,11 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 
 	// Set read timeout
 	if deadline, ok := ctx.Deadline(); ok {
-		dh.conn.SetReadDeadline(deadline)
+		_ = dh.conn.SetReadDeadline(deadline) // Best effort
 	} else {
-		dh.conn.SetReadDeadline(time.Now().Add(30 * time.Minute))
+		_ = dh.conn.SetReadDeadline(time.Now().Add(30 * time.Minute)) // Best effort
 	}
-	defer dh.conn.SetReadDeadline(time.Time{})
+	defer func() { _ = dh.conn.SetReadDeadline(time.Time{}) }() // Best effort cleanup
 
 	// Progressive memory tracking variables
 	const memoryCheckInterval = 1024 * 1024 // Check every 1MB

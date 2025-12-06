@@ -28,7 +28,7 @@ type Profiler struct {
 
 	// Active profiles
 	cpuProfile *os.File
-	memProfile *os.File
+	memProfile *os.File //nolint:unused // Reserved for future memory profiling
 	traceFile  *os.File
 	mu         sync.RWMutex
 

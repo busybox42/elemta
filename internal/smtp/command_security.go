@@ -642,6 +642,9 @@ func (csm *CommandSecurityManager) validateBounds(ctx context.Context, str strin
 }
 
 // safeStringOperation performs string operations with bounds checking
+// Currently unused but kept for future security enhancements
+//
+//nolint:unused
 func (csm *CommandSecurityManager) safeStringOperation(ctx context.Context, str string, start, end int, operation string) (string, error) {
 	// Validate input string bounds
 	if err := csm.validateBounds(ctx, str, operation); err != nil {

@@ -543,7 +543,7 @@ func (s *Server) acceptConnections() error {
 
 		// Set a short timeout on accept to allow periodic context checking
 		if tcpListener, ok := s.listener.(*net.TCPListener); ok {
-			tcpListener.SetDeadline(time.Now().Add(1 * time.Second))
+			_ = tcpListener.SetDeadline(time.Now().Add(1 * time.Second)) // Best effort
 		}
 
 		conn, err := s.listener.Accept()
@@ -563,7 +563,7 @@ func (s *Server) acceptConnections() error {
 
 		// Reset deadline after successful accept
 		if tcpListener, ok := s.listener.(*net.TCPListener); ok {
-			tcpListener.SetDeadline(time.Time{})
+			_ = tcpListener.SetDeadline(time.Time{}) // Best effort
 		}
 
 		// Check if connection can be accepted based on resource limits

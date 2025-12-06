@@ -33,7 +33,6 @@ type Session struct {
 	// Configuration and dependencies
 	config          *Config
 	logger          *slog.Logger
-	context         *Context
 	authenticator   Authenticator
 	queueManager    queue.QueueManager
 	tlsManager      TLSHandler
@@ -232,7 +231,7 @@ func (s *Session) processCommands(ctx context.Context) error {
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				s.logger.InfoContext(ctx, "Session timeout")
-				s.write("421 4.4.2 Timeout")
+				_ = s.write("421 4.4.2 Timeout") // Ignore error on timeout response
 				return fmt.Errorf("session timeout")
 			}
 
@@ -256,7 +255,7 @@ func (s *Session) processCommands(ctx context.Context) error {
 				continue
 			}
 			// Send success response
-			s.write("250 2.0.0 Message accepted for delivery")
+			_ = s.write("250 2.0.0 Message accepted for delivery") // Ignore error, message already queued
 
 			// Reset to INIT phase after successful DATA processing
 			if resetErr := s.state.SetPhase(ctx, PhaseInit); resetErr != nil {
