@@ -22,9 +22,9 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v1.64.5
           args: --timeout=10m ./...
-          skip-cache: false
+          skip-cache: true
 
       - name: Check gofmt
         run: |
