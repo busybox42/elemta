@@ -1,4 +1,4 @@
-.PHONY: all help build clean install install-dev uninstall run test test-load test-docker up down down-volumes restart logs logs-elemta status rebuild docker-build docker-run docker-stop update lint fmt
+.PHONY: all help build clean clean-certs certs install install-dev uninstall run test test-load test-docker up down down-volumes restart logs logs-elemta status rebuild rebuild-dev docker-build docker-run docker-stop update lint fmt
 
 # Default target
 all: build
@@ -13,6 +13,7 @@ help:
 	@echo "  down-volumes   - Stop services and remove volumes"
 	@echo "  restart        - Restart all services"
 	@echo "  rebuild        - Rebuild images and restart"
+	@echo "  rebuild-dev    - Quick rebuild (dev only, skips cert check)"
 	@echo "  logs           - Show all logs (follow mode)"
 	@echo "  logs-elemta    - Show Elemta SMTP logs only"
 	@echo "  status         - Show service status"
@@ -24,6 +25,8 @@ help:
 	@echo "🔧 Build & Test:"
 	@echo "  build             - Build all Elemta binaries (server, queue, cli)"
 	@echo "  clean             - Clean build artifacts"
+	@echo "  certs             - Generate self-signed TLS certificates"
+	@echo "  clean-certs       - Remove test TLS certificates"
 	@echo "  test              - Run Go unit tests"
 	@echo "  test-load         - Run SMTP load/performance tests"
 	@echo "  test-docker       - Run full integration test suite (21 tests)"
@@ -51,6 +54,27 @@ clean:
 	@echo "Cleaning build artifacts..."
 	rm -rf bin/
 	@echo "Clean complete."
+
+clean-certs:
+	@echo "Removing test TLS certificates..."
+	@rm -f config/test.crt config/test.key
+	@echo "Test certificates removed"
+
+certs:
+	@echo "🔐 Generating self-signed TLS certificates..."
+	@if ! command -v openssl >/dev/null 2>&1; then \
+		echo "❌ Error: openssl not found. Please install openssl first."; \
+		exit 1; \
+	fi
+	@openssl req -x509 -newkey rsa:4096 -nodes \
+		-keyout config/test.key \
+		-out config/test.crt \
+		-days 365 \
+		-subj '/CN=mail.dev.evil-admin.com/O=Elemta Dev/C=US' \
+		-addext 'subjectAltName=DNS:mail.dev.evil-admin.com,DNS:*.dev.evil-admin.com' 2>/dev/null
+	@chmod 600 config/test.key
+	@chmod 644 config/test.crt
+	@echo "✅ TLS certificates generated at config/test.{crt,key}"
 
 # Install targets
 install-bin: build
@@ -167,6 +191,24 @@ setup-kibana:
 install-dev: docker-build
 	@echo "🚀 Elemta Development Setup"
 	@echo "==========================="
+	@if [ ! -f config/test.crt ] || [ ! -f config/test.key ]; then \
+		if ! command -v openssl >/dev/null 2>&1; then \
+			echo "❌ Error: openssl not found. Install it or run 'make certs' separately."; \
+			exit 1; \
+		fi; \
+		echo "🔐 Generating self-signed TLS certificates..."; \
+		openssl req -x509 -newkey rsa:4096 -nodes \
+			-keyout config/test.key \
+			-out config/test.crt \
+			-days 365 \
+			-subj '/CN=mail.dev.evil-admin.com/O=Elemta Dev/C=US' \
+			-addext 'subjectAltName=DNS:mail.dev.evil-admin.com,DNS:*.dev.evil-admin.com' 2>/dev/null; \
+		chmod 600 config/test.key; \
+		chmod 644 config/test.crt; \
+		echo "✅ TLS certificates generated"; \
+	else \
+		echo "ℹ️  Using existing TLS certificates"; \
+	fi
 	@if [ ! -f .env ]; then \
 		echo "📝 Creating .env for development..."; \
 		printf "# Elemta Development Environment - Auto-generated\n" > .env; \
@@ -248,6 +290,13 @@ rebuild:
 	@make docker-build
 	@make up
 	@echo "✅ Rebuild complete"
+
+rebuild-dev:
+	@echo "🔨 Quick rebuild for development (skips cert check)..."
+	@make down
+	@docker compose -f deployments/compose/docker-compose.yml build elemta
+	@make up
+	@echo "✅ Development rebuild complete"
 
 docker-down: down-volumes
 
