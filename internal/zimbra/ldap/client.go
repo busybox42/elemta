@@ -162,19 +162,20 @@ func (c *Client) createConnection(ctx context.Context) (*ldap.Conn, error) {
 
 	// Try each server in order
 	for _, server := range c.config.Servers {
-		address := fmt.Sprintf("%s:%d", server, c.config.Port)
-
+		// Use DialURL instead of deprecated Dial/DialTLS
+		var ldapURL string
 		if c.config.TLS {
-			tlsConfig := c.config.TLSConfig
-			if tlsConfig == nil {
-				tlsConfig = &tls.Config{
-					ServerName: server,
-				}
-			}
-			conn, err = ldap.DialTLS("tcp", address, tlsConfig)
+			ldapURL = fmt.Sprintf("ldaps://%s:%d", server, c.config.Port)
 		} else {
-			conn, err = ldap.Dial("tcp", address)
+			ldapURL = fmt.Sprintf("ldap://%s:%d", server, c.config.Port)
 		}
+
+		dialOpts := []ldap.DialOpt{}
+		if c.config.TLS && c.config.TLSConfig != nil {
+			dialOpts = append(dialOpts, ldap.DialWithTLSConfig(c.config.TLSConfig))
+		}
+
+		conn, err = ldap.DialURL(ldapURL, dialOpts...)
 
 		if err != nil {
 			c.logger.Warn("Failed to connect to LDAP server",

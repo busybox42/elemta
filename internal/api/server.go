@@ -422,7 +422,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 	sessionID := s.sessionManager.GetSessionFromRequest(r)
 	if sessionID != "" {
-		s.sessionManager.RevokeSession(sessionID)
+		_ = s.sessionManager.RevokeSession(sessionID) // Best effort
 	}
 
 	// Clear session cookie

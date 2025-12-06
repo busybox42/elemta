@@ -76,7 +76,6 @@ type SecurePlugin struct {
 	Sandboxed      bool
 	LastValidated  time.Time
 	ViolationCount int
-	mu             sync.RWMutex
 }
 
 // PluginSignature represents a cryptographic signature for a plugin

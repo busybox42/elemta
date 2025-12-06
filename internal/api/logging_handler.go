@@ -63,7 +63,7 @@ func (s *Server) HandleGetLogLevel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response) // Best effort
 }
 
 // HandleSetLogLevel changes the log level at runtime
@@ -99,7 +99,7 @@ func (s *Server) HandleSetLogLevel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response) // Best effort
 }
 
 // levelToString converts slog.Level to string

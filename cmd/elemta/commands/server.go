@@ -34,8 +34,8 @@ var serverCmd = &cobra.Command{
 	Use:   "server",
 	Short: "Start the Elemta MTA server",
 	Long:  `Start the Elemta Mail Transfer Agent server`,
-	Run: func(cmd *cobra.Command, args []string) {
-		ServerRunFunc(cmd, args)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return ServerRunFunc(cmd, args)
 	},
 }
 

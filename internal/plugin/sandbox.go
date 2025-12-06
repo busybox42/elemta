@@ -318,9 +318,19 @@ func (s *PluginSandbox) GetActiveExecutions() map[string]*SandboxedExecution {
 
 	result := make(map[string]*SandboxedExecution)
 	for id, execution := range s.activeExecutions {
-		// Create a copy to avoid race conditions
-		execCopy := *execution
-		result[id] = &execCopy
+		// Create a copy of values to avoid race conditions (don't copy mutex)
+		execution.mu.RLock()
+		execCopy := &SandboxedExecution{
+			ID:            execution.ID,
+			PluginName:    execution.PluginName,
+			StartTime:     execution.StartTime,
+			Context:       execution.Context,
+			CancelFunc:    execution.CancelFunc,
+			ResourceUsage: execution.ResourceUsage,
+			Violations:    append([]SecurityViolation{}, execution.Violations...),
+		}
+		execution.mu.RUnlock()
+		result[id] = execCopy
 	}
 
 	return result

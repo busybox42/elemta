@@ -24,7 +24,7 @@ var certCmd = &cobra.Command{
 	Short: "Certificate management commands",
 	Long:  `Commands for managing TLS certificates, including Let's Encrypt integration.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
+		_ = cmd.Help() // Best effort
 	},
 }
 
@@ -53,7 +53,7 @@ var certInfoCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Error creating TLS manager: %v\n", err)
 			os.Exit(1)
 		}
-		defer tlsManager.Stop()
+		defer func() { _ = tlsManager.Stop() }() // Best effort cleanup
 
 		// Get certificate info
 		info, err := tlsManager.GetCertificateInfo()
@@ -149,7 +149,7 @@ var certRenewCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Error creating TLS manager: %v\n", err)
 			os.Exit(1)
 		}
-		defer tlsManager.Stop()
+		defer func() { _ = tlsManager.Stop() }() // Best effort cleanup
 
 		// Force renewal
 		fmt.Println("Forcing certificate renewal...")
