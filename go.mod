@@ -19,7 +19,7 @@ require (
 	github.com/sony/gobreaker v1.0.0
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
-	github.com/valkey-io/valkey-go v1.0.65
+	github.com/valkey-io/valkey-go v1.0.69
 	golang.org/x/crypto v0.41.0
 	golang.org/x/sync v0.16.0
 	golang.org/x/text v0.28.0
