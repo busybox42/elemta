@@ -543,7 +543,9 @@ func (s *Server) acceptConnections() error {
 
 		// Set a short timeout on accept to allow periodic context checking
 		if tcpListener, ok := s.listener.(*net.TCPListener); ok {
-			_ = tcpListener.SetDeadline(time.Now().Add(1 * time.Second)) // Best effort
+			if err := tcpListener.SetDeadline(time.Now().Add(1 * time.Second)); err != nil {
+				s.logger.Printf("Failed to set accept deadline: %v", err)
+			}
 		}
 
 		conn, err := s.listener.Accept()

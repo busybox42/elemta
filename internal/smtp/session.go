@@ -231,7 +231,11 @@ func (s *Session) processCommands(ctx context.Context) error {
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				s.logger.InfoContext(ctx, "Session timeout")
-				_ = s.write("421 4.4.2 Timeout") // Ignore error on timeout response
+				if writeErr := s.write("421 4.4.2 Timeout"); writeErr != nil {
+					s.logger.ErrorContext(ctx, "Failed to send timeout response",
+						"error", writeErr,
+						"client", s.remoteAddr)
+				}
 				return fmt.Errorf("session timeout")
 			}
 
@@ -255,7 +259,11 @@ func (s *Session) processCommands(ctx context.Context) error {
 				continue
 			}
 			// Send success response
-			_ = s.write("250 2.0.0 Message accepted for delivery") // Ignore error, message already queued
+			if writeErr := s.write("250 2.0.0 Message accepted for delivery"); writeErr != nil {
+				s.logger.ErrorContext(ctx, "Failed to send message acceptance response",
+					"error", writeErr,
+					"client", s.remoteAddr)
+			}
 
 			// Reset to INIT phase after successful DATA processing
 			if resetErr := s.state.SetPhase(ctx, PhaseInit); resetErr != nil {
