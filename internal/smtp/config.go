@@ -73,7 +73,31 @@ type Config struct {
 	// Memory management configuration
 	Memory *MemoryConfig `toml:"memory" json:"memory"`
 
-	SessionTimeout time.Duration `yaml:"session_timeout" toml:"session_timeout"`
+	// Timeout configuration for context propagation
+	Timeouts TimeoutConfig `toml:"timeouts" json:"timeouts"`
+
+	SessionTimeout time.Duration `yaml:"session_timeout" toml:"session_timeout"` // Deprecated: Use Timeouts.SessionTimeout
+}
+
+// TimeoutConfig contains hierarchical timeout settings for context propagation
+type TimeoutConfig struct {
+	// Session timeout for SMTP sessions
+	SessionTimeout time.Duration `toml:"session_timeout" json:"session_timeout"`
+
+	// Command timeout for individual SMTP commands
+	CommandTimeout time.Duration `toml:"command_timeout" json:"command_timeout"`
+
+	// Data timeout for DATA command (longer due to message content)
+	DataTimeout time.Duration `toml:"data_timeout" json:"data_timeout"`
+
+	// Shutdown timeout for graceful server shutdown
+	ShutdownTimeout time.Duration `toml:"shutdown_timeout" json:"shutdown_timeout"`
+
+	// Connection timeout for establishing connections
+	ConnectionTimeout time.Duration `toml:"connection_timeout" json:"connection_timeout"`
+
+	// Authentication timeout for auth processes
+	AuthTimeout time.Duration `toml:"auth_timeout" json:"auth_timeout"`
 }
 
 // DeliveryConfig represents configuration for message delivery

@@ -40,8 +40,10 @@ type Server struct {
 	slogger         *slog.Logger     // Structured logger for resource management
 
 	// Concurrency management
-	workerPool   *WorkerPool     // Standardized worker pool for connection handling
-	ctx          context.Context // Server context for graceful shutdown
+	workerPool   *WorkerPool        // Standardized worker pool for connection handling
+	rootCtx      context.Context    // Server root context for lifecycle management
+	rootCancel   context.CancelFunc // Server root context cancellation
+	ctx          context.Context    // Server context for graceful shutdown (worker context)
 	cancel       context.CancelFunc
 	errGroup     *errgroup.Group // Coordinated goroutine management
 	shutdownOnce sync.Once       // Ensure shutdown is called only once
@@ -321,8 +323,9 @@ func NewServer(config *Config) (*Server, error) {
 		logger.Printf("Resource manager initialized with default memory protection")
 	}
 
-	// Initialize concurrency management
-	ctx, cancel := context.WithCancel(context.Background())
+	// Initialize concurrency management with hierarchical context
+	rootCtx, rootCancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(rootCtx)
 	errGroup, gctx := errgroup.WithContext(ctx)
 
 	// Initialize worker pool for connection handling
@@ -358,10 +361,12 @@ func NewServer(config *Config) (*Server, error) {
 		resourceManager: resourceManager,
 		slogger:         slogger,
 
-		// Concurrency management
+		// Concurrency management with hierarchical context
 		workerPool: workerPool,
-		ctx:        gctx,
-		cancel:     cancel,
+		rootCtx:    rootCtx,    // Server lifecycle context
+		rootCancel: rootCancel, // Server lifecycle cancellation
+		ctx:        gctx,       // Worker context (derived from root)
+		cancel:     cancel,     // Worker context cancellation
 		errGroup:   errGroup,
 	}
 
@@ -609,7 +614,7 @@ func (s *Server) acceptConnections() error {
 						)
 					}
 				}()
-				s.handleAndCloseSession(conn)
+				s.handleAndCloseSession(s.ctx, conn)
 				return nil
 			})
 		} else {
@@ -622,6 +627,7 @@ func (s *Server) acceptConnections() error {
 }
 
 // handleConnectionWithContext processes a connection with proper context handling
+// handleConnectionWithContext handles a connection with context support
 func (s *Server) handleConnectionWithContext(ctx context.Context, conn interface{}) error {
 	s.slogger.Debug("handleConnectionWithContext called")
 	netConn, ok := conn.(net.Conn)
@@ -637,15 +643,15 @@ func (s *Server) handleConnectionWithContext(ctx context.Context, conn interface
 		netConn.Close()
 	}()
 
-	// Handle the session with context
+	// Handle the session with context - pass ctx to the session handler
 	s.slogger.Debug("Calling handleAndCloseSession")
-	s.handleAndCloseSession(netConn)
+	s.handleAndCloseSession(ctx, netConn)
 	s.slogger.Debug("handleAndCloseSession completed")
 	return nil
 }
 
 // handleAndCloseSession processes a connection and ensures it's properly closed with guaranteed cleanup
-func (s *Server) handleAndCloseSession(conn net.Conn) {
+func (s *Server) handleAndCloseSession(ctx context.Context, conn net.Conn) {
 	clientIP := conn.RemoteAddr().String()
 	s.slogger.Debug("handleAndCloseSession called", "client_ip", clientIP)
 	var sessionID string
@@ -700,8 +706,9 @@ func (s *Server) handleAndCloseSession(conn net.Conn) {
 	}
 
 	// Create a new session with the current configuration and authentication
+	// Pass the server's worker context for proper cancellation propagation
 	s.slogger.Debug("Creating new SMTP session", "client_ip", clientIP)
-	session := NewSession(conn, s.config, s.authenticator)
+	session := NewSession(ctx, conn, s.config, s.authenticator)
 	s.slogger.Debug("SMTP session created successfully")
 
 	// Set the TLS manager from the server
@@ -739,9 +746,10 @@ func (s *Server) Close() error {
 		s.logger.Printf("Initiating graceful server shutdown")
 		s.running = false
 
-		// Cancel context to signal all goroutines to stop
-		if s.cancel != nil {
-			s.cancel()
+		// Cancel root context first to propagate cancellation to all sessions
+		if s.rootCancel != nil {
+			s.logger.Printf("Cancelling server root context to propagate shutdown signal")
+			s.rootCancel()
 		}
 
 		// Close listener first to stop accepting new connections
@@ -765,7 +773,13 @@ func (s *Server) Close() error {
 			}
 		}
 
-		// Wait for all managed goroutines to complete with timeout
+		// Wait for all managed goroutines to complete with configured timeout
+		shutdownTimeout := s.config.Timeouts.ShutdownTimeout
+		if shutdownTimeout == 0 {
+			shutdownTimeout = 30 * time.Second // fallback default
+		}
+
+		s.logger.Printf("Waiting for goroutines to complete (timeout: %v)", shutdownTimeout)
 		done := make(chan error, 1)
 		go func() {
 			done <- s.errGroup.Wait()
@@ -781,7 +795,7 @@ func (s *Server) Close() error {
 			} else {
 				s.logger.Printf("All goroutines stopped successfully")
 			}
-		case <-time.After(30 * time.Second):
+		case <-time.After(shutdownTimeout):
 			s.logger.Printf("Warning: Goroutine shutdown timeout after 30 seconds")
 			if shutdownErr == nil {
 				shutdownErr = fmt.Errorf("shutdown timeout")

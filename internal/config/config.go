@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/busybox42/elemta/internal/smtp"
 
@@ -180,6 +181,30 @@ type Config struct {
 
 	// Resource management configuration (for distributed rate limiting via Valkey)
 	Resources *smtp.ResourceConfig `toml:"resources"`
+
+	// Timeout configuration for context propagation
+	Timeouts TimeoutConfig `toml:"timeouts"`
+}
+
+// TimeoutConfig contains hierarchical timeout settings for context propagation
+type TimeoutConfig struct {
+	// Session timeout for SMTP sessions
+	SessionTimeout time.Duration `toml:"session_timeout"`
+
+	// Command timeout for individual SMTP commands
+	CommandTimeout time.Duration `toml:"command_timeout"`
+
+	// Data timeout for DATA command (longer due to message content)
+	DataTimeout time.Duration `toml:"data_timeout"`
+
+	// Shutdown timeout for graceful server shutdown
+	ShutdownTimeout time.Duration `toml:"shutdown_timeout"`
+
+	// Connection timeout for establishing connections
+	ConnectionTimeout time.Duration `toml:"connection_timeout"`
+
+	// Authentication timeout for auth processes
+	AuthTimeout time.Duration `toml:"auth_timeout"`
 }
 
 // DefaultConfig returns the default configuration
@@ -211,6 +236,14 @@ func DefaultConfig() *Config {
 
 	// Set default rate limiter configuration
 	cfg.RateLimiter = DefaultRateLimiterPluginConfig()
+
+	// Set default timeout configuration
+	cfg.Timeouts.SessionTimeout = 30 * time.Minute
+	cfg.Timeouts.CommandTimeout = 1 * time.Minute
+	cfg.Timeouts.DataTimeout = 5 * time.Minute
+	cfg.Timeouts.ShutdownTimeout = 30 * time.Second
+	cfg.Timeouts.ConnectionTimeout = 30 * time.Second
+	cfg.Timeouts.AuthTimeout = 5 * time.Minute
 
 	return cfg
 }

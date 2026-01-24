@@ -19,6 +19,10 @@ import (
 
 // Session represents a refactored SMTP session with modular components
 type Session struct {
+	// Context for session lifecycle and cancellation
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	// Core connection components
 	conn   net.Conn
 	reader *bufio.Reader
@@ -54,7 +58,16 @@ type Session struct {
 }
 
 // NewSession creates a new SMTP session with modular architecture
-func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Session {
+// Context parameter is optional for backward compatibility - if nil, context.Background() is used
+func NewSession(ctx context.Context, conn net.Conn, config *Config, authenticator Authenticator) *Session {
+	// Use provided context or create default for backward compatibility
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	// Create session-specific context with timeout
+	sessionCtx, cancel := context.WithTimeout(ctx, config.Timeouts.SessionTimeout)
+
 	remoteAddr := conn.RemoteAddr().String()
 	sessionID := uuid.New().String()
 	startTime := time.Now()
@@ -71,6 +84,8 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Ses
 
 	// Create core session
 	session := &Session{
+		ctx:           sessionCtx,
+		cancel:        cancel,
 		conn:          conn,
 		reader:        bufio.NewReader(conn),
 		writer:        bufio.NewWriter(conn),
@@ -88,7 +103,7 @@ func NewSession(conn net.Conn, config *Config, authenticator Authenticator) *Ses
 	// Initialize modular components
 	session.initializeComponents()
 
-	logger.InfoContext(context.Background(), "New SMTP session created",
+	logger.InfoContext(sessionCtx, "New SMTP session created",
 		"session_id", sessionID,
 		"remote_addr", remoteAddr,
 		"hostname", config.Hostname,
@@ -160,9 +175,12 @@ func (s *Session) SetResourceManager(resourceManager *ResourceManager) {
 }
 
 // Handle processes the SMTP session with comprehensive error handling and logging
+// Handle processes the SMTP session using the session context
 func (s *Session) Handle() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
+	// Use the session context that was created in NewSession
+	// This ensures proper context propagation from server → session
+	ctx := s.ctx
+	defer s.cancel() // Clean up session context when done
 
 	// Set up panic recovery
 	defer func() {
@@ -392,6 +410,9 @@ func (s *Session) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Cancel session context to stop any ongoing operations
+	s.cancel()
+
 	// Signal shutdown
 	select {
 	case <-s.shutdownCh:
@@ -405,12 +426,12 @@ func (s *Session) Close() error {
 	case <-s.done:
 		// Session completed
 	case <-time.After(5 * time.Second):
-		s.logger.WarnContext(context.Background(), "Session close timeout")
+		s.logger.WarnContext(s.ctx, "Session close timeout")
 	}
 
 	// Close connection
 	if err := s.conn.Close(); err != nil {
-		s.logger.WarnContext(context.Background(), "Failed to close connection", "error", err)
+		s.logger.WarnContext(s.ctx, "Failed to close connection", "error", err)
 		return err
 	}
 
