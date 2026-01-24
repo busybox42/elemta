@@ -68,7 +68,7 @@ func NewSession(ctx context.Context, conn net.Conn, config *Config, authenticato
 	// Create session-specific context with timeout
 	sessionTimeout := config.Timeouts.SessionTimeout
 	if sessionTimeout == 0 {
-		// Fallback to prevent immediate timeout while config initialization is fixed
+		// Fallback to prevent immediate timeout when config is not properly initialized
 		sessionTimeout = 30 * time.Minute
 	}
 	sessionCtx, cancel := context.WithTimeout(ctx, sessionTimeout)
