@@ -364,8 +364,8 @@ func (wp *WorkerPool) processJobWithTimeout(job Job, logger *slog.Logger) Result
 		"priority", job.Priority(),
 	)
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(wp.ctx, wp.config.JobTimeout)
+	// Create context with timeout for job execution monitoring (not used for job.Process)
+	_, cancel := context.WithTimeout(wp.ctx, wp.config.JobTimeout)
 	defer cancel()
 
 	// Execute job with circuit breaker and timeout
@@ -385,8 +385,11 @@ func (wp *WorkerPool) processJobWithTimeout(job Job, logger *slog.Logger) Result
 			}
 		}()
 
+		// Execute job with original server context (no timeout) for proper session lifecycle
+		// Note: wp.ctx is used instead of timeoutCtx because sessions need the server's
+		// lifecycle context for proper cancellation propagation, not a deadline that expires
 		data, err = wp.circuitBreaker.Execute(func() (interface{}, error) {
-			return job.Process(ctx)
+			return job.Process(wp.ctx) // Use original server context
 		})
 	}()
 

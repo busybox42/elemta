@@ -66,7 +66,12 @@ func NewSession(ctx context.Context, conn net.Conn, config *Config, authenticato
 	}
 
 	// Create session-specific context with timeout
-	sessionCtx, cancel := context.WithTimeout(ctx, config.Timeouts.SessionTimeout)
+	sessionTimeout := config.Timeouts.SessionTimeout
+	if sessionTimeout == 0 {
+		// Fallback to prevent immediate timeout while config initialization is fixed
+		sessionTimeout = 30 * time.Minute
+	}
+	sessionCtx, cancel := context.WithTimeout(ctx, sessionTimeout)
 
 	remoteAddr := conn.RemoteAddr().String()
 	sessionID := uuid.New().String()
