@@ -180,7 +180,8 @@ func (s *Session) Handle() error {
 	// Use the session context that was created in NewSession
 	// This ensures proper context propagation from server → session
 	ctx := s.ctx
-	defer s.cancel() // Clean up session context when done
+	// Note: Don't call defer s.cancel() here - session context should remain active
+	// for the entire session lifecycle. Context is cancelled in Close() or by server shutdown.
 
 	// Set up panic recovery
 	defer func() {
