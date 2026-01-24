@@ -156,3 +156,4 @@ elemta
 .vscode/settings.json
 examples/**/*.so
 .env
+bin/
