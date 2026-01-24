@@ -396,7 +396,10 @@ func NewServer(config *Config) (*Server, error) {
 	// Initialize scanner manager
 	scannerManager := NewScannerManager(config, server)
 	if err := scannerManager.Initialize(context.Background()); err != nil {
-		log.Printf("Warning: Error initializing scanner manager: %v", err)
+		slogger.Warn("Error initializing scanner manager",
+			"error", err,
+			"component", "scanner-manager",
+		)
 		// Continue even if scanner initialization fails
 		// This prevents the server from crashing if scanners are misconfigured
 	}

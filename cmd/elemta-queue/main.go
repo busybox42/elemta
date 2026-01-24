@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/busybox42/elemta/internal/config"
@@ -9,6 +9,13 @@ import (
 )
 
 func main() {
+	// Initialize structured logger
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})).With(
+		"component", "queue-cli",
+	)
+
 	// Load configuration
 	configPath := os.Getenv("ELEMTA_CONFIG_PATH")
 	if configPath == "" {
@@ -17,17 +24,22 @@ func main() {
 
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		logger.Error("Failed to load configuration", "error", err)
+		os.Exit(1)
 	}
 
 	// Create queue manager
 	queueManager := queue.NewManager(cfg.Queue.Dir)
 
 	// Show queue stats
-	log.Printf("Queue directory: %s", cfg.Queue.Dir)
+	logger.Info("Queue directory", "path", cfg.Queue.Dir)
 	stats := queueManager.GetStats()
-	log.Printf("Queue stats: Active=%d, Deferred=%d, Failed=%d, Hold=%d",
-		stats.ActiveCount, stats.DeferredCount, stats.FailedCount, stats.HoldCount)
+	logger.Info("Queue stats",
+		"active_count", stats.ActiveCount,
+		"deferred_count", stats.DeferredCount,
+		"failed_count", stats.FailedCount,
+		"hold_count", stats.HoldCount,
+	)
 
-	log.Println("Queue status check completed")
+	logger.Info("Queue status check completed")
 }

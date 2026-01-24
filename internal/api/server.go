@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -71,18 +73,29 @@ func NewServer(config *Config, queueDir string) (*Server, error) {
 
 // initializeAuth initializes the authentication system
 func (s *Server) initializeAuth() error {
+	// Create logger for auth initialization
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})).With(
+		"component", "api-auth",
+	)
+
 	// Use production datasource from environment variables or default to file-based auth
 	authSystem, err := auth.NewFromEnv()
 	if err != nil {
 		// Fallback to file-based authentication with users.txt
-		log.Printf("Warning: Failed to initialize auth from environment (%v), falling back to file-based auth", err)
+		logger.Warn("Failed to initialize auth from environment, falling back to file-based auth",
+			"error", err,
+		)
 		authSystem, err = auth.NewWithFile("/app/config/users.txt")
 		if err != nil {
 			return fmt.Errorf("failed to initialize file-based authentication: %w", err)
 		}
-		log.Printf("Authentication initialized using file-based datasource: /app/config/users.txt")
+		logger.Info("Authentication initialized using file-based datasource",
+			"datasource", "/app/config/users.txt",
+		)
 	} else {
-		log.Printf("Authentication initialized from environment configuration")
+		logger.Info("Authentication initialized from environment configuration")
 	}
 
 	// Initialize RBAC
