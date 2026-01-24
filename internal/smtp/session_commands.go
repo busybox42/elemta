@@ -856,6 +856,7 @@ func (ch *CommandHandler) handleXDEBUGMemory(ctx context.Context) error {
 	}
 
 	responses = append(responses, "214-=== END MEMORY ===")
+	responses = append(responses, "214 OK")
 
 	for _, response := range responses {
 		if err := ch.session.write(response); err != nil {
@@ -916,6 +917,7 @@ func (ch *CommandHandler) handleXDEBUGResources(ctx context.Context) error {
 	}
 
 	responses = append(responses, "214-=== END RESOURCES ===")
+	responses = append(responses, "214 OK")
 
 	for _, response := range responses {
 		if err := ch.session.write(response); err != nil {
