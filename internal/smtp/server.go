@@ -7,7 +7,6 @@ import (
 	"log"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -29,8 +28,7 @@ type Server struct {
 	pluginManager   *plugin.Manager
 	builtinPlugins  *plugin.BuiltinPlugins // Built-in plugins for spam/antivirus scanning
 	authenticator   Authenticator
-	metrics         *Metrics
-	metricsServer   *http.Server
+	metricsManager  *MetricsManager // Extracted metrics management
 	apiServer       *api.Server
 	queueManager    queue.QueueManager // Unified queue system
 	queueProcessor  *queue.Processor   // Queue processor for message delivery
@@ -181,6 +179,9 @@ func NewServer(config *Config) (*Server, error) {
 	// Initialize metrics
 	metrics := GetMetrics()
 	logger.Printf("Metrics system initialized")
+
+	// Initialize metrics manager
+	metricsManager := NewMetricsManager(config, logger, metrics)
 
 	// Debug: print AuthConfig and TLSConfig
 	if config.Auth != nil {
@@ -354,7 +355,7 @@ func NewServer(config *Config) (*Server, error) {
 		pluginManager:   pluginManager,
 		builtinPlugins:  builtinPlugins,
 		authenticator:   authenticator,
-		metrics:         metrics,
+		metricsManager:  metricsManager,
 		queueManager:    queueManager,
 		queueProcessor:  queueProcessor,
 		logger:          logger,
@@ -445,13 +446,13 @@ func (s *Server) Start() error {
 	}
 
 	// Start metrics server if enabled
-	if s.config.Metrics != nil && s.config.Metrics.Enabled {
-		s.logger.Printf("Starting metrics server on %s", s.config.Metrics.ListenAddr)
-		s.metricsServer = StartMetricsServer(s.config.Metrics.ListenAddr)
-
-		// Start periodic queue size updates
-		go s.updateQueueMetricsWithRetry()
+	if err := s.metricsManager.Start(); err != nil {
+		s.logger.Printf("Failed to start metrics server: %v", err)
+		return err
 	}
+
+	// Start periodic queue size updates
+	go s.updateQueueMetricsWithRetry()
 
 	// Start API server if enabled
 	if s.config.API != nil && s.config.API.Enabled {
@@ -525,7 +526,7 @@ func (s *Server) updateQueueMetricsWithRetry() {
 				}
 			}()
 
-			s.metrics.UpdateQueueSizes(s.config)
+			s.metricsManager.UpdateQueueSizes()
 			s.logger.Printf("Queue metrics updated successfully")
 		}()
 
@@ -808,10 +809,10 @@ func (s *Server) Close() error {
 		}
 
 		// Close metrics server if it was started
-		if s.metricsServer != nil {
+		if s.metricsManager != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := s.metricsServer.Shutdown(ctx); err != nil {
+			if err := s.metricsManager.Shutdown(ctx); err != nil {
 				s.logger.Printf("Error shutting down metrics server: %v", err)
 				if shutdownErr == nil {
 					shutdownErr = err
