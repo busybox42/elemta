@@ -30,7 +30,7 @@ func TestMemoryManager(t *testing.T) {
 	t.Run("Initial State", func(t *testing.T) {
 		stats := mm.GetMemoryStats()
 		if stats == nil {
-			t.Error("Expected memory stats, got nil")
+			t.Fatal("Expected memory stats, got nil")
 		}
 		if stats.CurrentMemoryUsage < 0 {
 			t.Error("Memory usage should be non-negative")
@@ -146,6 +146,7 @@ func TestMemoryManagerHighMemoryUsage(t *testing.T) {
 				break
 			}
 		}
+		_ = memoryBlocks // Keep reference to prevent GC during test
 
 		// Force garbage collection to clean up
 		runtime.GC()

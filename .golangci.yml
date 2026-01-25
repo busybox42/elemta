@@ -1,76 +1,63 @@
-version: 2
+version: "2"
+
 run:
   timeout: 10m
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
     - govet
     - staticcheck
     - unused
     - ineffassign
-
-linters-settings:
-  errcheck:
-    exclude-functions:
-      - fmt.Fprint
-      - fmt.Fprintf
-      - fmt.Fprintln
-      - (io.Writer).Write
-      - (*text/tabwriter.Writer).Flush
-      - (net.Conn).Close
-      - (io.Closer).Close
-      - os.Setenv
-      - os.Unsetenv
-      - os.Chdir
-      - os.Remove
-      - os.RemoveAll
-      - (*os.File).Close
-
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
-  exclude-rules:
-    - path: "_test\\.go$"
-      linters:
-        - errcheck
-        - govet
-    - path: "vendor/"
-      linters:
-        - errcheck
-        - govet
-        - staticcheck
-        - unused
-        - ineffassign
-    - path: "examples/"
-      linters:
-        - errcheck
-        - govet
-        - staticcheck
-        - unused
-        - ineffassign
-    - text: "PreferServerCipherSuites"
-      linters:
-        - staticcheck
-    - text: "ST1005"
-      linters:
-        - staticcheck
-    - text: "QF1003|QF1001|QF1002|QF1004|QF1008"
-      linters:
-        - staticcheck
-    - text: "ST1023"
-      linters:
-        - staticcheck
-    - text: "SA5011"
-      linters:
-        - staticcheck
-    - text: "SA4010"
-      linters:
-        - staticcheck
-    - text: "SA4024"
-      linters:
-        - staticcheck
-    - text: "SA6005"
-      linters:
-        - staticcheck
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (io.Writer).Write
+        - (*text/tabwriter.Writer).Flush
+        - (net.Conn).Close
+        - (io.Closer).Close
+        - os.Setenv
+        - os.Unsetenv
+        - os.Chdir
+        - os.Remove
+        - os.RemoveAll
+        - (*os.File).Close
+    staticcheck:
+      checks:
+        - "all"
+        - "-ST1005"   # Error strings should not be capitalized
+        - "-ST1023"   # Should omit type from declaration
+        - "-QF1001"   # Could apply De Morgan's law
+        - "-QF1002"   # Could use tagged switch
+        - "-QF1003"   # Could use tagged switch
+        - "-QF1004"   # Could use strings.ReplaceAll
+        - "-QF1008"   # Could remove embedded field from selector
+        - "-SA1019"   # Deprecated (PreferServerCipherSuites)
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      - path: "_test\\.go$"
+        linters:
+          - errcheck
+      - path: "vendor/"
+        linters:
+          - errcheck
+          - govet
+          - staticcheck
+          - unused
+          - ineffassign
+      - path: "examples/"
+        linters:
+          - errcheck
+          - govet
+          - staticcheck
+          - unused
+          - ineffassign

@@ -68,7 +68,7 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 	_ = deliveryCtx // Used in LMTP operations below
 
 	// Connect to LMTP server
-	addr := fmt.Sprintf("%s:%d", h.host, h.port)
+	addr := net.JoinHostPort(h.host, fmt.Sprintf("%d", h.port))
 	conn, err := net.DialTimeout("tcp", addr, h.timeout)
 	if err != nil {
 		return fmt.Errorf("failed to connect to LMTP server %s: %w", addr, err)

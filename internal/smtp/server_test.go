@@ -203,6 +203,7 @@ func TestServer_ErrorHandling_InvalidConfig(t *testing.T) {
 	}
 
 	_, err = NewServer(config)
+	_ = err // Error is acceptable here - we just want to ensure no panic
 	// Should either succeed with defaults or fail gracefully
 	// The important thing is it doesn't panic
 }

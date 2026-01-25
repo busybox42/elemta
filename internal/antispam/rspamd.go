@@ -39,7 +39,7 @@ type RspamdResponse struct {
 	DMARC     map[string]string   `json:"dmarc"`
 	Fuzzy     []string            `json:"fuzzy"`
 	Time      float64             `json:"time_real"`
-	Scan_Time float64             `json:"scan_time"`
+	ScanTime  float64             `json:"scan_time"`
 }
 
 // Symbol represents a Rspamd rule symbol

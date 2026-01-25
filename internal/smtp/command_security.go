@@ -621,14 +621,6 @@ func (csm *CommandSecurityManager) checkMemoryUsage(ctx context.Context, initial
 
 // validateBounds performs enhanced bounds checking on string operations
 func (csm *CommandSecurityManager) validateBounds(ctx context.Context, str string, operation string) error {
-	// Check for potential integer overflow in length calculations
-	if len(str) < 0 {
-		csm.logger.WarnContext(ctx, "Negative string length detected",
-			"operation", operation,
-		)
-		return fmt.Errorf("500 5.5.2 Internal error: invalid string length")
-	}
-
 	// Check for extremely large strings that could cause issues
 	if len(str) > 1024*1024 { // 1MB limit for any single string
 		csm.logger.WarnContext(ctx, "String too large for safe processing",

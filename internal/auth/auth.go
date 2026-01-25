@@ -210,7 +210,7 @@ func HashPassword(password string) (string, error) {
 // ComparePasswordsSecure compares a hashed password with a plain-text password using constant-time operations
 func ComparePasswordsSecure(hashedPassword, plainPassword string) error {
 	// Always perform the same operations to maintain constant time
-	var result error = ErrInvalidCredentials
+	result := ErrInvalidCredentials
 
 	if strings.HasPrefix(hashedPassword, "$2") {
 		// bcrypt - already constant time

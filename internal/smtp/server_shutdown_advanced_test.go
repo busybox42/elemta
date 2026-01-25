@@ -110,7 +110,7 @@ func TestServer_GracefulShutdown_InFlightConnections(t *testing.T) {
 		if err != nil {
 			t.Logf("Connection %d completed with error: %v", i, err)
 			// Some connection errors during shutdown are acceptable
-			assert.True(t, err == nil || isConnectionErrorAcceptable(err),
+			assert.True(t, isConnectionErrorAcceptable(err),
 				"Connection %d had unexpected error: %v", i, err)
 		}
 	}

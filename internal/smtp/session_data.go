@@ -875,7 +875,7 @@ func (dh *DataHandler) validateFromHeader(ctx context.Context, fromHeader, mailF
 
 	// Compare with MAIL FROM (allow some flexibility)
 	if headerEmail != "" && mailFrom != "" {
-		if strings.ToLower(headerEmail) != strings.ToLower(mailFrom) {
+		if !strings.EqualFold(headerEmail, mailFrom) {
 			dh.logger.WarnContext(ctx, "From header mismatch",
 				"from_header", headerEmail,
 				"mail_from", mailFrom,
