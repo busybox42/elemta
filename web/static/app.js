@@ -817,9 +817,104 @@ function deleteCurrentMessage() {
 // ============================================================================
 // Logs
 // ============================================================================
-function refreshLogs() {
-    // Placeholder - implement when logs API is available
-    showToast('Logs refreshed', 'info');
+async function refreshLogs() {
+    const container = document.getElementById('logs-container');
+    const levelFilter = document.getElementById('log-level-filter')?.value || '';
+    
+    try {
+        const response = await fetch(`${API_BASE}/logs?tail=200`);
+        if (!response.ok) throw new Error('Failed to fetch logs');
+        
+        const data = await response.json();
+        
+        if (!data.logs || data.logs.length === 0) {
+            container.innerHTML = '<div class="log-entry info"><span class="log-message">No logs available</span></div>';
+            return;
+        }
+        
+        // Parse and filter logs
+        let logs = data.logs.map(line => parseLogLine(line)).filter(log => log !== null);
+        
+        // Apply level filter if set
+        if (levelFilter) {
+            logs = logs.filter(log => log.level.toLowerCase() === levelFilter.toLowerCase());
+        }
+        
+        // Render logs (newest first)
+        container.innerHTML = logs.reverse().map(log => `
+            <div class="log-entry ${log.level.toLowerCase()}">
+                <span class="log-time">${log.time}</span>
+                <span class="log-level">${log.level}</span>
+                <span class="log-message">${escapeHtml(log.message)}</span>
+            </div>
+        `).join('');
+        
+        showToast(`Loaded ${logs.length} log entries`, 'info');
+    } catch (error) {
+        console.error('Error fetching logs:', error);
+        container.innerHTML = '<div class="log-entry error"><span class="log-message">Failed to load logs</span></div>';
+        showToast('Failed to load logs', 'error');
+    }
+}
+
+function parseLogLine(line) {
+    // Try to parse JSON log format
+    try {
+        const json = JSON.parse(line);
+        let message = json.msg || '';
+        
+        // Build detailed message with context
+        const details = [];
+        
+        // Add component info
+        if (json.component) details.push(`[${json.component}]`);
+        
+        // Add the main message
+        details.push(message);
+        
+        // Add relevant context fields
+        if (json.from) details.push(`from: ${json.from}`);
+        if (json.to) details.push(`to: ${json.to}`);
+        if (json.recipient) details.push(`recipient: ${json.recipient}`);
+        if (json.sender) details.push(`sender: ${json.sender}`);
+        if (json.remote_addr) details.push(`remote: ${json.remote_addr}`);
+        if (json.session_id) details.push(`session: ${json.session_id.substring(0, 8)}...`);
+        if (json.message_id) details.push(`msg_id: ${json.message_id.substring(0, 12)}...`);
+        if (json.error) details.push(`error: ${json.error}`);
+        if (json.reason) details.push(`reason: ${json.reason}`);
+        if (json.queue_type) details.push(`queue: ${json.queue_type}`);
+        if (json.hostname) details.push(`host: ${json.hostname}`);
+        if (json.duration) details.push(`duration: ${(json.duration / 1000000).toFixed(2)}ms`);
+        if (json.active_connections !== undefined) details.push(`connections: ${json.active_connections}`);
+        
+        return {
+            time: json.time ? new Date(json.time).toLocaleString() : 'Unknown',
+            level: json.level || 'INFO',
+            message: details.join(' ')
+        };
+    } catch {
+        // Fallback for non-JSON logs
+        const match = line.match(/^(\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{2}:\d{2}:\d{2}[^\s]*)\s*(\w+)?\s*(.*)$/);
+        if (match) {
+            return {
+                time: match[1],
+                level: match[2] || 'INFO',
+                message: match[3] || line
+            };
+        }
+        // Plain text log
+        return {
+            time: new Date().toLocaleString(),
+            level: 'INFO',
+            message: line
+        };
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // ============================================================================

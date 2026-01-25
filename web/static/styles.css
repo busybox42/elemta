@@ -837,34 +837,73 @@ body {
 .log-entry {
     display: flex;
     gap: 1rem;
-    padding: 0.5rem 0;
+    padding: 0.75rem 1rem;
     border-bottom: 1px solid var(--border-color);
     font-size: 0.8125rem;
     font-family: 'SF Mono', Monaco, monospace;
+    line-height: 1.5;
+    align-items: flex-start;
+    border-left: 3px solid transparent;
+    transition: background-color var(--transition-fast);
+}
+
+.log-entry:hover {
+    background-color: var(--bg-secondary);
 }
 
 .log-entry:last-child {
     border-bottom: none;
 }
 
+.log-entry.info {
+    border-left-color: var(--accent-primary);
+}
+
+.log-entry.warn {
+    border-left-color: var(--accent-warning);
+    background-color: rgba(245, 158, 11, 0.05);
+}
+
+.log-entry.error {
+    border-left-color: var(--accent-danger);
+    background-color: rgba(239, 68, 68, 0.05);
+}
+
 .log-time {
     color: var(--text-muted);
     flex-shrink: 0;
+    min-width: 140px;
+    font-size: 0.75rem;
 }
 
 .log-level {
-    font-weight: 600;
+    font-weight: 700;
     flex-shrink: 0;
-    width: 60px;
+    width: 50px;
+    text-transform: uppercase;
+    font-size: 0.6875rem;
+    padding: 0.125rem 0.375rem;
+    border-radius: var(--radius-sm);
+    text-align: center;
 }
 
-.log-entry.info .log-level { color: var(--accent-primary); }
-.log-entry.warn .log-level { color: var(--accent-warning); }
-.log-entry.error .log-level { color: var(--accent-danger); }
+.log-entry.info .log-level { 
+    color: var(--accent-primary); 
+    background-color: rgba(59, 130, 246, 0.1);
+}
+.log-entry.warn .log-level { 
+    color: var(--accent-warning); 
+    background-color: rgba(245, 158, 11, 0.15);
+}
+.log-entry.error .log-level { 
+    color: var(--accent-danger); 
+    background-color: rgba(239, 68, 68, 0.15);
+}
 
 .log-message {
     color: var(--text-primary);
-    word-break: break-all;
+    word-break: break-word;
+    flex: 1;
 }
 
 /* Settings */

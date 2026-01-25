@@ -2,8 +2,10 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 )
 
@@ -143,8 +145,35 @@ func InitializeLogging(levelStr string) {
 		level = slog.LevelInfo
 	}
 
+	// Create logs directory if it doesn't exist
+	if err := os.MkdirAll("/app/logs", 0755); err != nil {
+		slog.Warn("failed to create logs directory", "error", err)
+	}
+
+	// Open log file
+	logFile, err := os.OpenFile("/app/logs/elemta.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		slog.Warn("failed to open log file", "error", err)
+		// Fallback to default logging if file creation fails
+		globalLogLevelManager.SetLevel(level)
+		slog.Info("logging initialized (stdout only)",
+			"log_level", levelToString(level))
+		return
+	}
+
+	// Create multi-writer to write to both stdout and file
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+
+	// Create a new handler that writes to both stdout and file
+	handler := slog.NewJSONHandler(multiWriter, &slog.HandlerOptions{
+		Level: level,
+	})
+
+	// Set the default logger
+	slog.SetDefault(slog.New(handler))
 	globalLogLevelManager.SetLevel(level)
 
 	slog.Info("logging initialized",
-		"log_level", levelToString(level))
+		"log_level", levelToString(level),
+		"log_file", "/app/logs/elemta.log")
 }

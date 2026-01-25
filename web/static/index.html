@@ -352,11 +352,11 @@
                     <div class="card-header">
                         <h3>Delivery Logs</h3>
                         <div class="log-filters">
-                            <select id="log-level-filter" class="filter-select">
+                            <select id="log-level-filter" class="filter-select" onchange="refreshLogs()">
                                 <option value="">All Levels</option>
-                                <option value="info">Info</option>
-                                <option value="warn">Warning</option>
-                                <option value="error">Error</option>
+                                <option value="INFO">Info</option>
+                                <option value="WARN">Warning</option>
+                                <option value="ERROR">Error</option>
                             </select>
                             <button class="btn btn-secondary" onclick="refreshLogs()">Refresh</button>
                         </div>

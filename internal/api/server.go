@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -206,6 +208,9 @@ func (s *Server) Start() error {
 	api.HandleFunc("/queue/message/{id}", s.handleGetMessage).Methods("GET")
 	api.HandleFunc("/queue/{type}", s.handleGetQueue).Methods("GET")
 	api.HandleFunc("/queue", s.handleGetAllQueues).Methods("GET")
+
+	// Logs endpoint (no authentication required for web interface)
+	api.HandleFunc("/logs", s.handleGetLogs).Methods("GET")
 
 	// Destructive operations require authentication (only if auth is enabled)
 	if s.authMiddleware != nil {
@@ -664,6 +669,79 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 // Debug handlers
+
+// handleGetLogs fetches recent logs from log files
+func (s *Server) handleGetLogs(w http.ResponseWriter, r *http.Request) {
+	// Get query parameters
+	tail := r.URL.Query().Get("tail")
+	if tail == "" {
+		tail = "100" // Default to last 100 lines
+	}
+
+	// Try to read from various log file locations
+	logFiles := []string{
+		"/app/logs/elemta.log",
+		"/app/logs/smtp.log",
+		"/app/logs/queue.log",
+		"/app/logs/application.log",
+	}
+
+	var allLogs []string
+	var source string
+
+	// Read from available log files
+	for _, logFile := range logFiles {
+		if _, err := os.Stat(logFile); err == nil {
+			data, err := os.ReadFile(logFile)
+			if err == nil {
+				lines := strings.Split(string(data), "\n")
+				// Filter out empty lines
+				for _, line := range lines {
+					if strings.TrimSpace(line) != "" {
+						allLogs = append(allLogs, line)
+					}
+				}
+				source = filepath.Base(logFile)
+				break // Use the first available log file
+			}
+		}
+	}
+
+	// If no log files found, provide a helpful message
+	if len(allLogs) == 0 {
+		response := map[string]interface{}{
+			"logs":    []string{"No log files found. Logs may be written to stdout/stderr."},
+			"count":   1,
+			"tail":    tail,
+			"source":  "none",
+			"time":    time.Now().Format(time.RFC3339),
+			"message": "Configure Elemta to write logs to /app/logs/ directory",
+		}
+		writeJSON(w, response)
+		return
+	}
+
+	// If we have more logs than requested, return only the tail
+	tailInt, err := strconv.Atoi(tail)
+	if err != nil {
+		tailInt = 100
+	}
+
+	if len(allLogs) > tailInt {
+		allLogs = allLogs[len(allLogs)-tailInt:]
+	}
+
+	// Create response
+	response := map[string]interface{}{
+		"logs":   allLogs,
+		"count":  len(allLogs),
+		"tail":   tail,
+		"source": source,
+		"time":   time.Now().Format(time.RFC3339),
+	}
+
+	writeJSON(w, response)
+}
 
 // handleDebugAuth provides authentication debugging information
 func (s *Server) handleDebugAuth(w http.ResponseWriter, r *http.Request) {
