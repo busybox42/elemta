@@ -18,7 +18,7 @@ key_file = ""
 min_version = "tls1.2"
 
 [queue]
-dir = "./queue"
+dir = "/tmp/elemta/queue"
 
 [logging]
 level = "debug"
@@ -26,14 +26,14 @@ format = "json"
 file = ""  # Empty means stdout
 
 [plugins]
-directory = "./plugins"
+directory = "/tmp/elemta/plugins"
 enabled = []
 
 [auth]
 enabled = false
 required = false
 datasource_type = "file"
-datasource_path = "./config/users.txt"
+datasource_path = "/tmp/elemta/users.txt"
 
 [queue_processor]
 enabled = true
@@ -44,6 +44,7 @@ debug = true
 [delivery]
 timeout = 30
 workers = 3
+retry_delay = 60
 
 # API Server (for development/testing)
 [api]

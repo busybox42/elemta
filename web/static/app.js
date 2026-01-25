@@ -1050,3 +1050,631 @@ function parseMessageHeaders(content) {
     
     return headerLines.join('\n');
 }
+
+// ============================================================================
+// Authentication
+// ============================================================================
+const authState = {
+    isLoggedIn: false,
+    username: null,
+    permissions: []
+};
+
+function showLoginModal() {
+    document.getElementById('login-modal').classList.add('active');
+    document.getElementById('user-dropdown').classList.remove('active');
+    document.getElementById('login-username').focus();
+}
+
+function closeLoginModal() {
+    document.getElementById('login-modal').classList.remove('active');
+    document.getElementById('login-error').style.display = 'none';
+}
+
+async function handleLogin(event) {
+    event.preventDefault();
+    
+    const username = document.getElementById('login-username').value;
+    const password = document.getElementById('login-password').value;
+    const errorEl = document.getElementById('login-error');
+    
+    try {
+        const response = await fetch('/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            authState.isLoggedIn = true;
+            authState.username = data.username;
+            authState.permissions = data.permissions || [];
+            updateUserUI();
+            closeLoginModal();
+            showToast(`Welcome, ${data.username}!`, 'success');
+        } else {
+            errorEl.textContent = 'Invalid username or password';
+            errorEl.style.display = 'block';
+        }
+    } catch (error) {
+        errorEl.textContent = 'Login failed. Server may be unavailable.';
+        errorEl.style.display = 'block';
+    }
+}
+
+async function handleLogout() {
+    try {
+        await fetch('/auth/logout', { method: 'POST' });
+    } catch (error) {
+        console.error('Logout error:', error);
+    }
+    
+    authState.isLoggedIn = false;
+    authState.username = null;
+    authState.permissions = [];
+    updateUserUI();
+    document.getElementById('user-dropdown').classList.remove('active');
+    showToast('Logged out successfully', 'info');
+}
+
+function updateUserUI() {
+    const userDisplay = document.getElementById('user-display');
+    const userInfoPanel = document.getElementById('user-info-panel');
+    const userName = document.getElementById('user-name');
+    const btnLogin = document.getElementById('btn-login');
+    const btnLogout = document.getElementById('btn-logout');
+    const btnApikeys = document.getElementById('btn-apikeys');
+    
+    if (authState.isLoggedIn) {
+        userDisplay.textContent = authState.username;
+        userName.textContent = authState.username;
+        userInfoPanel.style.display = 'block';
+        btnLogin.style.display = 'none';
+        btnLogout.style.display = 'flex';
+        btnApikeys.style.display = 'flex';
+    } else {
+        userDisplay.textContent = 'Guest';
+        userInfoPanel.style.display = 'none';
+        btnLogin.style.display = 'flex';
+        btnLogout.style.display = 'none';
+        btnApikeys.style.display = 'none';
+    }
+}
+
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    dropdown.classList.toggle('active');
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const userMenu = document.getElementById('user-menu');
+    const dropdown = document.getElementById('user-dropdown');
+    if (userMenu && !userMenu.contains(e.target)) {
+        dropdown.classList.remove('active');
+    }
+});
+
+// ============================================================================
+// API Keys
+// ============================================================================
+function showAPIKeysModal() {
+    document.getElementById('apikeys-modal').classList.add('active');
+    document.getElementById('user-dropdown').classList.remove('active');
+    loadAPIKeys();
+}
+
+function closeAPIKeysModal() {
+    document.getElementById('apikeys-modal').classList.remove('active');
+}
+
+async function loadAPIKeys() {
+    const container = document.getElementById('apikey-list');
+    
+    try {
+        const response = await fetch('/auth/apikeys');
+        if (!response.ok) throw new Error('Failed to load API keys');
+        
+        const keys = await response.json();
+        
+        if (!keys || keys.length === 0) {
+            container.innerHTML = '<div class="loading-placeholder">No API keys found</div>';
+            return;
+        }
+        
+        container.innerHTML = keys.map(key => `
+            <div class="apikey-item">
+                <div class="apikey-info">
+                    <strong>${escapeHtml(key.name)}</strong>
+                    <span class="apikey-desc">${escapeHtml(key.description || '')}</span>
+                    <span class="apikey-meta">Created: ${formatDate(key.created_at)}</span>
+                </div>
+                <div class="apikey-actions">
+                    <button class="btn btn-danger btn-sm" onclick="revokeAPIKey('${key.id}')">Revoke</button>
+                </div>
+            </div>
+        `).join('');
+    } catch (error) {
+        container.innerHTML = '<div class="loading-placeholder">Failed to load API keys</div>';
+    }
+}
+
+async function createAPIKey(event) {
+    event.preventDefault();
+    
+    const name = document.getElementById('apikey-name').value;
+    const description = document.getElementById('apikey-desc').value;
+    const expiryDays = document.getElementById('apikey-expiry').value;
+    
+    try {
+        const response = await fetch('/auth/apikeys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name,
+                description,
+                expiry_days: expiryDays ? parseInt(expiryDays) : null
+            })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            showToast('API key created! Key: ' + data.key, 'success');
+            document.getElementById('apikey-form').reset();
+            loadAPIKeys();
+        } else {
+            showToast('Failed to create API key', 'error');
+        }
+    } catch (error) {
+        showToast('Failed to create API key', 'error');
+    }
+}
+
+async function revokeAPIKey(keyId) {
+    if (!confirm('Revoke this API key? This cannot be undone.')) return;
+    
+    try {
+        const response = await fetch(`/auth/apikeys/${keyId}/revoke`, { method: 'POST' });
+        if (response.ok) {
+            showToast('API key revoked', 'success');
+            loadAPIKeys();
+        } else {
+            showToast('Failed to revoke API key', 'error');
+        }
+    } catch (error) {
+        showToast('Failed to revoke API key', 'error');
+    }
+}
+
+// ============================================================================
+// Health Monitoring
+// ============================================================================
+async function refreshHealth() {
+    try {
+        const response = await fetch(`${API_BASE}/health`);
+        const health = await response.json();
+        
+        // Update status cards
+        document.getElementById('health-status').textContent = health.status || 'Unknown';
+        document.getElementById('health-uptime').textContent = health.uptime_formatted || '0s';
+        document.getElementById('health-goroutines').textContent = health.num_goroutines || 0;
+        document.getElementById('health-memory').textContent = (health.memory?.alloc_mb || 0).toFixed(1) + ' MB';
+        
+        // System info
+        document.getElementById('health-go-version').textContent = health.go_version || '-';
+        document.getElementById('health-server-version').textContent = health.server_version || '-';
+        document.getElementById('health-cpus').textContent = health.num_cpu || '-';
+        document.getElementById('health-listen-addr').textContent = health.configured_addr || '-';
+        document.getElementById('health-auth-enabled').textContent = health.auth_enabled ? 'Yes' : 'No';
+        document.getElementById('health-started-at').textContent = health.started_at ? formatDate(health.started_at) : '-';
+        
+        // Memory details
+        const mem = health.memory || {};
+        document.getElementById('mem-alloc').textContent = formatBytes(mem.alloc || 0);
+        document.getElementById('mem-total-alloc').textContent = formatBytes(mem.total_alloc || 0);
+        document.getElementById('mem-sys').textContent = formatBytes(mem.sys || 0);
+        document.getElementById('mem-heap-inuse').textContent = formatBytes(mem.heap_inuse || 0);
+        document.getElementById('mem-stack-inuse').textContent = formatBytes(mem.stack_inuse || 0);
+        document.getElementById('mem-gc-cycles').textContent = mem.num_gc || 0;
+        
+        // Queue health
+        const queue = health.queue || {};
+        document.getElementById('queue-total').textContent = queue.total_messages || 0;
+        document.getElementById('queue-active-health').textContent = queue.active_count || 0;
+        document.getElementById('queue-deferred-health').textContent = queue.deferred_count || 0;
+        document.getElementById('queue-hold-health').textContent = queue.hold_count || 0;
+        document.getElementById('queue-failed-health').textContent = queue.failed_count || 0;
+        document.getElementById('queue-processor').textContent = queue.processor_active ? 'Yes' : 'No';
+        
+        // Throughput
+        const throughput = health.throughput || {};
+        document.getElementById('throughput-per-min').textContent = (throughput.messages_per_minute || 0).toFixed(2);
+        document.getElementById('throughput-per-hour').textContent = (throughput.messages_per_hour || 0).toFixed(2);
+        document.getElementById('throughput-total').textContent = throughput.total_processed || 0;
+        
+        // SMTP
+        const smtp = health.smtp || {};
+        document.getElementById('smtp-connections').textContent = smtp.active_connections || 0;
+        document.getElementById('smtp-total-connections').textContent = smtp.total_connections || 0;
+        document.getElementById('smtp-tls').textContent = smtp.tls_enabled ? 'Yes' : 'No';
+        
+    } catch (error) {
+        console.error('Error loading health:', error);
+        showToast('Failed to load health data', 'error');
+    }
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// ============================================================================
+// Compose / Send Test Email
+// ============================================================================
+const sendHistory = [];
+
+async function sendTestEmail(event) {
+    event.preventDefault();
+    
+    const from = document.getElementById('compose-from').value;
+    const to = document.getElementById('compose-to').value;
+    const subject = document.getElementById('compose-subject').value;
+    const body = document.getElementById('compose-body').value;
+    
+    const sendBtn = document.getElementById('send-btn');
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<span class="loading">Sending...</span>';
+    
+    try {
+        const response = await fetch(`${API_BASE}/send-test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from, to, subject, body })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showToast('Test email queued successfully!', 'success');
+            
+            // Add to history
+            sendHistory.unshift({
+                id: data.message_id,
+                from,
+                to,
+                subject,
+                timestamp: new Date()
+            });
+            updateSendHistory();
+        } else {
+            showToast(data.error || 'Failed to send email', 'error');
+        }
+    } catch (error) {
+        showToast('Failed to send email: ' + error.message, 'error');
+    } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+            Send Test Email
+        `;
+    }
+}
+
+function clearComposeForm() {
+    document.getElementById('compose-form').reset();
+    document.getElementById('compose-subject').value = 'Test Email from Elemta';
+    document.getElementById('compose-body').value = `This is a test email sent from the Elemta web interface.
+
+If you received this message, your mail server is working correctly!`;
+}
+
+function updateSendHistory() {
+    const container = document.getElementById('send-history');
+    
+    if (sendHistory.length === 0) {
+        container.innerHTML = '<div class="loading-placeholder">No test emails sent yet</div>';
+        return;
+    }
+    
+    container.innerHTML = sendHistory.slice(0, 10).map(item => `
+        <div class="activity-item">
+            <div class="activity-icon sent">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            </div>
+            <div class="activity-content">
+                <div class="activity-title">${escapeHtml(item.subject)}</div>
+                <div class="activity-meta">To: ${escapeHtml(item.to)} • ${formatTimeAgo(item.timestamp)}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// ============================================================================
+// Reports / Delivery Statistics
+// ============================================================================
+let chartInstance = null;
+
+async function refreshReports() {
+    try {
+        const response = await fetch(`${API_BASE}/stats/delivery`);
+        const stats = await response.json();
+        
+        // Update stat cards
+        document.getElementById('report-delivered').textContent = stats.total_delivered || 0;
+        document.getElementById('report-failed').textContent = stats.total_failed || 0;
+        document.getElementById('report-deferred').textContent = stats.total_deferred || 0;
+        document.getElementById('report-success-rate').textContent = (stats.success_rate || 0).toFixed(1) + '%';
+        
+        // Update chart
+        renderHourlyChart(stats.by_hour || []);
+        
+        // Update recent errors
+        renderRecentErrors(stats.recent_errors || []);
+        
+    } catch (error) {
+        console.error('Error loading reports:', error);
+        showToast('Failed to load reports', 'error');
+    }
+}
+
+function renderHourlyChart(hourlyData) {
+    const canvas = document.getElementById('hourly-chart-canvas');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const container = canvas.parentElement;
+    
+    // Set canvas size
+    canvas.width = container.offsetWidth;
+    canvas.height = 200;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    if (hourlyData.length === 0) {
+        ctx.fillStyle = 'var(--text-muted)';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No data available', canvas.width / 2, canvas.height / 2);
+        return;
+    }
+    
+    // Simple bar chart
+    const padding = 40;
+    const barWidth = (canvas.width - padding * 2) / hourlyData.length - 4;
+    const maxValue = Math.max(...hourlyData.map(h => h.delivered + h.failed + h.deferred), 1);
+    const chartHeight = canvas.height - padding * 2;
+    
+    hourlyData.forEach((hour, i) => {
+        const x = padding + i * (barWidth + 4);
+        const total = hour.delivered + hour.failed + hour.deferred;
+        const height = (total / maxValue) * chartHeight;
+        
+        // Stacked bars
+        let y = canvas.height - padding;
+        
+        // Delivered (green)
+        const deliveredHeight = (hour.delivered / maxValue) * chartHeight;
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(x, y - deliveredHeight, barWidth, deliveredHeight);
+        y -= deliveredHeight;
+        
+        // Deferred (orange)
+        const deferredHeight = (hour.deferred / maxValue) * chartHeight;
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(x, y - deferredHeight, barWidth, deferredHeight);
+        y -= deferredHeight;
+        
+        // Failed (red)
+        const failedHeight = (hour.failed / maxValue) * chartHeight;
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(x, y - failedHeight, barWidth, failedHeight);
+        
+        // Hour label
+        if (i % 4 === 0) {
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted');
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(hour.hour, x + barWidth / 2, canvas.height - padding + 15);
+        }
+    });
+    
+    // Legend
+    ctx.font = '11px sans-serif';
+    const legendY = 15;
+    ctx.fillStyle = '#22c55e';
+    ctx.fillRect(padding, legendY - 8, 12, 12);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-primary');
+    ctx.textAlign = 'left';
+    ctx.fillText('Delivered', padding + 16, legendY);
+    
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(padding + 80, legendY - 8, 12, 12);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-primary');
+    ctx.fillText('Deferred', padding + 96, legendY);
+    
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(padding + 160, legendY - 8, 12, 12);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-primary');
+    ctx.fillText('Failed', padding + 176, legendY);
+}
+
+function renderRecentErrors(errors) {
+    const container = document.getElementById('recent-errors');
+    
+    if (!errors || errors.length === 0) {
+        container.innerHTML = '<div class="loading-placeholder">No recent errors</div>';
+        return;
+    }
+    
+    container.innerHTML = errors.map(err => `
+        <div class="error-item">
+            <div class="error-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="15" y1="9" x2="9" y2="15"/>
+                    <line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+            </div>
+            <div class="error-content">
+                <div class="error-message">${escapeHtml(err.error)}</div>
+                <div class="error-meta">${escapeHtml(err.recipient)} • ${formatTimeAgo(err.timestamp)}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// ============================================================================
+// Enhanced Message Preview
+// ============================================================================
+function switchModalTab(tab) {
+    document.querySelectorAll('.modal-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.tab === tab);
+    });
+    
+    const modalBody = document.getElementById('modal-body');
+    const message = state.currentMessage;
+    
+    if (!message) return;
+    
+    switch (tab) {
+        case 'details':
+            renderMessageDetails(message);
+            break;
+        case 'preview':
+            renderMessagePreview(message);
+            break;
+        case 'headers':
+            const headers = parseMessageHeaders(message.content);
+            modalBody.innerHTML = `<pre class="message-content-raw">${escapeHtml(headers || 'No headers available')}</pre>`;
+            break;
+        case 'raw':
+            modalBody.innerHTML = `<pre class="message-content-raw">${escapeHtml(message.content || 'No content available')}</pre>`;
+            break;
+    }
+}
+
+function renderMessagePreview(message) {
+    const modalBody = document.getElementById('modal-body');
+    const content = message.content || '';
+    
+    // Extract body from content
+    const parts = content.split('\r\n\r\n');
+    const body = parts.length > 1 ? parts.slice(1).join('\r\n\r\n') : content;
+    
+    // Check if HTML
+    const isHtml = body.toLowerCase().includes('<html') || body.toLowerCase().includes('<body');
+    
+    if (isHtml) {
+        modalBody.innerHTML = `
+            <div class="preview-container">
+                <div class="preview-warning">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    HTML content rendered in sandbox
+                </div>
+                <iframe class="preview-frame" sandbox="allow-same-origin" srcdoc="${escapeHtml(body).replace(/"/g, '&quot;')}"></iframe>
+            </div>
+        `;
+    } else {
+        modalBody.innerHTML = `
+            <div class="preview-container">
+                <pre class="preview-text">${escapeHtml(body)}</pre>
+            </div>
+        `;
+    }
+}
+
+// ============================================================================
+// Enhanced Log Level Control
+// ============================================================================
+async function getLogLevel() {
+    try {
+        const response = await fetch(`${API_BASE}/logging/level`);
+        const data = await response.json();
+        return data.level || 'info';
+    } catch (error) {
+        return 'info';
+    }
+}
+
+async function setLogLevel(level) {
+    try {
+        const response = await fetch(`${API_BASE}/logging/level`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ level })
+        });
+        
+        if (response.ok) {
+            showToast(`Log level set to ${level}`, 'success');
+        } else {
+            showToast('Failed to set log level', 'error');
+        }
+    } catch (error) {
+        showToast('Failed to set log level', 'error');
+    }
+}
+
+// ============================================================================
+// View-specific data loading
+// ============================================================================
+// Override switchView to load view-specific data
+const originalSwitchView = switchView;
+switchView = function(viewName) {
+    // Call original
+    const titles = {
+        dashboard: 'Dashboard',
+        health: 'Server Health',
+        queues: 'Mail Queues',
+        compose: 'Send Test Email',
+        reports: 'Delivery Reports',
+        logs: 'Logs',
+        settings: 'Settings'
+    };
+    
+    // Update nav items
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.view === viewName);
+    });
+
+    // Update views
+    document.querySelectorAll('.view').forEach(view => {
+        view.classList.toggle('active', view.id === `view-${viewName}`);
+    });
+
+    // Update page title
+    document.getElementById('page-title').textContent = titles[viewName] || viewName;
+
+    // Close mobile sidebar
+    document.getElementById('sidebar').classList.remove('open');
+
+    // Load view-specific data
+    switch (viewName) {
+        case 'health':
+            refreshHealth();
+            break;
+        case 'queues':
+            loadQueue(state.currentQueue);
+            break;
+        case 'reports':
+            refreshReports();
+            break;
+        case 'logs':
+            refreshLogs();
+            break;
+    }
+};

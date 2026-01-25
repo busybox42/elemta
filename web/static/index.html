@@ -72,11 +72,34 @@
                     </svg>
                     <span>Dashboard</span>
                 </a>
-                <a href="#" class="nav-item" data-view="queues">
+                <a href="#" class="nav-item" data-view="health">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
                     </svg>
+                    <span>Health</span>
+                </a>
+                <a href="#" class="nav-item" data-view="queues">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="3" width="20" height="5" rx="1"/>
+                        <rect x="2" y="10" width="20" height="5" rx="1"/>
+                        <rect x="2" y="17" width="20" height="5" rx="1"/>
+                    </svg>
                     <span>Mail Queues</span>
+                </a>
+                <a href="#" class="nav-item" data-view="compose">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 20h9"/>
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                    </svg>
+                    <span>Send Test</span>
+                </a>
+                <a href="#" class="nav-item" data-view="reports">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                    <span>Reports</span>
                 </a>
                 <a href="#" class="nav-item" data-view="logs">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -141,6 +164,43 @@
                         </svg>
                     </div>
                     <span class="last-updated" id="last-updated">Updated just now</span>
+                    <div class="user-menu" id="user-menu">
+                        <button class="user-btn" id="user-btn" onclick="toggleUserMenu()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                            <span id="user-display">Guest</span>
+                        </button>
+                        <div class="user-dropdown" id="user-dropdown">
+                            <div class="user-info" id="user-info-panel" style="display: none;">
+                                <span class="user-name" id="user-name">-</span>
+                                <span class="user-role" id="user-role">-</span>
+                            </div>
+                            <button class="dropdown-item" id="btn-login" onclick="showLoginModal()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                                    <polyline points="10 17 15 12 10 7"/>
+                                    <line x1="15" y1="12" x2="3" y2="12"/>
+                                </svg>
+                                Login
+                            </button>
+                            <button class="dropdown-item" id="btn-apikeys" onclick="showAPIKeysModal()" style="display: none;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                                </svg>
+                                API Keys
+                            </button>
+                            <button class="dropdown-item danger" id="btn-logout" onclick="handleLogout()" style="display: none;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                                    <polyline points="16 17 21 12 16 7"/>
+                                    <line x1="21" y1="12" x2="9" y2="12"/>
+                                </svg>
+                                Logout
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </header>
 
@@ -245,6 +305,156 @@
                 </div>
             </section>
 
+            <!-- Health View -->
+            <section class="view" id="view-health">
+                <div class="stats-grid health-stats">
+                    <div class="stat-card">
+                        <div class="stat-icon active-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="health-status">Online</span>
+                            <span class="stat-label">Server Status</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon deferred-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <polyline points="12 6 12 12 16 14"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="health-uptime">0s</span>
+                            <span class="stat-label">Uptime</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon hold-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
+                                <rect x="9" y="9" width="6" height="6"/>
+                                <line x1="9" y1="1" x2="9" y2="4"/>
+                                <line x1="15" y1="1" x2="15" y2="4"/>
+                                <line x1="9" y1="20" x2="9" y2="23"/>
+                                <line x1="15" y1="20" x2="15" y2="23"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="health-goroutines">0</span>
+                            <span class="stat-label">Goroutines</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon failed-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="health-memory">0 MB</span>
+                            <span class="stat-label">Memory Used</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="health-grid">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>System Information</h3>
+                            <button class="btn btn-secondary" onclick="refreshHealth()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="23 4 23 10 17 10"/>
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                                </svg>
+                                Refresh
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <dl class="info-grid">
+                                <dt>Go Version</dt>
+                                <dd id="health-go-version">-</dd>
+                                <dt>Server Version</dt>
+                                <dd id="health-server-version">-</dd>
+                                <dt>CPUs</dt>
+                                <dd id="health-cpus">-</dd>
+                                <dt>Listen Address</dt>
+                                <dd id="health-listen-addr">-</dd>
+                                <dt>Auth Enabled</dt>
+                                <dd id="health-auth-enabled">-</dd>
+                                <dt>Started At</dt>
+                                <dd id="health-started-at">-</dd>
+                            </dl>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Memory Details</h3>
+                        </div>
+                        <div class="card-body">
+                            <dl class="info-grid">
+                                <dt>Allocated</dt>
+                                <dd id="mem-alloc">-</dd>
+                                <dt>Total Allocated</dt>
+                                <dd id="mem-total-alloc">-</dd>
+                                <dt>System Memory</dt>
+                                <dd id="mem-sys">-</dd>
+                                <dt>Heap In Use</dt>
+                                <dd id="mem-heap-inuse">-</dd>
+                                <dt>Stack In Use</dt>
+                                <dd id="mem-stack-inuse">-</dd>
+                                <dt>GC Cycles</dt>
+                                <dd id="mem-gc-cycles">-</dd>
+                            </dl>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Queue Health</h3>
+                        </div>
+                        <div class="card-body">
+                            <dl class="info-grid">
+                                <dt>Total Messages</dt>
+                                <dd id="queue-total">-</dd>
+                                <dt>Active</dt>
+                                <dd id="queue-active-health">-</dd>
+                                <dt>Deferred</dt>
+                                <dd id="queue-deferred-health">-</dd>
+                                <dt>On Hold</dt>
+                                <dd id="queue-hold-health">-</dd>
+                                <dt>Failed</dt>
+                                <dd id="queue-failed-health">-</dd>
+                                <dt>Processor Active</dt>
+                                <dd id="queue-processor">-</dd>
+                            </dl>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Throughput</h3>
+                        </div>
+                        <div class="card-body">
+                            <dl class="info-grid">
+                                <dt>Messages/Minute</dt>
+                                <dd id="throughput-per-min">-</dd>
+                                <dt>Messages/Hour</dt>
+                                <dd id="throughput-per-hour">-</dd>
+                                <dt>Total Processed</dt>
+                                <dd id="throughput-total">-</dd>
+                                <dt>Active Connections</dt>
+                                <dd id="smtp-connections">-</dd>
+                                <dt>Total Connections</dt>
+                                <dd id="smtp-total-connections">-</dd>
+                                <dt>TLS Enabled</dt>
+                                <dd id="smtp-tls">-</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Queues View -->
             <section class="view" id="view-queues">
                 <div class="queue-controls">
@@ -343,6 +553,138 @@
                 <div class="pagination" id="pagination">
                     <span class="pagination-info" id="pagination-info">Showing 0 messages</span>
                     <div class="pagination-controls" id="pagination-controls"></div>
+                </div>
+            </section>
+
+            <!-- Compose View -->
+            <section class="view" id="view-compose">
+                <div class="compose-grid">
+                    <div class="card compose-form-card">
+                        <div class="card-header">
+                            <h3>Send Test Email</h3>
+                        </div>
+                        <div class="card-body">
+                            <form id="compose-form" onsubmit="sendTestEmail(event)">
+                                <div class="form-group">
+                                    <label for="compose-from">From</label>
+                                    <input type="email" id="compose-from" placeholder="sender@example.com" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="compose-to">To</label>
+                                    <input type="email" id="compose-to" placeholder="recipient@example.com" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="compose-subject">Subject</label>
+                                    <input type="text" id="compose-subject" placeholder="Test Email from Elemta" value="Test Email from Elemta">
+                                </div>
+                                <div class="form-group">
+                                    <label for="compose-body">Message Body</label>
+                                    <textarea id="compose-body" rows="8" placeholder="Enter your message here...">This is a test email sent from the Elemta web interface.
+
+If you received this message, your mail server is working correctly!</textarea>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-secondary" onclick="clearComposeForm()">Clear</button>
+                                    <button type="submit" class="btn btn-primary" id="send-btn">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <line x1="22" y1="2" x2="11" y2="13"/>
+                                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                                        </svg>
+                                        Send Test Email
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Send History</h3>
+                        </div>
+                        <div class="card-body" id="send-history">
+                            <div class="loading-placeholder">No test emails sent yet</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Reports View -->
+            <section class="view" id="view-reports">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon active-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="report-delivered">0</span>
+                            <span class="stat-label">Delivered</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon failed-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <line x1="15" y1="9" x2="9" y2="15"/>
+                                <line x1="9" y1="9" x2="15" y2="15"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="report-failed">0</span>
+                            <span class="stat-label">Failed</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon deferred-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <polyline points="12 6 12 12 16 14"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="report-deferred">0</span>
+                            <span class="stat-label">Deferred</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon hold-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="report-success-rate">0%</span>
+                            <span class="stat-label">Success Rate</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="reports-grid">
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3>Hourly Delivery Trends</h3>
+                            <button class="btn btn-secondary" onclick="refreshReports()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="23 4 23 10 17 10"/>
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                                </svg>
+                                Refresh
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container" id="hourly-chart">
+                                <canvas id="hourly-chart-canvas"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Recent Errors</h3>
+                        </div>
+                        <div class="card-body errors-list" id="recent-errors">
+                            <div class="loading-placeholder">No recent errors</div>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -460,9 +802,10 @@
                 </button>
             </div>
             <div class="modal-tabs">
-                <button class="modal-tab active" data-tab="details">Details</button>
-                <button class="modal-tab" data-tab="headers">Headers</button>
-                <button class="modal-tab" data-tab="raw">Raw Content</button>
+                <button class="modal-tab active" data-tab="details" onclick="switchModalTab('details')">Details</button>
+                <button class="modal-tab" data-tab="preview" onclick="switchModalTab('preview')">Preview</button>
+                <button class="modal-tab" data-tab="headers" onclick="switchModalTab('headers')">Headers</button>
+                <button class="modal-tab" data-tab="raw" onclick="switchModalTab('raw')">Raw Content</button>
             </div>
             <div class="modal-body" id="modal-body">
                 <div class="loading-placeholder">Loading...</div>
@@ -471,6 +814,93 @@
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>
                 <button class="btn btn-primary" onclick="retryCurrentMessage()">Retry</button>
                 <button class="btn btn-danger" onclick="deleteCurrentMessage()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div class="modal" id="login-modal">
+        <div class="modal-backdrop" onclick="closeLoginModal()"></div>
+        <div class="modal-container login-modal-container">
+            <div class="modal-header">
+                <h2>Login to Elemta</h2>
+                <button class="modal-close" onclick="closeLoginModal()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="login-form" onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label for="login-username">Username</label>
+                        <input type="text" id="login-username" placeholder="admin" required autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" placeholder="password" required autocomplete="current-password">
+                    </div>
+                    <div class="form-error" id="login-error" style="display: none;"></div>
+                    <button type="submit" class="btn btn-primary btn-full">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                            <polyline points="10 17 15 12 10 7"/>
+                            <line x1="15" y1="12" x2="3" y2="12"/>
+                        </svg>
+                        Login
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Keys Modal -->
+    <div class="modal" id="apikeys-modal">
+        <div class="modal-backdrop" onclick="closeAPIKeysModal()"></div>
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>API Keys</h2>
+                <button class="modal-close" onclick="closeAPIKeysModal()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="apikey-create-section">
+                    <h4>Create New API Key</h4>
+                    <form id="apikey-form" onsubmit="createAPIKey(event)">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="apikey-name">Name</label>
+                                <input type="text" id="apikey-name" placeholder="My API Key" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="apikey-expiry">Expires In (days)</label>
+                                <select id="apikey-expiry">
+                                    <option value="">Never</option>
+                                    <option value="7">7 days</option>
+                                    <option value="30">30 days</option>
+                                    <option value="90">90 days</option>
+                                    <option value="365">1 year</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="apikey-desc">Description</label>
+                            <input type="text" id="apikey-desc" placeholder="Optional description">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Create API Key</button>
+                    </form>
+                </div>
+                <div class="apikey-list-section">
+                    <h4>Your API Keys</h4>
+                    <div id="apikey-list">
+                        <div class="loading-placeholder">Loading API keys...</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

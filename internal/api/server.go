@@ -212,6 +212,18 @@ func (s *Server) Start() error {
 	// Logs endpoint (no authentication required for web interface)
 	api.HandleFunc("/logs", s.handleGetLogs).Methods("GET")
 
+	// Health and monitoring endpoints (no auth required for dashboard)
+	api.HandleFunc("/health", s.handleHealthStats).Methods("GET")
+	api.HandleFunc("/stats/delivery", s.handleDeliveryStats).Methods("GET")
+
+	// Test email endpoint (requires auth if enabled, otherwise open)
+	if s.authMiddleware != nil {
+		sendHandler := s.authMiddleware.RequireAuth(http.HandlerFunc(s.handleSendTestEmail))
+		api.Handle("/send-test", sendHandler).Methods("POST")
+	} else {
+		api.HandleFunc("/send-test", s.handleSendTestEmail).Methods("POST")
+	}
+
 	// Destructive operations require authentication (only if auth is enabled)
 	if s.authMiddleware != nil {
 		// Message deletion requires queue:delete permission
