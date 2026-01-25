@@ -3,740 +3,481 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elemta MTA Dashboard</title>
-    <style>
-        :root {
-            /* Light theme colors */
-            --bg-primary: #f8fafc;
-            --bg-secondary: #ffffff;
-            --bg-tertiary: #f1f5f9;
-            --text-primary: #1e293b;
-            --text-secondary: #64748b;
-            --text-tertiary: #475569;
-            --border-primary: #e2e8f0;
-            --border-secondary: #cbd5e1;
-            --shadow-light: rgba(0, 0, 0, 0.1);
-            --shadow-medium: rgba(0, 0, 0, 0.15);
-            --accent-blue: #3b82f6;
-            --accent-blue-hover: #2563eb;
-            --accent-red: #ef4444;
-            --accent-red-hover: #dc2626;
-            --accent-green: #10b981;
-            --accent-green-hover: #059669;
-            --error-bg: #fef2f2;
-            --error-border: #fecaca;
-            --error-text: #991b1b;
-            --success-bg: #f0fdf4;
-            --success-border: #bbf7d0;
-            --success-text: #166534;
-            --priority-critical-bg: #fef2f2;
-            --priority-critical-text: #991b1b;
-            --priority-high-bg: #fef7f3;
-            --priority-high-text: #c2410c;
-            --priority-normal-bg: #f0fdf4;
-            --priority-normal-text: #166534;
-            --priority-low-bg: #f8fafc;
-            --priority-low-text: #475569;
-        }
-
-        [data-theme="dark"] {
-            /* Dark theme colors */
-            --bg-primary: #0f172a;
-            --bg-secondary: #1e293b;
-            --bg-tertiary: #334155;
-            --text-primary: #f1f5f9;
-            --text-secondary: #cbd5e1;
-            --text-tertiary: #94a3b8;
-            --border-primary: #475569;
-            --border-secondary: #64748b;
-            --shadow-light: rgba(0, 0, 0, 0.3);
-            --shadow-medium: rgba(0, 0, 0, 0.4);
-            --accent-blue: #3b82f6;
-            --accent-blue-hover: #60a5fa;
-            --accent-red: #ef4444;
-            --accent-red-hover: #f87171;
-            --accent-green: #10b981;
-            --accent-green-hover: #34d399;
-            --error-bg: #7f1d1d;
-            --error-border: #991b1b;
-            --error-text: #fecaca;
-            --success-bg: #14532d;
-            --success-border: #166534;
-            --success-text: #bbf7d0;
-            --priority-critical-bg: #7f1d1d;
-            --priority-critical-text: #fecaca;
-            --priority-high-bg: #9a3412;
-            --priority-high-text: #fed7aa;
-            --priority-normal-bg: #14532d;
-            --priority-normal-text: #bbf7d0;
-            --priority-low-bg: #334155;
-            --priority-low-text: #cbd5e1;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            line-height: 1.6;
-            transition: background-color 0.3s ease, color 0.3s ease;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 2rem 0;
-            margin-bottom: 2rem;
-            border-radius: 12px;
-            text-align: center;
-            box-shadow: 0 4px 6px -1px var(--shadow-light);
-            position: relative;
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
-            font-weight: 300;
-        }
-
-        .header p {
-            font-size: 1.1rem;
-            opacity: 0.9;
-        }
-
-        .theme-toggle {
-            position: absolute;
-            top: 1rem;
-            right: 1rem;
-            background: rgba(255, 255, 255, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.875rem;
-            transition: all 0.2s;
-            backdrop-filter: blur(10px);
-        }
-
-        .theme-toggle:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: translateY(-1px);
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .stat-card {
-            background: var(--bg-secondary);
-            padding: 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 1px 3px var(--shadow-light);
-            border-left: 4px solid var(--accent-blue);
-            transition: transform 0.2s, box-shadow 0.2s, background-color 0.3s ease;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px var(--shadow-medium);
-        }
-
-        .stat-card h3 {
-            font-size: 0.875rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-secondary);
-            margin-bottom: 0.5rem;
-        }
-
-        .stat-card .value {
-            font-size: 2rem;
-            font-weight: bold;
-            color: var(--text-primary);
-        }
-
-        .queue-section {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            box-shadow: 0 1px 3px var(--shadow-light);
-            margin-bottom: 2rem;
-            overflow: hidden;
-            transition: background-color 0.3s ease;
-        }
-
-        .queue-header {
-            background: var(--bg-tertiary);
-            padding: 1.5rem;
-            border-bottom: 1px solid var(--border-primary);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: background-color 0.3s ease;
-        }
-
-        .queue-header h2 {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .queue-tabs {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .queue-tab {
-            padding: 0.5rem 1rem;
-            background: var(--border-secondary);
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.875rem;
-            transition: all 0.2s;
-            color: var(--text-primary);
-        }
-
-        .queue-tab.active {
-            background: var(--accent-blue);
-            color: white;
-        }
-
-        .queue-tab:hover:not(.active) {
-            background: var(--border-primary);
-        }
-
-        .queue-content {
-            padding: 1.5rem;
-        }
-
-        .message-list {
-            display: grid;
-            gap: 1rem;
-        }
-
-        .message-item {
-            padding: 1rem;
-            border: 1px solid var(--border-primary);
-            border-radius: 8px;
-            transition: all 0.2s;
-            background: var(--bg-secondary);
-        }
-
-        .message-item:hover {
-            border-color: var(--accent-blue);
-            background: var(--bg-tertiary);
-        }
-
-        .message-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.5rem;
-        }
-
-        .message-id {
-            font-family: 'Courier New', monospace;
-            font-size: 0.875rem;
-            background: var(--bg-tertiary);
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            color: var(--text-tertiary);
-        }
-
-        .message-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .btn {
-            padding: 0.5rem 1rem;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.875rem;
-            transition: all 0.2s;
-            text-decoration: none;
-            display: inline-block;
-            text-align: center;
-        }
-
-        .btn-primary {
-            background: var(--accent-blue);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: var(--accent-blue-hover);
-        }
-
-        .btn-danger {
-            background: var(--accent-red);
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: var(--accent-red-hover);
-        }
-
-        .btn-success {
-            background: var(--accent-green);
-            color: white;
-        }
-
-        .btn-success:hover {
-            background: var(--accent-green-hover);
-        }
-
-        .loading {
-            text-align: center;
-            padding: 2rem;
-            color: var(--text-secondary);
-        }
-
-        .error {
-            background: var(--error-bg);
-            border: 1px solid var(--error-border);
-            color: var(--error-text);
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-        }
-
-        .success {
-            background: var(--success-bg);
-            border: 1px solid var(--success-border);
-            color: var(--success-text);
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-        }
-
-        .refresh-indicator {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border: 2px solid var(--border-primary);
-            border-top: 2px solid var(--accent-blue);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-left: 0.5rem;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .priority-badge {
-            display: inline-block;
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .priority-critical { 
-            background: var(--priority-critical-bg); 
-            color: var(--priority-critical-text); 
-        }
-        .priority-high { 
-            background: var(--priority-high-bg); 
-            color: var(--priority-high-text); 
-        }
-        .priority-normal { 
-            background: var(--priority-normal-bg); 
-            color: var(--priority-normal-text); 
-        }
-        .priority-low { 
-            background: var(--priority-low-bg); 
-            color: var(--priority-low-text); 
-        }
-
-        /* Dark mode specific adjustments */
-        [data-theme="dark"] .header {
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
-        }
-
-        [data-theme="dark"] .stat-card {
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-        }
-
-        [data-theme="dark"] .stat-card:hover {
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-        }
-
-        [data-theme="dark"] .queue-section {
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-        }
-    </style>
+    <title>Elemta Mail Server</title>
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <button class="theme-toggle" onclick="toggleTheme()">
-                <span id="theme-icon">🌙</span> <span id="theme-text">Dark Mode</span>
-            </button>
-            <h1>Elemta MTA Dashboard</h1>
-            <p>Mail Transfer Agent Management & Monitoring</p>
-        </div>
-
-        <div id="error-message" class="error" style="display: none;"></div>
-        <div id="success-message" class="success" style="display: none;"></div>
-
-        <div class="stats-grid">
-            <div class="stat-card">
-                <h3>Active Messages</h3>
-                <div class="value" id="active-count">-</div>
+    <div class="app">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <svg class="logo-icon" viewBox="0 0 40 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Main Envelope -->
+                        <rect x="6" y="6" width="28" height="20" rx="2" class="envelope-fill" stroke="url(#borderGrad)" stroke-width="2"/>
+                        
+                        <!-- Envelope flap with fire/water gradient -->
+                        <path d="M6 8 L20 18 L34 8" stroke="url(#flapGrad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        
+                        <!-- Fire accent (left side) -->
+                        <path d="M4 24 Q2 20 4 16 Q6 12 3 8" stroke="url(#fireGrad)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+                        <path d="M6 22 Q5 18 7 14" stroke="url(#fireGrad)" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                        <circle cx="3" cy="6" r="1.2" fill="#fbbf24"/>
+                        
+                        <!-- Water accent (right side) -->
+                        <path d="M36 24 Q38 20 36 16 Q34 12 37 8" stroke="url(#waterGrad)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+                        <path d="M34 22 Q35 18 33 14" stroke="url(#waterGrad)" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                        <circle cx="37" cy="6" r="1.2" fill="#38bdf8"/>
+                        
+                        <defs>
+                            <linearGradient id="borderGrad" x1="6" y1="16" x2="34" y2="16" gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#f97316"/>
+                                <stop offset="0.5" stop-color="#64748b"/>
+                                <stop offset="1" stop-color="#0ea5e9"/>
+                            </linearGradient>
+                            <linearGradient id="flapGrad" x1="6" y1="13" x2="34" y2="13" gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#f97316"/>
+                                <stop offset="0.5" stop-color="#94a3b8"/>
+                                <stop offset="1" stop-color="#0ea5e9"/>
+                            </linearGradient>
+                            <linearGradient id="fireGrad" x1="4" y1="24" x2="4" y2="6" gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#dc2626"/>
+                                <stop offset="0.5" stop-color="#f97316"/>
+                                <stop offset="1" stop-color="#fbbf24"/>
+                            </linearGradient>
+                            <linearGradient id="waterGrad" x1="36" y1="24" x2="36" y2="6" gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#0369a1"/>
+                                <stop offset="0.5" stop-color="#0ea5e9"/>
+                                <stop offset="1" stop-color="#38bdf8"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    <span>Elemta</span>
+                </div>
+                <button class="sidebar-toggle" id="sidebar-toggle">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
             </div>
-            <div class="stat-card">
-                <h3>Deferred Messages</h3>
-                <div class="value" id="deferred-count">-</div>
-            </div>
-            <div class="stat-card">
-                <h3>Hold Messages</h3>
-                <div class="value" id="hold-count">-</div>
-            </div>
-            <div class="stat-card">
-                <h3>Failed Messages</h3>
-                <div class="value" id="failed-count">-</div>
-            </div>
-        </div>
-
-        <div class="queue-section">
-            <div class="queue-header">
-                <h2>Message Queues <span id="refresh-indicator" class="refresh-indicator" style="display: none;"></span></h2>
-                <div class="queue-tabs">
-                    <button class="queue-tab active" data-queue="active">Active</button>
-                    <button class="queue-tab" data-queue="deferred">Deferred</button>
-                    <button class="queue-tab" data-queue="hold">Hold</button>
-                    <button class="queue-tab" data-queue="failed">Failed</button>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-view="dashboard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" data-view="queues">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                    </svg>
+                    <span>Mail Queues</span>
+                </a>
+                <a href="#" class="nav-item" data-view="logs">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                    </svg>
+                    <span>Logs</span>
+                </a>
+                <a href="#" class="nav-item" data-view="settings">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="theme-toggle" id="theme-toggle">
+                    <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <line x1="12" y1="1" x2="12" y2="3"/>
+                        <line x1="12" y1="21" x2="12" y2="23"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                        <line x1="1" y1="12" x2="3" y2="12"/>
+                        <line x1="21" y1="12" x2="23" y2="12"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                    <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                </button>
+                <div class="server-status">
+                    <span class="status-dot"></span>
+                    <span>Server Online</span>
                 </div>
             </div>
-            <div class="queue-content">
-                <div class="message-actions" style="margin-bottom: 1rem;">
-                    <button class="btn btn-primary" onclick="refreshQueue()">Refresh</button>
-                    <button class="btn btn-success" onclick="flushQueue()">Flush Queue</button>
-                    <button class="btn btn-danger" onclick="flushAllQueues()">Flush All</button>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-left">
+                    <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="3" y1="12" x2="21" y2="12"/>
+                            <line x1="3" y1="6" x2="21" y2="6"/>
+                            <line x1="3" y1="18" x2="21" y2="18"/>
+                        </svg>
+                    </button>
+                    <h1 id="page-title">Dashboard</h1>
                 </div>
-                <div id="queue-content">
-                    <div class="loading">Loading queue data...</div>
+                <div class="header-right">
+                    <div class="refresh-indicator" id="refresh-indicator">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 4 23 10 17 10"/>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                        </svg>
+                    </div>
+                    <span class="last-updated" id="last-updated">Updated just now</span>
                 </div>
+            </header>
+
+            <!-- Dashboard View -->
+            <section class="view active" id="view-dashboard">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon active-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="stat-active">0</span>
+                            <span class="stat-label">Active</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon deferred-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <polyline points="12 6 12 12 16 14"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="stat-deferred">0</span>
+                            <span class="stat-label">Deferred</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon hold-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="stat-hold">0</span>
+                            <span class="stat-label">On Hold</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon failed-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <line x1="15" y1="9" x2="9" y2="15"/>
+                                <line x1="9" y1="9" x2="15" y2="15"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="stat-failed">0</span>
+                            <span class="stat-label">Failed</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="card recent-activity">
+                        <div class="card-header">
+                            <h3>Recent Activity</h3>
+                            <a href="#" class="view-all" data-view="queues">View All</a>
+                        </div>
+                        <div class="card-body" id="recent-activity">
+                            <div class="loading-placeholder">Loading...</div>
+                        </div>
+                    </div>
+                    <div class="card quick-actions">
+                        <div class="card-header">
+                            <h3>Quick Actions</h3>
+                        </div>
+                        <div class="card-body">
+                            <button class="action-btn" onclick="refreshAllData()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="23 4 23 10 17 10"/>
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                                </svg>
+                                Refresh Data
+                            </button>
+                            <button class="action-btn" onclick="retryQueue('active')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="5 3 19 12 5 21 5 3"/>
+                                </svg>
+                                Process Active Queue
+                            </button>
+                            <button class="action-btn warning" onclick="retryQueue('deferred')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <polyline points="12 6 12 12 16 14"/>
+                                </svg>
+                                Retry Deferred
+                            </button>
+                            <button class="action-btn danger" onclick="retryAllQueues()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                    <line x1="12" y1="9" x2="12" y2="13"/>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                </svg>
+                                Retry All Queues
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Queues View -->
+            <section class="view" id="view-queues">
+                <div class="queue-controls">
+                    <div class="queue-tabs">
+                        <button class="queue-tab active" data-queue="active">
+                            Active <span class="badge" id="badge-active">0</span>
+                        </button>
+                        <button class="queue-tab" data-queue="deferred">
+                            Deferred <span class="badge" id="badge-deferred">0</span>
+                        </button>
+                        <button class="queue-tab" data-queue="hold">
+                            Hold <span class="badge" id="badge-hold">0</span>
+                        </button>
+                        <button class="queue-tab" data-queue="failed">
+                            Failed <span class="badge" id="badge-failed">0</span>
+                        </button>
+                    </div>
+                    <div class="queue-actions">
+                        <button class="btn btn-secondary" onclick="refreshQueue()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 4 23 10 17 10"/>
+                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                            </svg>
+                            Refresh
+                        </button>
+                        <button class="btn btn-primary" onclick="retryCurrentQueue()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="5 3 19 12 5 21 5 3"/>
+                            </svg>
+                            Retry Queue
+                        </button>
+                    </div>
+                </div>
+
+                <div class="search-filter-bar">
+                    <div class="search-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        <input type="text" id="search-input" placeholder="Search by sender, recipient, subject, or ID...">
+                    </div>
+                    <div class="filters">
+                        <select id="priority-filter" class="filter-select">
+                            <option value="">All Priorities</option>
+                            <option value="4">Critical</option>
+                            <option value="3">High</option>
+                            <option value="2">Normal</option>
+                            <option value="1">Low</option>
+                        </select>
+                        <select id="date-filter" class="filter-select">
+                            <option value="">All Time</option>
+                            <option value="1h">Last Hour</option>
+                            <option value="24h">Last 24 Hours</option>
+                            <option value="7d">Last 7 Days</option>
+                            <option value="30d">Last 30 Days</option>
+                        </select>
+                        <select id="page-size" class="filter-select">
+                            <option value="25">25 per page</option>
+                            <option value="50">50 per page</option>
+                            <option value="100">100 per page</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="batch-actions" id="batch-actions" style="display: none;">
+                    <span class="selected-count"><span id="selected-count">0</span> selected</span>
+                    <button class="btn btn-secondary" onclick="clearSelection()">Clear Selection</button>
+                    <button class="btn btn-primary" onclick="retrySelected()">Retry Selected</button>
+                    <button class="btn btn-danger" onclick="deleteSelected()">Delete Selected</button>
+                </div>
+
+                <div class="messages-table-container">
+                    <table class="messages-table">
+                        <thead>
+                            <tr>
+                                <th class="checkbox-col">
+                                    <input type="checkbox" id="select-all" onchange="toggleSelectAll()">
+                                </th>
+                                <th>ID</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Subject</th>
+                                <th>Priority</th>
+                                <th>Created</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="messages-tbody">
+                            <tr><td colspan="9" class="loading-cell">Loading messages...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="pagination" id="pagination">
+                    <span class="pagination-info" id="pagination-info">Showing 0 messages</span>
+                    <div class="pagination-controls" id="pagination-controls"></div>
+                </div>
+            </section>
+
+            <!-- Logs View -->
+            <section class="view" id="view-logs">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Delivery Logs</h3>
+                        <div class="log-filters">
+                            <select id="log-level-filter" class="filter-select">
+                                <option value="">All Levels</option>
+                                <option value="info">Info</option>
+                                <option value="warn">Warning</option>
+                                <option value="error">Error</option>
+                            </select>
+                            <button class="btn btn-secondary" onclick="refreshLogs()">Refresh</button>
+                        </div>
+                    </div>
+                    <div class="card-body logs-container" id="logs-container">
+                        <div class="log-entry info">
+                            <span class="log-time">2024-01-15 10:30:00</span>
+                            <span class="log-level">INFO</span>
+                            <span class="log-message">Server started successfully</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings View -->
+            <section class="view" id="view-settings">
+                <div class="settings-grid">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Server Configuration</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="setting-item">
+                                <label>Auto Refresh Interval</label>
+                                <select id="refresh-interval" onchange="updateRefreshInterval()">
+                                    <option value="10000">10 seconds</option>
+                                    <option value="30000" selected>30 seconds</option>
+                                    <option value="60000">1 minute</option>
+                                    <option value="300000">5 minutes</option>
+                                    <option value="0">Disabled</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <label>Default Page Size</label>
+                                <select id="default-page-size" onchange="updateDefaultPageSize()">
+                                    <option value="25">25 messages</option>
+                                    <option value="50">50 messages</option>
+                                    <option value="100">100 messages</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Appearance</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="setting-item">
+                                <label>Theme</label>
+                                <div class="theme-options">
+                                    <button class="theme-option" data-theme="dark" onclick="setTheme('dark')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                                        </svg>
+                                        Dark
+                                    </button>
+                                    <button class="theme-option" data-theme="light" onclick="setTheme('light')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="5"/>
+                                            <line x1="12" y1="1" x2="12" y2="3"/>
+                                            <line x1="12" y1="21" x2="12" y2="23"/>
+                                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                                            <line x1="1" y1="12" x2="3" y2="12"/>
+                                            <line x1="21" y1="12" x2="23" y2="12"/>
+                                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                                        </svg>
+                                        Light
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>About</h3>
+                        </div>
+                        <div class="card-body about-info">
+                            <p><strong>Elemta Mail Transfer Agent</strong></p>
+                            <p>A modern, high-performance MTA built with Go</p>
+                            <p class="version">Version 1.0.0</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Message Detail Modal -->
+    <div class="modal" id="message-modal">
+        <div class="modal-backdrop" onclick="closeModal()"></div>
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2 id="modal-title">Message Details</h2>
+                <button class="modal-close" onclick="closeModal()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-tabs">
+                <button class="modal-tab active" data-tab="details">Details</button>
+                <button class="modal-tab" data-tab="headers">Headers</button>
+                <button class="modal-tab" data-tab="raw">Raw Content</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <div class="loading-placeholder">Loading...</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+                <button class="btn btn-primary" onclick="retryCurrentMessage()">Retry</button>
+                <button class="btn btn-danger" onclick="deleteCurrentMessage()">Delete</button>
             </div>
         </div>
     </div>
 
-    <script>
-        let currentQueue = 'active';
-        let refreshInterval;
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
 
-        // API endpoints
-        const API_BASE = '/api';
-
-        // Theme management
-        function initializeTheme() {
-            const savedTheme = localStorage.getItem('elemta-theme') || 'dark';
-            setTheme(savedTheme);
-        }
-
-        function toggleTheme() {
-            const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-            setTheme(newTheme);
-        }
-
-        function setTheme(theme) {
-            document.documentElement.setAttribute('data-theme', theme);
-            localStorage.setItem('elemta-theme', theme);
-            
-            const themeIcon = document.getElementById('theme-icon');
-            const themeText = document.getElementById('theme-text');
-            
-            if (theme === 'dark') {
-                themeIcon.textContent = '☀️';
-                themeText.textContent = 'Light Mode';
-            } else {
-                themeIcon.textContent = '🌙';
-                themeText.textContent = 'Dark Mode';
-            }
-        }
-
-        // Initialize dashboard
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeTheme();
-            initializeEventListeners();
-            loadQueueStats();
-            loadQueue(currentQueue);
-            startAutoRefresh();
-        });
-
-        function initializeEventListeners() {
-            // Queue tab switching
-            document.querySelectorAll('.queue-tab').forEach(tab => {
-                tab.addEventListener('click', function() {
-                    const queue = this.dataset.queue;
-                    switchQueue(queue);
-                });
-            });
-        }
-
-        function switchQueue(queue) {
-            currentQueue = queue;
-            
-            // Update active tab
-            document.querySelectorAll('.queue-tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            document.querySelector(`[data-queue="${queue}"]`).classList.add('active');
-            
-            loadQueue(queue);
-        }
-
-        async function loadQueueStats() {
-            try {
-                const response = await fetch(`${API_BASE}/queue/stats`);
-                const stats = await response.json();
-                
-                document.getElementById('active-count').textContent = stats.active_count || 0;
-                document.getElementById('deferred-count').textContent = stats.deferred_count || 0;
-                document.getElementById('hold-count').textContent = stats.hold_count || 0;
-                document.getElementById('failed-count').textContent = stats.failed_count || 0;
-            } catch (error) {
-                console.error('Error loading queue stats:', error);
-                showError('Failed to load queue statistics');
-            }
-        }
-
-        async function loadQueue(queueType) {
-            showRefreshIndicator(true);
-            
-            try {
-                const response = await fetch(`${API_BASE}/queue/${queueType}`);
-                const messages = await response.json();
-                
-                displayMessages(messages);
-                hideError();
-            } catch (error) {
-                console.error('Error loading queue:', error);
-                showError(`Failed to load ${queueType} queue`);
-                document.getElementById('queue-content').innerHTML = '<div class="error">Failed to load queue data</div>';
-            } finally {
-                showRefreshIndicator(false);
-            }
-        }
-
-        function displayMessages(messages) {
-            const container = document.getElementById('queue-content');
-            
-            if (!messages || messages.length === 0) {
-                container.innerHTML = '<div class="loading">No messages in this queue</div>';
-                return;
-            }
-            
-            const messageList = document.createElement('div');
-            messageList.className = 'message-list';
-            
-            messages.forEach(message => {
-                const messageItem = createMessageItem(message);
-                messageList.appendChild(messageItem);
-            });
-            
-            container.innerHTML = '';
-            container.appendChild(messageList);
-        }
-
-        function createMessageItem(message) {
-            const item = document.createElement('div');
-            item.className = 'message-item';
-            
-            const priority = getPriorityLabel(message.priority);
-            const createdAt = new Date(message.created_at).toLocaleString();
-            const toList = Array.isArray(message.to) ? message.to.join(', ') : message.to;
-            
-            item.innerHTML = `
-                <div class="message-header">
-                    <div>
-                        <span class="message-id">${message.id}</span>
-                        <span class="priority-badge priority-${priority.toLowerCase()}">${priority}</span>
-                    </div>
-                    <div class="message-actions">
-                        <button class="btn btn-primary" onclick="viewMessage('${message.id}')">View</button>
-                        <button class="btn btn-danger" onclick="deleteMessage('${message.id}')">Delete</button>
-                    </div>
-                </div>
-                <div>
-                    <strong>From:</strong> ${message.from || 'Unknown'}<br>
-                    <strong>To:</strong> ${toList || 'Unknown'}<br>
-                    <strong>Subject:</strong> ${message.subject || 'No Subject'}<br>
-                    <strong>Created:</strong> ${createdAt}<br>
-                    <strong>Attempts:</strong> ${message.retry_count || 0}
-                </div>
-            `;
-            
-            return item;
-        }
-
-        function getPriorityLabel(priority) {
-            switch (priority) {
-                case 4: return 'Critical';
-                case 3: return 'High';
-                case 2: return 'Normal';
-                case 1: return 'Low';
-                default: return 'Normal';
-            }
-        }
-
-        async function viewMessage(messageId) {
-            try {
-                const response = await fetch(`${API_BASE}/queue/message/${messageId}`);
-                const message = await response.json();
-                
-                // Create a popup window to display the message
-                const popup = window.open('', '_blank', 'width=800,height=600,scrollbars=yes');
-                popup.document.write(`
-                    <html>
-                    <head><title>Message ${messageId}</title></head>
-                    <body style="font-family: monospace; padding: 20px;">
-                    <h2>Message ${messageId}</h2>
-                    <pre>${message.content || 'No content available'}</pre>
-                    </body>
-                    </html>
-                `);
-                popup.document.close();
-            } catch (error) {
-                console.error('Error viewing message:', error);
-                showError('Failed to load message content');
-            }
-        }
-
-        async function deleteMessage(messageId) {
-            if (!confirm(`Are you sure you want to delete message ${messageId}?`)) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`${API_BASE}/queue/message/${messageId}`, {
-                    method: 'DELETE'
-                });
-                
-                if (response.ok) {
-                    showSuccess(`Message ${messageId} deleted successfully`);
-                    refreshQueue();
-                } else {
-                    throw new Error('Delete request failed');
-                }
-            } catch (error) {
-                console.error('Error deleting message:', error);
-                showError('Failed to delete message');
-            }
-        }
-
-        async function flushQueue() {
-            if (!confirm(`Are you sure you want to flush the ${currentQueue} queue?`)) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`${API_BASE}/queue/${currentQueue}/flush`, {
-                    method: 'POST'
-                });
-                
-                if (response.ok) {
-                    showSuccess(`${currentQueue} queue flushed successfully`);
-                    refreshQueue();
-                } else {
-                    throw new Error('Flush request failed');
-                }
-            } catch (error) {
-                console.error('Error flushing queue:', error);
-                showError('Failed to flush queue');
-            }
-        }
-
-        async function flushAllQueues() {
-            if (!confirm('Are you sure you want to flush ALL queues? This action cannot be undone.')) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`${API_BASE}/queue/all/flush`, {
-                    method: 'POST'
-                });
-                
-                if (response.ok) {
-                    showSuccess('All queues flushed successfully');
-                    refreshQueue();
-                } else {
-                    throw new Error('Flush all request failed');
-                }
-            } catch (error) {
-                console.error('Error flushing all queues:', error);
-                showError('Failed to flush all queues');
-            }
-        }
-
-        function refreshQueue() {
-            loadQueueStats();
-            loadQueue(currentQueue);
-        }
-
-        function startAutoRefresh() {
-            refreshInterval = setInterval(() => {
-                loadQueueStats();
-                loadQueue(currentQueue);
-            }, 30000); // Refresh every 30 seconds
-        }
-
-        function showRefreshIndicator(show) {
-            const indicator = document.getElementById('refresh-indicator');
-            indicator.style.display = show ? 'inline-block' : 'none';
-        }
-
-        function showError(message) {
-            const errorDiv = document.getElementById('error-message');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            
-            setTimeout(() => {
-                hideError();
-            }, 5000);
-        }
-
-        function hideError() {
-            document.getElementById('error-message').style.display = 'none';
-        }
-
-        function showSuccess(message) {
-            const successDiv = document.getElementById('success-message');
-            successDiv.textContent = message;
-            successDiv.style.display = 'block';
-            
-            setTimeout(() => {
-                successDiv.style.display = 'none';
-            }, 3000);
-        }
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', function() {
-            if (refreshInterval) {
-                clearInterval(refreshInterval);
-            }
-        });
-    </script>
+    <script src="/static/app.js"></script>
 </body>
-</html> 
+</html>
