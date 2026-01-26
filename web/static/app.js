@@ -820,6 +820,7 @@ function deleteCurrentMessage() {
 async function refreshLogs() {
     const container = document.getElementById('logs-container');
     const levelFilter = document.getElementById('log-level-filter')?.value || '';
+    const typeFilter = document.getElementById('log-type-filter')?.value || '';
     const searchTerm = document.getElementById('log-search-input')?.value.toLowerCase() || '';
 
     try {
@@ -839,6 +840,11 @@ async function refreshLogs() {
         // Apply level filter
         if (levelFilter) {
             logs = logs.filter(log => log.level.toLowerCase() === levelFilter.toLowerCase());
+        }
+
+        // Apply type filter
+        if (typeFilter) {
+            logs = logs.filter(log => getLogType(log) === typeFilter);
         }
 
         // Apply search filter
@@ -936,6 +942,36 @@ function parseLogLine(line) {
             context: null
         };
     }
+}
+
+function getLogType(log) {
+    const msg = log.message.toLowerCase();
+    const comp = (log.component || '').toLowerCase();
+
+    // Rejection
+    if (msg.includes('reject') || msg.includes('denied') || msg.includes('554') || msg.includes('550') ||
+        (log.context && log.context.error && (log.context.error.includes('554') || log.context.error.includes('550')))) {
+        return 'rejection';
+    }
+
+    // Delivery
+    if (msg.includes('deliver') || msg.includes('sent') || comp.includes('delivery') || comp.includes('sender')) {
+        return 'delivery';
+    }
+
+    // Reception
+    if (msg.includes('received') || msg.includes('accepted') || msg.includes('client connected') ||
+        comp.includes('smtpd') || comp.includes('receiver')) {
+        return 'reception';
+    }
+
+    // Queue
+    if (msg.includes('queue') || comp.includes('queue')) {
+        return 'queue';
+    }
+
+    // System (default fallback for others if they don't match above)
+    return 'system';
 }
 
 function renderLogContext(context) {

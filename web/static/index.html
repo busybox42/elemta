@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Elemta Mail Server</title>
     <link rel="stylesheet" href="/static/styles.css">
 </head>
+
 <body>
     <div class="app">
         <!-- Sidebar -->
@@ -14,41 +16,49 @@
                 <div class="logo">
                     <svg class="logo-icon" viewBox="0 0 40 32" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <!-- Main Envelope -->
-                        <rect x="6" y="6" width="28" height="20" rx="2" class="envelope-fill" stroke="url(#borderGrad)" stroke-width="2"/>
-                        
+                        <rect x="6" y="6" width="28" height="20" rx="2" class="envelope-fill" stroke="url(#borderGrad)"
+                            stroke-width="2" />
+
                         <!-- Envelope flap with fire/water gradient -->
-                        <path d="M6 8 L20 18 L34 8" stroke="url(#flapGrad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        
+                        <path d="M6 8 L20 18 L34 8" stroke="url(#flapGrad)" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round" />
+
                         <!-- Fire accent (left side) -->
-                        <path d="M4 24 Q2 20 4 16 Q6 12 3 8" stroke="url(#fireGrad)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
-                        <path d="M6 22 Q5 18 7 14" stroke="url(#fireGrad)" stroke-width="1.5" stroke-linecap="round" fill="none"/>
-                        <circle cx="3" cy="6" r="1.2" fill="#fbbf24"/>
-                        
+                        <path d="M4 24 Q2 20 4 16 Q6 12 3 8" stroke="url(#fireGrad)" stroke-width="2.5"
+                            stroke-linecap="round" fill="none" />
+                        <path d="M6 22 Q5 18 7 14" stroke="url(#fireGrad)" stroke-width="1.5" stroke-linecap="round"
+                            fill="none" />
+                        <circle cx="3" cy="6" r="1.2" fill="#fbbf24" />
+
                         <!-- Water accent (right side) -->
-                        <path d="M36 24 Q38 20 36 16 Q34 12 37 8" stroke="url(#waterGrad)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
-                        <path d="M34 22 Q35 18 33 14" stroke="url(#waterGrad)" stroke-width="1.5" stroke-linecap="round" fill="none"/>
-                        <circle cx="37" cy="6" r="1.2" fill="#38bdf8"/>
-                        
+                        <path d="M36 24 Q38 20 36 16 Q34 12 37 8" stroke="url(#waterGrad)" stroke-width="2.5"
+                            stroke-linecap="round" fill="none" />
+                        <path d="M34 22 Q35 18 33 14" stroke="url(#waterGrad)" stroke-width="1.5" stroke-linecap="round"
+                            fill="none" />
+                        <circle cx="37" cy="6" r="1.2" fill="#38bdf8" />
+
                         <defs>
-                            <linearGradient id="borderGrad" x1="6" y1="16" x2="34" y2="16" gradientUnits="userSpaceOnUse">
-                                <stop stop-color="#f97316"/>
-                                <stop offset="0.5" stop-color="#64748b"/>
-                                <stop offset="1" stop-color="#0ea5e9"/>
+                            <linearGradient id="borderGrad" x1="6" y1="16" x2="34" y2="16"
+                                gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#f97316" />
+                                <stop offset="0.5" stop-color="#64748b" />
+                                <stop offset="1" stop-color="#0ea5e9" />
                             </linearGradient>
                             <linearGradient id="flapGrad" x1="6" y1="13" x2="34" y2="13" gradientUnits="userSpaceOnUse">
-                                <stop stop-color="#f97316"/>
-                                <stop offset="0.5" stop-color="#94a3b8"/>
-                                <stop offset="1" stop-color="#0ea5e9"/>
+                                <stop stop-color="#f97316" />
+                                <stop offset="0.5" stop-color="#94a3b8" />
+                                <stop offset="1" stop-color="#0ea5e9" />
                             </linearGradient>
                             <linearGradient id="fireGrad" x1="4" y1="24" x2="4" y2="6" gradientUnits="userSpaceOnUse">
-                                <stop stop-color="#dc2626"/>
-                                <stop offset="0.5" stop-color="#f97316"/>
-                                <stop offset="1" stop-color="#fbbf24"/>
+                                <stop stop-color="#dc2626" />
+                                <stop offset="0.5" stop-color="#f97316" />
+                                <stop offset="1" stop-color="#fbbf24" />
                             </linearGradient>
-                            <linearGradient id="waterGrad" x1="36" y1="24" x2="36" y2="6" gradientUnits="userSpaceOnUse">
-                                <stop stop-color="#0369a1"/>
-                                <stop offset="0.5" stop-color="#0ea5e9"/>
-                                <stop offset="1" stop-color="#38bdf8"/>
+                            <linearGradient id="waterGrad" x1="36" y1="24" x2="36" y2="6"
+                                gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#0369a1" />
+                                <stop offset="0.5" stop-color="#0ea5e9" />
+                                <stop offset="1" stop-color="#38bdf8" />
                             </linearGradient>
                         </defs>
                     </svg>
@@ -56,64 +66,65 @@
                 </div>
                 <button class="sidebar-toggle" id="sidebar-toggle">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="3" y1="12" x2="21" y2="12"/>
-                        <line x1="3" y1="6" x2="21" y2="6"/>
-                        <line x1="3" y1="18" x2="21" y2="18"/>
+                        <line x1="3" y1="12" x2="21" y2="12" />
+                        <line x1="3" y1="6" x2="21" y2="6" />
+                        <line x1="3" y1="18" x2="21" y2="18" />
                     </svg>
                 </button>
             </div>
             <nav class="sidebar-nav">
                 <a href="#" class="nav-item active" data-view="dashboard">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="3" width="7" height="7"/>
-                        <rect x="14" y="3" width="7" height="7"/>
-                        <rect x="14" y="14" width="7" height="7"/>
-                        <rect x="3" y="14" width="7" height="7"/>
+                        <rect x="3" y="3" width="7" height="7" />
+                        <rect x="14" y="3" width="7" height="7" />
+                        <rect x="14" y="14" width="7" height="7" />
+                        <rect x="3" y="14" width="7" height="7" />
                     </svg>
                     <span>Dashboard</span>
                 </a>
                 <a href="#" class="nav-item" data-view="health">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
                     </svg>
                     <span>Health</span>
                 </a>
                 <a href="#" class="nav-item" data-view="queues">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="2" y="3" width="20" height="5" rx="1"/>
-                        <rect x="2" y="10" width="20" height="5" rx="1"/>
-                        <rect x="2" y="17" width="20" height="5" rx="1"/>
+                        <rect x="2" y="3" width="20" height="5" rx="1" />
+                        <rect x="2" y="10" width="20" height="5" rx="1" />
+                        <rect x="2" y="17" width="20" height="5" rx="1" />
                     </svg>
                     <span>Mail Queues</span>
                 </a>
                 <a href="#" class="nav-item" data-view="compose">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 20h9"/>
-                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
                     </svg>
                     <span>Send Test</span>
                 </a>
                 <a href="#" class="nav-item" data-view="reports">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="20" x2="18" y2="10"/>
-                        <line x1="12" y1="20" x2="12" y2="4"/>
-                        <line x1="6" y1="20" x2="6" y2="14"/>
+                        <line x1="18" y1="20" x2="18" y2="10" />
+                        <line x1="12" y1="20" x2="12" y2="4" />
+                        <line x1="6" y1="20" x2="6" y2="14" />
                     </svg>
                     <span>Reports</span>
                 </a>
                 <a href="#" class="nav-item" data-view="logs">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                        <polyline points="14 2 14 8 20 8"/>
-                        <line x1="16" y1="13" x2="8" y2="13"/>
-                        <line x1="16" y1="17" x2="8" y2="17"/>
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
                     </svg>
                     <span>Logs</span>
                 </a>
                 <a href="#" class="nav-item" data-view="settings">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="3"/>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                     </svg>
                     <span>Settings</span>
                 </a>
@@ -121,18 +132,18 @@
             <div class="sidebar-footer">
                 <button class="theme-toggle" id="theme-toggle">
                     <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="5"/>
-                        <line x1="12" y1="1" x2="12" y2="3"/>
-                        <line x1="12" y1="21" x2="12" y2="23"/>
-                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                        <line x1="1" y1="12" x2="3" y2="12"/>
-                        <line x1="21" y1="12" x2="23" y2="12"/>
-                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                        <circle cx="12" cy="12" r="5" />
+                        <line x1="12" y1="1" x2="12" y2="3" />
+                        <line x1="12" y1="21" x2="12" y2="23" />
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                        <line x1="1" y1="12" x2="3" y2="12" />
+                        <line x1="21" y1="12" x2="23" y2="12" />
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
                     </svg>
                     <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
                     </svg>
                 </button>
                 <div class="server-status">
@@ -149,9 +160,9 @@
                 <div class="header-left">
                     <button class="mobile-menu-toggle" id="mobile-menu-toggle">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="3" y1="12" x2="21" y2="12"/>
-                            <line x1="3" y1="6" x2="21" y2="6"/>
-                            <line x1="3" y1="18" x2="21" y2="18"/>
+                            <line x1="3" y1="12" x2="21" y2="12" />
+                            <line x1="3" y1="6" x2="21" y2="6" />
+                            <line x1="3" y1="18" x2="21" y2="18" />
                         </svg>
                     </button>
                     <h1 id="page-title">Dashboard</h1>
@@ -159,16 +170,16 @@
                 <div class="header-right">
                     <div class="refresh-indicator" id="refresh-indicator">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="23 4 23 10 17 10"/>
-                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                            <polyline points="23 4 23 10 17 10" />
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                         </svg>
                     </div>
                     <span class="last-updated" id="last-updated">Updated just now</span>
                     <div class="user-menu" id="user-menu">
                         <button class="user-btn" id="user-btn" onclick="toggleUserMenu()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                                <circle cx="12" cy="7" r="4"/>
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                <circle cx="12" cy="7" r="4" />
                             </svg>
                             <span id="user-display">Guest</span>
                         </button>
@@ -179,23 +190,26 @@
                             </div>
                             <button class="dropdown-item" id="btn-login" onclick="showLoginModal()">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-                                    <polyline points="10 17 15 12 10 7"/>
-                                    <line x1="15" y1="12" x2="3" y2="12"/>
+                                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                                    <polyline points="10 17 15 12 10 7" />
+                                    <line x1="15" y1="12" x2="3" y2="12" />
                                 </svg>
                                 Login
                             </button>
-                            <button class="dropdown-item" id="btn-apikeys" onclick="showAPIKeysModal()" style="display: none;">
+                            <button class="dropdown-item" id="btn-apikeys" onclick="showAPIKeysModal()"
+                                style="display: none;">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                                    <path
+                                        d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                                 </svg>
                                 API Keys
                             </button>
-                            <button class="dropdown-item danger" id="btn-logout" onclick="handleLogout()" style="display: none;">
+                            <button class="dropdown-item danger" id="btn-logout" onclick="handleLogout()"
+                                style="display: none;">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                                    <polyline points="16 17 21 12 16 7"/>
-                                    <line x1="21" y1="12" x2="9" y2="12"/>
+                                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                                    <polyline points="16 17 21 12 16 7" />
+                                    <line x1="21" y1="12" x2="9" y2="12" />
                                 </svg>
                                 Logout
                             </button>
@@ -210,7 +224,7 @@
                     <div class="stat-card">
                         <div class="stat-icon active-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                             </svg>
                         </div>
                         <div class="stat-info">
@@ -221,8 +235,8 @@
                     <div class="stat-card">
                         <div class="stat-icon deferred-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="10"/>
-                                <polyline points="12 6 12 12 16 14"/>
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 6 12 12 16 14" />
                             </svg>
                         </div>
                         <div class="stat-info">
@@ -233,8 +247,8 @@
                     <div class="stat-card">
                         <div class="stat-icon hold-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                             </svg>
                         </div>
                         <div class="stat-info">
@@ -245,9 +259,9 @@
                     <div class="stat-card">
                         <div class="stat-icon failed-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="10"/>
-                                <line x1="15" y1="9" x2="9" y2="15"/>
-                                <line x1="9" y1="9" x2="15" y2="15"/>
+                                <circle cx="12" cy="12" r="10" />
+                                <line x1="15" y1="9" x2="9" y2="15" />
+                                <line x1="9" y1="9" x2="15" y2="15" />
                             </svg>
                         </div>
                         <div class="stat-info">
@@ -274,29 +288,30 @@
                         <div class="card-body">
                             <button class="action-btn" onclick="refreshAllData()">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <polyline points="23 4 23 10 17 10"/>
-                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                                    <polyline points="23 4 23 10 17 10" />
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                                 </svg>
                                 Refresh Data
                             </button>
                             <button class="action-btn" onclick="retryQueue('active')">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <polygon points="5 3 19 12 5 21 5 3"/>
+                                    <polygon points="5 3 19 12 5 21 5 3" />
                                 </svg>
                                 Process Active Queue
                             </button>
                             <button class="action-btn warning" onclick="retryQueue('deferred')">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <circle cx="12" cy="12" r="10"/>
-                                    <polyline points="12 6 12 12 16 14"/>
+                                    <circle cx="12" cy="12" r="10" />
+                                    <polyline points="12 6 12 12 16 14" />
                                 </svg>
                                 Retry Deferred
                             </button>
                             <button class="action-btn danger" onclick="retryAllQueues()">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                                    <line x1="12" y1="9" x2="12" y2="13"/>
-                                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                    <path
+                                        d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                    <line x1="12" y1="9" x2="12" y2="13" />
+                                    <line x1="12" y1="17" x2="12.01" y2="17" />
                                 </svg>
                                 Retry All Queues
                             </button>
@@ -311,7 +326,7 @@
                     <div class="stat-card">
                         <div class="stat-icon active-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
                             </svg>
                         </div>
                         <div class="stat-info">
@@ -322,8 +337,8 @@
                     <div class="stat-card">
                         <div class="stat-icon deferred-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="10"/>
-                                <polyline points="12 6 12 12 16 14"/>
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 6 12 12 16 14" />
                             </svg>
                         </div>
                         <div class="stat-info">
@@ -334,12 +349,12 @@
                     <div class="stat-card">
                         <div class="stat-icon hold-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
-                                <rect x="9" y="9" width="6" height="6"/>
-                                <line x1="9" y1="1" x2="9" y2="4"/>
-                                <line x1="15" y1="1" x2="15" y2="4"/>
-                                <line x1="9" y1="20" x2="9" y2="23"/>
-                                <line x1="15" y1="20" x2="15" y2="23"/>
+                                <rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
+                                <rect x="9" y="9" width="6" height="6" />
+                                <line x1="9" y1="1" x2="9" y2="4" />
+                                <line x1="15" y1="1" x2="15" y2="4" />
+                                <line x1="9" y1="20" x2="9" y2="23" />
+                                <line x1="15" y1="20" x2="15" y2="23" />
                             </svg>
                         </div>
                         <div class="stat-info">
@@ -350,7 +365,8 @@
                     <div class="stat-card">
                         <div class="stat-icon failed-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                                <path
+                                    d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
                             </svg>
                         </div>
                         <div class="stat-info">
@@ -366,8 +382,8 @@
                             <h3>System Information</h3>
                             <button class="btn btn-secondary" onclick="refreshHealth()">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <polyline points="23 4 23 10 17 10"/>
-                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                                    <polyline points="23 4 23 10 17 10" />
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                                 </svg>
                                 Refresh
                             </button>
@@ -475,14 +491,14 @@
                     <div class="queue-actions">
                         <button class="btn btn-secondary" onclick="refreshQueue()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="23 4 23 10 17 10"/>
-                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                                <polyline points="23 4 23 10 17 10" />
+                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                             </svg>
                             Refresh
                         </button>
                         <button class="btn btn-primary" onclick="retryCurrentQueue()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polygon points="5 3 19 12 5 21 5 3"/>
+                                <polygon points="5 3 19 12 5 21 5 3" />
                             </svg>
                             Retry Queue
                         </button>
@@ -492,10 +508,11 @@
                 <div class="search-filter-bar">
                     <div class="search-box">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="11" cy="11" r="8"/>
-                            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
                         </svg>
-                        <input type="text" id="search-input" placeholder="Search by sender, recipient, subject, or ID...">
+                        <input type="text" id="search-input"
+                            placeholder="Search by sender, recipient, subject, or ID...">
                     </div>
                     <div class="filters">
                         <select id="priority-filter" class="filter-select">
@@ -545,7 +562,9 @@
                             </tr>
                         </thead>
                         <tbody id="messages-tbody">
-                            <tr><td colspan="9" class="loading-cell">Loading messages...</td></tr>
+                            <tr>
+                                <td colspan="9" class="loading-cell">Loading messages...</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -575,7 +594,8 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="compose-subject">Subject</label>
-                                    <input type="text" id="compose-subject" placeholder="Test Email from Elemta" value="Test Email from Elemta">
+                                    <input type="text" id="compose-subject" placeholder="Test Email from Elemta"
+                                        value="Test Email from Elemta">
                                 </div>
                                 <div class="form-group">
                                     <label for="compose-body">Message Body</label>
@@ -584,11 +604,12 @@
 If you received this message, your mail server is working correctly!</textarea>
                                 </div>
                                 <div class="form-actions">
-                                    <button type="button" class="btn btn-secondary" onclick="clearComposeForm()">Clear</button>
+                                    <button type="button" class="btn btn-secondary"
+                                        onclick="clearComposeForm()">Clear</button>
                                     <button type="submit" class="btn btn-primary" id="send-btn">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <line x1="22" y1="2" x2="11" y2="13"/>
-                                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                                            <line x1="22" y1="2" x2="11" y2="13" />
+                                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
                                         </svg>
                                         Send Test Email
                                     </button>
@@ -613,7 +634,7 @@ If you received this message, your mail server is working correctly!</textarea>
                     <div class="stat-card">
                         <div class="stat-icon active-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="20 6 9 17 4 12"/>
+                                <polyline points="20 6 9 17 4 12" />
                             </svg>
                         </div>
                         <div class="stat-info">
@@ -624,9 +645,9 @@ If you received this message, your mail server is working correctly!</textarea>
                     <div class="stat-card">
                         <div class="stat-icon failed-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="10"/>
-                                <line x1="15" y1="9" x2="9" y2="15"/>
-                                <line x1="9" y1="9" x2="15" y2="15"/>
+                                <circle cx="12" cy="12" r="10" />
+                                <line x1="15" y1="9" x2="9" y2="15" />
+                                <line x1="9" y1="9" x2="15" y2="15" />
                             </svg>
                         </div>
                         <div class="stat-info">
@@ -637,8 +658,8 @@ If you received this message, your mail server is working correctly!</textarea>
                     <div class="stat-card">
                         <div class="stat-icon deferred-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="10"/>
-                                <polyline points="12 6 12 12 16 14"/>
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 6 12 12 16 14" />
                             </svg>
                         </div>
                         <div class="stat-info">
@@ -649,7 +670,7 @@ If you received this message, your mail server is working correctly!</textarea>
                     <div class="stat-card">
                         <div class="stat-icon hold-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                             </svg>
                         </div>
                         <div class="stat-info">
@@ -665,8 +686,8 @@ If you received this message, your mail server is working correctly!</textarea>
                             <h3>Hourly Delivery Trends</h3>
                             <button class="btn btn-secondary" onclick="refreshReports()">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <polyline points="23 4 23 10 17 10"/>
-                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                                    <polyline points="23 4 23 10 17 10" />
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                                 </svg>
                                 Refresh
                             </button>
@@ -696,11 +717,20 @@ If you received this message, your mail server is working correctly!</textarea>
                         <div class="log-filters">
                             <div class="search-box log-search">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <circle cx="11" cy="11" r="8"/>
-                                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                    <circle cx="11" cy="11" r="8" />
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
                                 </svg>
-                                <input type="text" id="log-search-input" placeholder="Search logs..." oninput="refreshLogs()">
+                                <input type="text" id="log-search-input" placeholder="Search logs..."
+                                    oninput="refreshLogs()">
                             </div>
+                            <select id="log-type-filter" class="filter-select" onchange="refreshLogs()">
+                                <option value="">All Types</option>
+                                <option value="reception">Reception</option>
+                                <option value="delivery">Delivery</option>
+                                <option value="rejection">Rejection</option>
+                                <option value="queue">Queue</option>
+                                <option value="system">System</option>
+                            </select>
                             <select id="log-level-filter" class="filter-select" onchange="refreshLogs()">
                                 <option value="">All Levels</option>
                                 <option value="INFO">Info</option>
@@ -758,21 +788,21 @@ If you received this message, your mail server is working correctly!</textarea>
                                 <div class="theme-options">
                                     <button class="theme-option" data-theme="dark" onclick="setTheme('dark')">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
                                         </svg>
                                         Dark
                                     </button>
                                     <button class="theme-option" data-theme="light" onclick="setTheme('light')">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <circle cx="12" cy="12" r="5"/>
-                                            <line x1="12" y1="1" x2="12" y2="3"/>
-                                            <line x1="12" y1="21" x2="12" y2="23"/>
-                                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                                            <line x1="1" y1="12" x2="3" y2="12"/>
-                                            <line x1="21" y1="12" x2="23" y2="12"/>
-                                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                                            <circle cx="12" cy="12" r="5" />
+                                            <line x1="12" y1="1" x2="12" y2="3" />
+                                            <line x1="12" y1="21" x2="12" y2="23" />
+                                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                                            <line x1="1" y1="12" x2="3" y2="12" />
+                                            <line x1="21" y1="12" x2="23" y2="12" />
+                                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
                                         </svg>
                                         Light
                                     </button>
@@ -803,8 +833,8 @@ If you received this message, your mail server is working correctly!</textarea>
                 <h2 id="modal-title">Message Details</h2>
                 <button class="modal-close" onclick="closeModal()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
                     </svg>
                 </button>
             </div>
@@ -833,8 +863,8 @@ If you received this message, your mail server is working correctly!</textarea>
                 <h2>Login to Elemta</h2>
                 <button class="modal-close" onclick="closeLoginModal()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
                     </svg>
                 </button>
             </div>
@@ -846,14 +876,15 @@ If you received this message, your mail server is working correctly!</textarea>
                     </div>
                     <div class="form-group">
                         <label for="login-password">Password</label>
-                        <input type="password" id="login-password" placeholder="password" required autocomplete="current-password">
+                        <input type="password" id="login-password" placeholder="password" required
+                            autocomplete="current-password">
                     </div>
                     <div class="form-error" id="login-error" style="display: none;"></div>
                     <button type="submit" class="btn btn-primary btn-full">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-                            <polyline points="10 17 15 12 10 7"/>
-                            <line x1="15" y1="12" x2="3" y2="12"/>
+                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                            <polyline points="10 17 15 12 10 7" />
+                            <line x1="15" y1="12" x2="3" y2="12" />
                         </svg>
                         Login
                     </button>
@@ -870,8 +901,8 @@ If you received this message, your mail server is working correctly!</textarea>
                 <h2>API Keys</h2>
                 <button class="modal-close" onclick="closeAPIKeysModal()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
                     </svg>
                 </button>
             </div>
@@ -917,4 +948,5 @@ If you received this message, your mail server is working correctly!</textarea>
 
     <script src="/static/app.js"></script>
 </body>
+
 </html>
