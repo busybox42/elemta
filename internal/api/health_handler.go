@@ -365,7 +365,7 @@ func (s *Server) handleSendTestEmail(w http.ResponseWriter, r *http.Request) {
 		req.Body
 
 	// Queue the message
-	msgID, err := s.queueMgr.EnqueueMessage(req.From, []string{req.To}, req.Subject, []byte(content), 2)
+	msgID, err := s.queueMgr.EnqueueMessage(req.From, []string{req.To}, req.Subject, []byte(content), 2, time.Now())
 	if err != nil {
 		http.Error(w, "Failed to queue message: "+err.Error(), http.StatusInternalServerError)
 		return

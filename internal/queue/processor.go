@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/busybox42/elemta/internal/logging"
 )
 
 // ProcessorConfig holds configuration for the queue processor
@@ -65,21 +67,26 @@ type Processor struct {
 
 	// New field for processing messages
 	processingMessages map[string]bool
+
+	// Message lifecycle logger
+	msgLogger *logging.MessageLogger
 }
 
 // NewProcessor creates a new queue processor
 func NewProcessor(manager *Manager, config ProcessorConfig, handler DeliveryHandler) *Processor {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	baseLogger := slog.Default().With("component", "queue-processor")
 	return &Processor{
 		manager:            manager,
 		config:             config,
 		handler:            handler,
-		logger:             slog.Default().With("component", "queue-processor"),
+		logger:             baseLogger,
 		ctx:                ctx,
 		cancel:             cancel,
 		workerSem:          make(chan struct{}, config.MaxConcurrent),
 		processingMessages: make(map[string]bool),
+		msgLogger:          logging.NewMessageLogger(baseLogger),
 	}
 }
 
@@ -284,19 +291,19 @@ func (p *Processor) processMessage(msg Message) {
 
 	if deliveryErr == nil {
 		// Success - Log comprehensive delivery success
-		logger.Info("message_delivered",
-			"event_type", "message_delivered",
-			"message_id", msg.ID,
-			"from_envelope", msg.From,
-			"to_envelope", msg.To,
-			"message_subject", msg.Subject,
-			"message_size", msg.Size,
-			"delivery_method", "lmtp",
-			"retry_count", msg.RetryCount,
-			"delivery_time", time.Now().Format(time.RFC3339),
-			"status", "delivered",
-			"processing_time_ms", time.Since(startTime).Milliseconds(),
-		)
+		p.msgLogger.LogDelivery(logging.MessageContext{
+			MessageID:      msg.ID,
+			QueueID:        msg.ID,
+			From:           msg.From,
+			To:             msg.To,
+			Subject:        msg.Subject,
+			Size:           msg.Size,
+			ReceptionTime:  msg.ReceivedAt,
+			ProcessingTime: msg.CreatedAt,
+			DeliveryTime:   time.Now(),
+			RetryCount:     msg.RetryCount,
+			DeliveryMethod: "lmtp",
+		})
 
 		p.metricsLock.Lock()
 		p.deliveredCount++
@@ -327,22 +334,21 @@ func (p *Processor) processMessage(msg Message) {
 
 	if isTemporary {
 		// Log temporary failure (will retry)
-		logger.Warn("message_tempfail",
-			"event_type", "message_tempfail",
-			"message_id", msg.ID,
-			"from_envelope", msg.From,
-			"to_envelope", msg.To,
-			"message_subject", msg.Subject,
-			"message_size", msg.Size,
-			"delivery_method", "lmtp",
-			"retry_count", msg.RetryCount,
-			"max_retries", p.config.MaxRetries,
-			"error", deliveryErr.Error(),
-			"status", "temporary_failure",
-			"processing_time_ms", time.Since(startTime).Milliseconds(),
-		)
+		p.msgLogger.LogTempFail(logging.MessageContext{
+			MessageID:      msg.ID,
+			QueueID:        msg.ID,
+			From:           msg.From,
+			To:             msg.To,
+			Subject:        msg.Subject,
+			Size:           msg.Size,
+			ReceptionTime:  msg.ReceivedAt,
+			ProcessingTime: msg.CreatedAt,
+			RetryCount:     msg.RetryCount,
+			Error:          deliveryErr.Error(),
+			DeliveryMethod: "lmtp",
+		})
 	} else {
-		// Log delivery failure
+		// Log permanent failure
 		logger.Error("message_bounced",
 			"event_type", "message_bounced",
 			"message_id", msg.ID,
@@ -367,13 +373,19 @@ func (p *Processor) processMessage(msg Message) {
 		logger.Debug("Could not record failed attempt (message may have changed state)", "error", err)
 	}
 
-	// Check if we should retry or fail permanently
+	// Permanent failures go directly to failed queue
+	if !isTemporary {
+		p.moveToFailed(msg, fmt.Sprintf("Permanent failure: %v", deliveryErr))
+		return
+	}
+
+	// For temporary failures, check if we should retry or give up
 	if msg.RetryCount >= p.config.MaxRetries {
 		p.moveToFailed(msg, fmt.Sprintf("Max retries exceeded: %v", deliveryErr))
 		return
 	}
 
-	// Move to deferred queue for retry
+	// Move to deferred queue for retry (temporary failures only)
 	if err := p.manager.MoveMessage(msg.ID, Deferred, deliveryErr.Error()); err != nil {
 		logger.Error("Failed to move message to deferred queue", "error", err)
 	} else {
@@ -383,13 +395,21 @@ func (p *Processor) processMessage(msg Message) {
 				logger.Debug("Failed to record deferred metric", "error", err)
 			}
 		}
-		logger.Info("message_deferred",
-			"event_type", "message_deferred",
-			"message_id", msg.ID,
-			"retry_count", msg.RetryCount,
-			"next_retry", msg.NextRetry.Format(time.RFC3339),
-			"status", "deferred",
-		)
+		// Log deferral with timing information
+		p.msgLogger.LogDeferral(logging.MessageContext{
+			MessageID:      msg.ID,
+			QueueID:        msg.ID,
+			From:           msg.From,
+			To:             msg.To,
+			Subject:        msg.Subject,
+			Size:           msg.Size,
+			ReceptionTime:  msg.ReceivedAt,
+			ProcessingTime: msg.CreatedAt,
+			NextRetry:      msg.NextRetry,
+			RetryCount:     msg.RetryCount,
+			Error:          deliveryErr.Error(),
+			DeliveryMethod: "lmtp",
+		})
 	}
 }
 
@@ -444,16 +464,19 @@ func (p *Processor) moveToFailed(msg Message, reason string) {
 	}
 
 	// Log comprehensive bounce information
-	p.logger.Error("message_bounced",
-		"event_type", "message_bounced",
-		"message_id", msg.ID,
-		"from_envelope", msg.From,
-		"to_envelope", msg.To,
-		"retry_count", msg.RetryCount,
-		"bounce_reason", reason,
-		"bounce_time", time.Now().Format(time.RFC3339),
-		"status", "bounced",
-	)
+	p.msgLogger.LogBounce(logging.MessageContext{
+		MessageID:      msg.ID,
+		QueueID:        msg.ID,
+		From:           msg.From,
+		To:             msg.To,
+		Subject:        msg.Subject,
+		Size:           msg.Size,
+		ReceptionTime:  msg.ReceivedAt,
+		ProcessingTime: msg.CreatedAt,
+		RetryCount:     msg.RetryCount,
+		Error:          reason,
+		DeliveryMethod: "lmtp",
+	})
 
 	if err := p.manager.MoveMessage(msg.ID, Failed, reason); err != nil {
 		p.logger.Error("Failed to move message to failed queue",
@@ -469,10 +492,19 @@ func (p *Processor) isTemporaryFailure(err error) bool {
 	}
 
 	errStr := err.Error()
+	errLower := strings.ToLower(errStr)
+
+	// Check for explicit 4xx SMTP response codes
+	// These indicate temporary failures that should be retried
+	if strings.Contains(errStr, "452 ") || // Insufficient system storage
+		strings.Contains(errStr, "450 ") || // Mailbox unavailable
+		strings.Contains(errStr, "451 ") || // Local error in processing
+		strings.Contains(errStr, "421 ") { // Service not available
+		return true
+	}
 
 	// Check for common temporary failure patterns
 	tempPatterns := []string{
-		"4.", // 4xx SMTP codes
 		"temporary",
 		"try again",
 		"busy",
@@ -481,12 +513,25 @@ func (p *Processor) isTemporaryFailure(err error) bool {
 		"connection timeout",
 		"network error",
 		"dns",
+		"insufficient system storage",
+		"mailbox unavailable",
+		"local error",
+		"service not available",
 	}
 
 	for _, pattern := range tempPatterns {
-		if strings.Contains(strings.ToLower(errStr), pattern) {
+		if strings.Contains(errLower, pattern) {
 			return true
 		}
+	}
+
+	// Check for 5xx codes which are permanent failures
+	if strings.Contains(errStr, "550 ") || // Mailbox unavailable (permanent)
+		strings.Contains(errStr, "551 ") || // User not local
+		strings.Contains(errStr, "552 ") || // Exceeded storage allocation
+		strings.Contains(errStr, "553 ") || // Mailbox name not allowed
+		strings.Contains(errStr, "554 ") { // Transaction failed
+		return false
 	}
 
 	// Default to permanent failure for unknown errors

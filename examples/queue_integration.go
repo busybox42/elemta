@@ -82,6 +82,7 @@ func main() {
 			msg.subject,
 			[]byte(msg.content),
 			msg.priority,
+			time.Now(),
 		)
 		if err != nil {
 			log.Printf("Failed to enqueue message %d: %v", i+1, err)
@@ -163,7 +164,7 @@ func main() {
 //     }
 //
 //     // Enqueue the message
-//     msgID, err := s.queueManager.EnqueueMessage(from, to, subject, data, priority)
+//     msgID, err := s.queueManager.EnqueueMessage(from, to, subject, data, priority, time.Now())
 //     if err != nil {
 //         return fmt.Errorf("failed to enqueue message: %w", err)
 //     }

@@ -56,6 +56,7 @@ func TestUnifiedQueueSystem(t *testing.T) {
 			"Test Message",
 			[]byte("This is a test message"),
 			PriorityNormal,
+			time.Now(),
 		)
 		if err != nil {
 			t.Fatalf("Failed to enqueue message: %v", err)
@@ -107,6 +108,7 @@ func TestUnifiedQueueSystem(t *testing.T) {
 			"Operation Test",
 			[]byte("Test content for operations"),
 			PriorityHigh,
+			time.Now(),
 		)
 		if err != nil {
 			t.Fatalf("Failed to enqueue message: %v", err)
@@ -192,6 +194,7 @@ func TestUnifiedQueueSystem(t *testing.T) {
 				"List Test",
 				[]byte("Test content"),
 				Priority(i+1), // Different priorities
+				time.Now(),
 			)
 			if err != nil {
 				t.Fatalf("Failed to enqueue message %d: %v", i, err)
@@ -323,6 +326,7 @@ func TestQueueSystemIntegration(t *testing.T) {
 		"Integration Test",
 		[]byte("Full lifecycle test"),
 		PriorityNormal,
+		time.Now(),
 	)
 	if err != nil {
 		t.Fatalf("Failed to enqueue message: %v", err)

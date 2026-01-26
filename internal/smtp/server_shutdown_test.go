@@ -249,6 +249,7 @@ func TestQueuePersistence(t *testing.T) {
 				subject,
 				data,
 				queue.PriorityNormal,
+				time.Now(),
 			)
 			require.NoError(t, err, "Failed to enqueue message")
 		}
@@ -301,6 +302,7 @@ func TestQueuePersistence(t *testing.T) {
 				subject,
 				data,
 				queue.PriorityNormal,
+				time.Now(),
 			)
 			require.NoError(t, err)
 		}

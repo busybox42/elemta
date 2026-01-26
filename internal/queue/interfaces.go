@@ -8,7 +8,7 @@ import (
 // QueueManager defines the interface for queue management operations
 type QueueManager interface {
 	// Basic queue operations
-	EnqueueMessage(from string, to []string, subject string, data []byte, priority Priority) (string, error)
+	EnqueueMessage(from string, to []string, subject string, data []byte, priority Priority, receivedAt time.Time) (string, error)
 	GetMessage(id string) (Message, error)
 	DeleteMessage(id string) error
 	ListMessages(queueType QueueType) ([]Message, error)

@@ -359,6 +359,10 @@ func (s *Server) Start() error {
 
 // Stop stops the API server
 func (s *Server) Stop() error {
+	if s.httpServer == nil {
+		return nil
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

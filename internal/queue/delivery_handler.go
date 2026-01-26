@@ -189,9 +189,30 @@ func (h *SMTPDeliveryHandler) deliverToAddress(ctx context.Context, address stri
 	}
 	defer func() { _ = client.Close() }()
 
-	// Set sender
-	if err := client.Mail(msg.From); err != nil {
-		return fmt.Errorf("MAIL FROM failed: %w", err)
+	// Set sender (strip angle brackets if present to avoid parameter issues)
+	sender := strings.Trim(msg.From, "<>")
+
+	// Use the Text() method to get the underlying textproto connection
+	// and send raw MAIL FROM without ESMTP extensions
+	text := client.Text
+	if text == nil {
+		// Fallback to standard Mail() if we can't get the text connection
+		if err := client.Mail(sender); err != nil {
+			return fmt.Errorf("MAIL FROM failed: %w", err)
+		}
+	} else {
+		// Send raw MAIL FROM command without SIZE or other extensions
+		mailCmd := fmt.Sprintf("MAIL FROM:<%s>", sender)
+		id, err := text.Cmd(mailCmd)
+		if err != nil {
+			return fmt.Errorf("MAIL FROM command failed: %w", err)
+		}
+		text.StartResponse(id)
+		defer text.EndResponse(id)
+		_, _, err = text.ReadResponse(250)
+		if err != nil {
+			return fmt.Errorf("MAIL FROM failed: %w", err)
+		}
 	}
 
 	// Set recipients
@@ -274,13 +295,26 @@ func NewMockDeliveryHandler() *MockDeliveryHandler {
 	}
 }
 
+// TemporaryError represents a temporary failure that should be retried
+type TemporaryError struct {
+	msg string
+}
+
+func (e *TemporaryError) Error() string {
+	return e.msg
+}
+
+func (e *TemporaryError) Temporary() bool {
+	return true
+}
+
 // DeliverMessage simulates message delivery
 func (m *MockDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, content []byte) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	if m.shouldFail {
-		return fmt.Errorf("mock delivery failure")
+		return &TemporaryError{msg: "mock delivery failure"}
 	}
 
 	// Simulate network delay

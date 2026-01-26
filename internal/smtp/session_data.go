@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/busybox42/elemta/internal/logging"
 	"github.com/busybox42/elemta/internal/plugin"
 	"github.com/busybox42/elemta/internal/queue"
 	"github.com/google/uuid"
@@ -60,21 +61,26 @@ type DataHandler struct {
 	queueManager      queue.QueueManager
 	builtinPlugins    *plugin.BuiltinPlugins
 	enhancedValidator *EnhancedValidator
+	msgLogger         *logging.MessageLogger
+	receptionTime     time.Time
 }
 
 // NewDataHandler creates a new data handler
 func NewDataHandler(session *Session, state *SessionState, conn net.Conn, reader *bufio.Reader,
 	config *Config, queueManager queue.QueueManager, builtinPlugins *plugin.BuiltinPlugins, logger *slog.Logger) *DataHandler {
+	baseLogger := logger.With("component", "session-data")
 	return &DataHandler{
 		session:           session,
 		state:             state,
-		logger:            logger.With("component", "session-data"),
+		logger:            baseLogger,
 		conn:              conn,
 		reader:            reader,
 		config:            config,
 		queueManager:      queueManager,
 		builtinPlugins:    builtinPlugins,
 		enhancedValidator: NewEnhancedValidator(logger.With("component", "enhanced-validator")),
+		msgLogger:         logging.NewMessageLogger(baseLogger),
+		receptionTime:     time.Now(),
 	}
 }
 
@@ -1245,22 +1251,29 @@ func (dh *DataHandler) saveMessage(ctx context.Context, data []byte, metadata *M
 			metadata.Subject,
 			data,
 			queue.PriorityNormal,
+			dh.receptionTime,
 		)
 		if err != nil {
 			dh.logger.ErrorContext(ctx, "Failed to enqueue message", "error", err)
 			return fmt.Errorf("failed to save message: %w", err)
 		}
 
-		dh.logger.InfoContext(ctx, "message_enqueued",
-			"event_type", "message_enqueued",
-			"message_id", messageID,
-			"from_envelope", metadata.From,
-			"to_envelope", metadata.To,
-			"message_subject", metadata.Subject,
-			"message_size", metadata.Size,
-			"message_id_header", metadata.MessageID,
-			"queue_time", time.Now().Format(time.RFC3339),
-		)
+		// Log message reception with timing
+		dh.msgLogger.LogReception(logging.MessageContext{
+			MessageID:      messageID,
+			QueueID:        messageID,
+			From:           metadata.From,
+			To:             metadata.To,
+			Subject:        metadata.Subject,
+			Size:           metadata.Size,
+			ClientIP:       dh.session.remoteAddr,
+			ClientHostname: dh.session.remoteAddr,
+			Username:       dh.state.GetUsername(),
+			Authenticated:  dh.state.IsAuthenticated(),
+			TLSActive:      dh.state.IsTLSActive(),
+			ReceptionTime:  dh.receptionTime,
+			ProcessingTime: time.Now(),
+		})
 	}
 
 	// Note: Queue integration processing would be handled by the queue manager

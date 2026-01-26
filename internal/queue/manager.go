@@ -74,7 +74,8 @@ type Message struct {
 	Subject     string            `json:"subject"`
 	Size        int64             `json:"size"`
 	Priority    Priority          `json:"priority"`
-	CreatedAt   time.Time         `json:"created_at"`
+	ReceivedAt  time.Time         `json:"received_at"` // When message was received via SMTP
+	CreatedAt   time.Time         `json:"created_at"`  // When message was queued
 	UpdatedAt   time.Time         `json:"updated_at"`
 	NextRetry   time.Time         `json:"next_retry,omitempty"`
 	RetryCount  int               `json:"retry_count"`
@@ -237,7 +238,7 @@ func (m *Manager) GetMessage(id string) (Message, error) {
 }
 
 // EnqueueMessage adds a new message to the queue
-func (m *Manager) EnqueueMessage(from string, to []string, subject string, data []byte, priority Priority) (string, error) {
+func (m *Manager) EnqueueMessage(from string, to []string, subject string, data []byte, priority Priority, receivedAt time.Time) (string, error) {
 	// Generate a unique ID for the message
 	id := generateUniqueID()
 
@@ -259,6 +260,7 @@ func (m *Manager) EnqueueMessage(from string, to []string, subject string, data 
 		domain = extractDomain(to[0])
 	}
 
+	now := time.Now()
 	// Create message metadata
 	msg := Message{
 		ID:          id,
@@ -269,8 +271,9 @@ func (m *Manager) EnqueueMessage(from string, to []string, subject string, data 
 		Subject:     subject,
 		Size:        int64(len(data)),
 		Priority:    priority,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		ReceivedAt:  receivedAt,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 		RetryCount:  0,
 		Annotations: make(map[string]string),
 		Attempts:    make([]Attempt, 0),

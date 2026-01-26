@@ -346,6 +346,7 @@ func TestQueueManagerIntegration(t *testing.T) {
 			"Test Subject",
 			[]byte("Test message body"),
 			0, // Normal priority
+			time.Now(),
 		)
 		require.NoError(t, err)
 		assert.NotEmpty(t, msgID)

@@ -29,6 +29,7 @@ func TestEnqueueMessage(t *testing.T) {
 		"Test message",
 		[]byte("From: sender@example.com\nTo: recipient@example.com\nSubject: Test message\n\nTest content"),
 		PriorityNormal,
+		time.Now(),
 	)
 	if err != nil {
 		t.Fatalf("Error enqueuing message: %v", err)
@@ -97,6 +98,7 @@ func TestCleanupExpiredMessages(t *testing.T) {
 		"Old message",
 		[]byte("This is an old test message"),
 		PriorityLow,
+		time.Now(),
 	)
 	if err != nil {
 		t.Fatalf("Error creating old message: %v", err)
@@ -155,6 +157,7 @@ func TestQueueOperations(t *testing.T) {
 		"Queue operations test",
 		[]byte("Queue operations test content"),
 		PriorityNormal,
+		time.Now(),
 	)
 	if err != nil {
 		t.Fatalf("Error enqueuing message: %v", err)

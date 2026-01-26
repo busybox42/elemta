@@ -55,6 +55,7 @@ func TestProcessor(t *testing.T) {
 			"Test Subject",
 			[]byte("Test message content"),
 			PriorityNormal,
+			time.Now(),
 		)
 		if err != nil {
 			t.Fatalf("Failed to enqueue message: %v", err)
@@ -101,6 +102,7 @@ func TestProcessor(t *testing.T) {
 			"Test Subject",
 			[]byte("Test message content"),
 			PriorityNormal,
+			time.Now(),
 		)
 		if err != nil {
 			t.Fatalf("Failed to enqueue message: %v", err)
@@ -151,6 +153,7 @@ func TestProcessor(t *testing.T) {
 			"Low Priority",
 			[]byte("Low priority message"),
 			PriorityLow,
+			time.Now(),
 		)
 		if err != nil {
 			t.Fatalf("Failed to enqueue low priority message: %v", err)
@@ -162,6 +165,7 @@ func TestProcessor(t *testing.T) {
 			"High Priority",
 			[]byte("High priority message"),
 			PriorityHigh,
+			time.Now(),
 		)
 		if err != nil {
 			t.Fatalf("Failed to enqueue high priority message: %v", err)
@@ -218,6 +222,7 @@ func TestProcessor(t *testing.T) {
 				"Test Subject",
 				[]byte("Test message content"),
 				PriorityNormal,
+				time.Now(),
 			)
 			if err != nil {
 				t.Fatalf("Failed to enqueue message %d: %v", i, err)
@@ -255,6 +260,7 @@ func TestProcessor(t *testing.T) {
 			"Success",
 			[]byte("Success message"),
 			PriorityNormal,
+			time.Now(),
 		)
 		if err != nil {
 			t.Fatalf("Failed to enqueue success message: %v", err)
