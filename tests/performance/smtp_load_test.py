@@ -302,6 +302,24 @@ def test_spam_rejection():
     tester.print_stats(stats)
     return stats['success_rate'] > 90
 
+def test_virus_rejection():
+    """Test virus rejection using EICAR corpus"""
+    print("Testing virus rejection...")
+    
+    tester = SMTPLoadTester()
+    stats = tester.run_concurrent_test(
+        num_threads=3,
+        emails_per_thread=5,
+        from_addr="virus@example.com",
+        to_addr="victim@example.com",
+        corpus_file="tests/corpus/virus-eicar.eml",
+        expected_result="reject"
+    )
+    
+    # We expect high success rate (meaning successful rejections)
+    tester.print_stats(stats)
+    return stats['success_rate'] > 90
+
 def main():
     """Run SMTP load tests"""
     print("=" * 60)
@@ -312,6 +330,7 @@ def main():
         ("Unauthenticated Relay", test_unauthenticated_relay),
         ("Authenticated SMTP", test_authenticated_smtp),
         ("Spam Rejection", test_spam_rejection),
+        ("Virus Rejection", test_virus_rejection),
         ("High Load Test", test_high_load)
     ]
     
