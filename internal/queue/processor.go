@@ -238,9 +238,6 @@ func (p *Processor) processQueue(queueType QueueType) error {
 
 			p.wg.Add(1)
 			go p.processMessage(msg)
-		default:
-			// Worker pool is full, skip this round
-			return nil
 		}
 	}
 

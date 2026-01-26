@@ -400,11 +400,15 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	// Set default antivirus configuration if not provided
 	if config.Antivirus == nil {
+		enabled := true
+		if os.Getenv("ELEMTA_DISABLE_CLAMAV") == "true" {
+			enabled = false
+		}
 		config.Antivirus = &AntivirusConfig{
-			Enabled:         true,
+			Enabled:         enabled,
 			RejectOnFailure: false,
 			ClamAV: &ClamAVConfig{
-				Enabled:   true,
+				Enabled:   enabled,
 				Address:   "localhost:3310",
 				Timeout:   30,
 				ScanLimit: 25 * 1024 * 1024, // 25 MB

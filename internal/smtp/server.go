@@ -130,12 +130,18 @@ func NewServer(config *Config) (*Server, error) {
 		}
 	} else {
 		// Initialize with basic builtin scanning even if no plugins specified
-		basicPlugins := []string{"clamav", "rspamd"}
+		basicPlugins := []string{"rspamd"}
+		if os.Getenv("ELEMTA_DISABLE_CLAMAV") != "true" {
+			basicPlugins = append(basicPlugins, "clamav")
+		}
+
 		pluginConfig := make(map[string]map[string]interface{})
-		pluginConfig["clamav"] = map[string]interface{}{
-			"host":    "elemta-clamav",
-			"port":    3310,
-			"timeout": 30,
+		if os.Getenv("ELEMTA_DISABLE_CLAMAV") != "true" {
+			pluginConfig["clamav"] = map[string]interface{}{
+				"host":    "elemta-clamav",
+				"port":    3310,
+				"timeout": 30,
+			}
 		}
 		pluginConfig["rspamd"] = map[string]interface{}{
 			"host":      "elemta-rspamd",

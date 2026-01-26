@@ -7,8 +7,8 @@ services:
     container_name: elemta-node0
     restart: unless-stopped
     ports:
-      - "2525:2525"  # SMTP server port
-      - "8080:8080"  # Metrics endpoint
+      - "2525:2525" # SMTP server port
+      - "8080:8080" # Metrics endpoint
     volumes:
       - elemta_queue:/app/queue
       - elemta_logs:/app/logs
@@ -20,14 +20,14 @@ services:
       - NODE_ID=0
       - TEST_MODE=true
       - ELEMTA_CONFIG_PATH=/app/config/elemta.toml
-      - API_PORT=8081  # Used internally only
+      - API_PORT=8081 # Used internally only
       - DELIVERY_HOST=elemta-dovecot
       - DELIVERY_PORT=2424
     # Security configuration for the container
     security_opt:
       - no-new-privileges:true
-    user: "1001:1001"  # Run as non-root user (elemta)
-    read_only: false  # Set to false as we need to write to /app/queue and /app/logs
+    user: "1001:1001" # Run as non-root user (elemta)
+    read_only: false # Set to false as we need to write to /app/queue and /app/logs
     tmpfs:
       - /tmp
       - /var/tmp
@@ -36,7 +36,7 @@ services:
     cap_add: []
     init: true
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2525"]
+      test: [ "CMD", "nc", "-z", "localhost", "2525" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -82,13 +82,13 @@ services:
     container_name: elemta-web
     restart: unless-stopped
     ports:
-      - "8025:8025"  # Web UI port
+      - "8025:8025" # Web UI port
     volumes:
       - elemta_queue:/app/queue:rw
       - elemta_logs:/app/logs:ro
       - ../../config/users.txt:/app/config/users.txt:ro
       # Web files are now included in the Docker image
-    command: ["/app/elemta", "web", "--listen", "0.0.0.0:8025", "--queue-dir", "/app/queue", "--web-root", "/app/web/static", "--auth-enabled", "--auth-file", "/app/config/users.txt"]
+    command: [ "/app/elemta", "web", "--listen", "0.0.0.0:8025", "--queue-dir", "/app/queue", "--web-root", "/app/web/static", "--auth-enabled", "--auth-file", "/app/config/users.txt" ]
     environment:
       - TZ=UTC
       - NODE_ID=web
@@ -97,8 +97,8 @@ services:
     # Security configuration for the container
     security_opt:
       - no-new-privileges:true
-    user: "1001:1001"  # Run as non-root user (elemta)
-    read_only: false  # Set to false as we need to write to /app/queue and /app/logs
+    user: "1001:1001" # Run as non-root user (elemta)
+    read_only: false # Set to false as we need to write to /app/queue and /app/logs
     tmpfs:
       - /tmp
       - /var/tmp
@@ -111,7 +111,7 @@ services:
     depends_on:
       - elemta
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8025/"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8025/" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -130,7 +130,7 @@ services:
       - NET_RAW
       - NET_BIND_SERVICE
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "3310"]
+      test: [ "CMD", "nc", "-z", "localhost", "3310" ]
       interval: 45s
       timeout: 15s
       retries: 5
@@ -152,26 +152,26 @@ services:
       # - ./docker/rspamd/override.d/logging.conf:/etc/rspamd/override.d/logging.conf
       # - ./docker/rspamd/override.d/actions.conf:/etc/rspamd/override.d/actions.conf
     ports:
-      - "11334:11334"  # Web interface
+      - "11334:11334" # Web interface
     # Rspamd needs some capabilities for network operations
     cap_drop:
       - NET_RAW
       - NET_BIND_SERVICE
     healthcheck:
       # Use pidof to check if rspamd is running
-      test: ["CMD-SHELL", "pidof rspamd || exit 1"]
+      test: [ "CMD-SHELL", "pidof rspamd || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 120s
-  
+
   elemta-ldap:
     image: osixia/openldap:latest
     container_name: elemta-ldap
     hostname: elemta-ldap
     ports:
-      - "1389:389"     # LDAP port
-      - "1636:636"     # LDAPS port  
+      - "1389:389" # LDAP port
+      - "1636:636" # LDAPS port  
     environment:
       - LDAP_ORGANISATION=Example Corp
       - LDAP_DOMAIN=example.com
@@ -188,7 +188,7 @@ services:
     networks:
       - elemta_network
     healthcheck:
-      test: ["CMD", "sh", "-c", "ldapsearch -x -H ldapi:/// -Y EXTERNAL -b 'ou=people,dc=example,dc=com' '(uid=user)' 2>&1 | grep -q 'uid: user' || ldapsearch -x -D 'cn=admin,dc=example,dc=com' -w admin -b 'dc=example,dc=com' -s base -LLL"]
+      test: [ "CMD", "sh", "-c", "ldapsearch -x -H ldapi:/// -Y EXTERNAL -b 'ou=people,dc=example,dc=com' '(uid=user)' 2>&1 | grep -q 'uid: user' || ldapsearch -x -D 'cn=admin,dc=example,dc=com' -w admin -b 'dc=example,dc=com' -s base -LLL" ]
       interval: 10s
       timeout: 10s
       retries: 30
@@ -202,9 +202,9 @@ services:
     container_name: elemta-dovecot
     hostname: elemta-dovecot
     ports:
-      - "14143:14143"  # IMAP port
-      - "2424:2424"    # LMTP port
-      - "4190:4190"    # ManageSieve port
+      - "14143:14143" # IMAP port
+      - "2424:2424" # LMTP port
+      - "4190:4190" # ManageSieve port
     volumes:
       - dovecot_data:/var/mail
     networks:
@@ -213,12 +213,12 @@ services:
     depends_on:
       - elemta-ldap
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "14143"]
+      test: [ "CMD", "nc", "-z", "localhost", "14143" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-      
+
   # Post-startup configuration
   # elemta-setup:
   #   image: curlimages/curl:latest
@@ -330,16 +330,12 @@ services:
     volumes:
       - valkey_data:/data
     command: >
-      valkey-server
-      --appendonly yes
-      --appendfsync everysec
-      --maxmemory 512mb
-      --maxmemory-policy allkeys-lru
+      valkey-server --appendonly yes --appendfsync everysec --maxmemory 512mb --maxmemory-policy allkeys-lru
     networks:
       - elemta_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "valkey-cli", "ping"]
+      test: [ "CMD", "valkey-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -375,14 +371,11 @@ services:
       - elemta
       - elemta-ldap
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/"]
+      test: [ "CMD", "curl", "-f", "http://localhost/" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-
-
-
   # Monitoring Stack
 
 networks:
