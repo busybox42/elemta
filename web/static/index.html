@@ -694,6 +694,13 @@ If you received this message, your mail server is working correctly!</textarea>
                     <div class="card-header">
                         <h3>Delivery Logs</h3>
                         <div class="log-filters">
+                            <div class="search-box log-search">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="11" cy="11" r="8"/>
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                </svg>
+                                <input type="text" id="log-search-input" placeholder="Search logs..." oninput="refreshLogs()">
+                            </div>
                             <select id="log-level-filter" class="filter-select" onchange="refreshLogs()">
                                 <option value="">All Levels</option>
                                 <option value="INFO">Info</option>

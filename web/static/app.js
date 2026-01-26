@@ -43,7 +43,7 @@ function initializeTheme() {
 function setTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('elemta-theme', theme);
-    
+
     // Update theme option buttons
     document.querySelectorAll('.theme-option').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === theme);
@@ -105,8 +105,8 @@ function initializeNavigation() {
     // Close sidebar on backdrop click (mobile)
     document.addEventListener('click', (e) => {
         const sidebar = document.getElementById('sidebar');
-        if (sidebar.classList.contains('open') && 
-            !sidebar.contains(e.target) && 
+        if (sidebar.classList.contains('open') &&
+            !sidebar.contains(e.target) &&
             e.target !== document.getElementById('mobile-menu-toggle')) {
             sidebar.classList.remove('open');
         }
@@ -199,42 +199,42 @@ function updateURL() {
     params.set('queue', state.currentQueue);
     params.set('page', state.currentPage.toString());
     params.set('pageSize', state.pageSize.toString());
-    
+
     const searchTerm = document.getElementById('search-input')?.value;
     if (searchTerm) params.set('search', searchTerm);
-    
+
     const priorityFilter = document.getElementById('priority-filter')?.value;
     if (priorityFilter) params.set('priority', priorityFilter);
-    
+
     const dateFilter = document.getElementById('date-filter')?.value;
     if (dateFilter) params.set('date', dateFilter);
-    
+
     window.history.replaceState({}, '', `?${params.toString()}`);
 }
 
 function loadFromURL() {
     const params = new URLSearchParams(window.location.search);
-    
+
     const queueParam = params.get('queue');
     if (queueParam && ['active', 'deferred', 'hold', 'failed'].includes(queueParam)) {
         state.currentQueue = queueParam;
     }
-    
+
     state.currentPage = parseInt(params.get('page')) || 1;
     state.pageSize = parseInt(params.get('pageSize')) || 25;
-    
+
     const searchInput = document.getElementById('search-input');
     if (searchInput) searchInput.value = params.get('search') || '';
-    
+
     const priorityFilter = document.getElementById('priority-filter');
     if (priorityFilter) priorityFilter.value = params.get('priority') || '';
-    
+
     const dateFilter = document.getElementById('date-filter');
     if (dateFilter) dateFilter.value = params.get('date') || '';
-    
+
     const pageSize = document.getElementById('page-size');
     if (pageSize) pageSize.value = state.pageSize.toString();
-    
+
     // Update queue tabs
     document.querySelectorAll('.queue-tab').forEach(tab => {
         tab.classList.toggle('active', tab.dataset.queue === state.currentQueue);
@@ -264,12 +264,12 @@ async function loadQueueStats() {
     try {
         const response = await fetch(`${API_BASE}/queue/stats`);
         const stats = await response.json();
-        
+
         document.getElementById('stat-active').textContent = stats.active_count || 0;
         document.getElementById('stat-deferred').textContent = stats.deferred_count || 0;
         document.getElementById('stat-hold').textContent = stats.hold_count || 0;
         document.getElementById('stat-failed').textContent = stats.failed_count || 0;
-        
+
         document.getElementById('badge-active').textContent = stats.active_count || 0;
         document.getElementById('badge-deferred').textContent = stats.deferred_count || 0;
         document.getElementById('badge-hold').textContent = stats.hold_count || 0;
@@ -284,16 +284,16 @@ async function loadQueue(queueType) {
     try {
         const response = await fetch(`${API_BASE}/queue/${queueType}`);
         const messages = await response.json();
-        
+
         state.allMessages = messages || [];
         state.filteredMessages = [...state.allMessages];
         state.selectedMessages.clear();
-        
+
         applyFilters();
     } catch (error) {
         console.error('Error loading queue:', error);
         showToast('Failed to load queue data', 'error');
-        document.getElementById('messages-tbody').innerHTML = 
+        document.getElementById('messages-tbody').innerHTML =
             '<tr><td colspan="9" class="loading-cell">Failed to load messages</td></tr>';
     } finally {
         showRefreshIndicator(false);
@@ -304,13 +304,13 @@ async function loadRecentActivity() {
     try {
         const response = await fetch(`${API_BASE}/queue/active`);
         const messages = await response.json();
-        
+
         const container = document.getElementById('recent-activity');
         if (!messages || messages.length === 0) {
             container.innerHTML = '<div class="loading-placeholder">No recent activity</div>';
             return;
         }
-        
+
         const recentMessages = messages.slice(0, 5);
         container.innerHTML = recentMessages.map(msg => `
             <div class="activity-item">
@@ -337,12 +337,12 @@ function switchQueue(queue) {
     state.currentQueue = queue;
     state.currentPage = 1;
     state.selectedMessages.clear();
-    
+
     // Update tabs
     document.querySelectorAll('.queue-tab').forEach(tab => {
         tab.classList.toggle('active', tab.dataset.queue === queue);
     });
-    
+
     // Clear filters
     const searchInput = document.getElementById('search-input');
     if (searchInput) searchInput.value = '';
@@ -350,7 +350,7 @@ function switchQueue(queue) {
     if (priorityFilter) priorityFilter.value = '';
     const dateFilter = document.getElementById('date-filter');
     if (dateFilter) dateFilter.value = '';
-    
+
     updateURL();
     loadQueue(queue);
 }
@@ -364,12 +364,12 @@ async function retryCurrentQueue() {
     if (!confirm(`Retry all messages in the ${state.currentQueue} queue?\n\nThis will attempt immediate delivery.`)) {
         return;
     }
-    
+
     try {
         const response = await fetch(`${API_BASE}/queue/${state.currentQueue}/flush`, {
             method: 'POST'
         });
-        
+
         if (response.ok) {
             showToast(`${state.currentQueue} queue retry initiated`, 'success');
             refreshQueue();
@@ -386,7 +386,7 @@ async function retryQueue(queueType) {
         const response = await fetch(`${API_BASE}/queue/${queueType}/flush`, {
             method: 'POST'
         });
-        
+
         if (response.ok) {
             showToast(`${queueType} queue processing started`, 'success');
             refreshAllData();
@@ -402,12 +402,12 @@ async function retryAllQueues() {
     if (!confirm('Retry ALL messages in ALL queues?\n\nThis is a system-wide operation.')) {
         return;
     }
-    
+
     try {
         const response = await fetch(`${API_BASE}/queue/all/flush`, {
             method: 'POST'
         });
-        
+
         if (response.ok) {
             showToast('All queues retry initiated', 'success');
             refreshAllData();
@@ -426,7 +426,7 @@ function applyFilters() {
     const searchTerm = document.getElementById('search-input')?.value.toLowerCase() || '';
     const priorityFilter = document.getElementById('priority-filter')?.value || '';
     const dateFilter = document.getElementById('date-filter')?.value || '';
-    
+
     state.filteredMessages = state.allMessages.filter(message => {
         // Search filter
         if (searchTerm) {
@@ -436,23 +436,23 @@ function applyFilters() {
                 Array.isArray(message.to) ? message.to.join(' ') : message.to || '',
                 message.subject || ''
             ].join(' ').toLowerCase();
-            
+
             if (!searchableText.includes(searchTerm)) {
                 return false;
             }
         }
-        
+
         // Priority filter
         if (priorityFilter && message.priority != priorityFilter) {
             return false;
         }
-        
+
         // Date filter
         if (dateFilter) {
             const messageDate = new Date(message.created_at);
             const now = new Date();
             let cutoffDate;
-            
+
             switch (dateFilter) {
                 case '1h':
                     cutoffDate = new Date(now.getTime() - 60 * 60 * 1000);
@@ -467,15 +467,15 @@ function applyFilters() {
                     cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
                     break;
             }
-            
+
             if (cutoffDate && messageDate < cutoffDate) {
                 return false;
             }
         }
-        
+
         return true;
     });
-    
+
     renderMessages();
     updateBatchActions();
 }
@@ -484,27 +484,27 @@ function renderMessages() {
     const tbody = document.getElementById('messages-tbody');
     const totalMessages = state.filteredMessages.length;
     const totalPages = Math.ceil(totalMessages / state.pageSize);
-    
+
     if (state.currentPage > totalPages && totalPages > 0) {
         state.currentPage = totalPages;
     }
-    
+
     const startIndex = (state.currentPage - 1) * state.pageSize;
     const endIndex = startIndex + state.pageSize;
     const pageMessages = state.filteredMessages.slice(startIndex, endIndex);
-    
+
     if (pageMessages.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" class="loading-cell">No messages found</td></tr>';
         document.getElementById('pagination-info').textContent = '0 messages';
         document.getElementById('pagination-controls').innerHTML = '';
         return;
     }
-    
+
     tbody.innerHTML = pageMessages.map(msg => {
         const isSelected = state.selectedMessages.has(msg.id);
         const priority = getPriorityLabel(msg.priority);
         const toList = Array.isArray(msg.to) ? msg.to.join(', ') : msg.to;
-        
+
         return `
             <tr class="${isSelected ? 'selected' : ''}">
                 <td class="checkbox-col">
@@ -544,61 +544,61 @@ function renderMessages() {
             </tr>
         `;
     }).join('');
-    
+
     // Update pagination
     const start = startIndex + 1;
     const end = Math.min(endIndex, totalMessages);
-    document.getElementById('pagination-info').textContent = 
+    document.getElementById('pagination-info').textContent =
         `Showing ${start}-${end} of ${totalMessages} messages`;
-    
+
     renderPagination(totalPages);
 }
 
 function renderPagination(totalPages) {
     const controls = document.getElementById('pagination-controls');
-    
+
     if (totalPages <= 1) {
         controls.innerHTML = '';
         return;
     }
-    
+
     let html = '';
-    
+
     // Previous button
     html += `<button onclick="goToPage(${state.currentPage - 1})" ${state.currentPage === 1 ? 'disabled' : ''}>‹</button>`;
-    
+
     // Page numbers
     let startPage = Math.max(1, state.currentPage - 2);
     let endPage = Math.min(totalPages, startPage + 4);
-    
+
     if (endPage - startPage < 4) {
         startPage = Math.max(1, endPage - 4);
     }
-    
+
     if (startPage > 1) {
         html += `<button onclick="goToPage(1)">1</button>`;
         if (startPage > 2) html += '<span style="padding: 0 0.5rem;">...</span>';
     }
-    
+
     for (let i = startPage; i <= endPage; i++) {
         html += `<button onclick="goToPage(${i})" class="${i === state.currentPage ? 'active' : ''}">${i}</button>`;
     }
-    
+
     if (endPage < totalPages) {
         if (endPage < totalPages - 1) html += '<span style="padding: 0 0.5rem;">...</span>';
         html += `<button onclick="goToPage(${totalPages})">${totalPages}</button>`;
     }
-    
+
     // Next button
     html += `<button onclick="goToPage(${state.currentPage + 1})" ${state.currentPage === totalPages ? 'disabled' : ''}>›</button>`;
-    
+
     controls.innerHTML = html;
 }
 
 function goToPage(page) {
     const totalPages = Math.ceil(state.filteredMessages.length / state.pageSize);
     if (page < 1 || page > totalPages) return;
-    
+
     state.currentPage = page;
     updateURL();
     renderMessages();
@@ -621,13 +621,13 @@ function toggleSelectAll() {
     const startIndex = (state.currentPage - 1) * state.pageSize;
     const endIndex = startIndex + state.pageSize;
     const pageMessages = state.filteredMessages.slice(startIndex, endIndex);
-    
+
     if (selectAll.checked) {
         pageMessages.forEach(msg => state.selectedMessages.add(msg.id));
     } else {
         pageMessages.forEach(msg => state.selectedMessages.delete(msg.id));
     }
-    
+
     renderMessages();
     updateBatchActions();
 }
@@ -642,7 +642,7 @@ function clearSelection() {
 function updateBatchActions() {
     const batchActions = document.getElementById('batch-actions');
     const selectedCount = document.getElementById('selected-count');
-    
+
     if (state.selectedMessages.size > 0) {
         batchActions.style.display = 'flex';
         selectedCount.textContent = state.selectedMessages.size;
@@ -655,7 +655,7 @@ async function deleteSelected() {
     if (!confirm(`Delete ${state.selectedMessages.size} selected messages?\n\nThis cannot be undone.`)) {
         return;
     }
-    
+
     let successCount = 0;
     for (const id of state.selectedMessages) {
         try {
@@ -665,7 +665,7 @@ async function deleteSelected() {
             console.error(`Failed to delete ${id}:`, error);
         }
     }
-    
+
     showToast(`Deleted ${successCount} of ${state.selectedMessages.size} messages`, 'success');
     clearSelection();
     refreshQueue();
@@ -682,22 +682,22 @@ async function retrySelected() {
 // ============================================================================
 async function viewMessage(messageId) {
     state.currentMessageId = messageId;
-    
+
     const modal = document.getElementById('message-modal');
     const modalBody = document.getElementById('modal-body');
-    
+
     modal.classList.add('active');
     modalBody.innerHTML = '<div class="loading-placeholder">Loading message...</div>';
-    
+
     // Reset tabs
     document.querySelectorAll('.modal-tab').forEach(tab => {
         tab.classList.toggle('active', tab.dataset.tab === 'details');
     });
-    
+
     try {
         const response = await fetch(`${API_BASE}/queue/message/${messageId}`);
         const message = await response.json();
-        
+
         state.currentMessage = message;
         renderMessageDetails(message);
     } catch (error) {
@@ -708,7 +708,7 @@ async function viewMessage(messageId) {
 function renderMessageDetails(message) {
     const modalBody = document.getElementById('modal-body');
     const toList = Array.isArray(message.to) ? message.to.join(', ') : message.to;
-    
+
     modalBody.innerHTML = `
         <dl class="message-detail-grid">
             <dt>Message ID</dt>
@@ -749,12 +749,12 @@ function switchModalTab(tab) {
     document.querySelectorAll('.modal-tab').forEach(t => {
         t.classList.toggle('active', t.dataset.tab === tab);
     });
-    
+
     const modalBody = document.getElementById('modal-body');
     const message = state.currentMessage;
-    
+
     if (!message) return;
-    
+
     switch (tab) {
         case 'details':
             renderMessageDetails(message);
@@ -784,12 +784,12 @@ async function deleteMessage(messageId) {
     if (!confirm('Delete this message?\n\nThis cannot be undone.')) {
         return;
     }
-    
+
     try {
         const response = await fetch(`${API_BASE}/queue/message/${messageId}`, {
             method: 'DELETE'
         });
-        
+
         if (response.ok) {
             showToast('Message deleted', 'success');
             refreshQueue();
@@ -820,36 +820,72 @@ function deleteCurrentMessage() {
 async function refreshLogs() {
     const container = document.getElementById('logs-container');
     const levelFilter = document.getElementById('log-level-filter')?.value || '';
-    
+    const searchTerm = document.getElementById('log-search-input')?.value.toLowerCase() || '';
+
     try {
         const response = await fetch(`${API_BASE}/logs?tail=200`);
         if (!response.ok) throw new Error('Failed to fetch logs');
-        
+
         const data = await response.json();
-        
+
         if (!data.logs || data.logs.length === 0) {
             container.innerHTML = '<div class="log-entry info"><span class="log-message">No logs available</span></div>';
             return;
         }
-        
+
         // Parse and filter logs
         let logs = data.logs.map(line => parseLogLine(line)).filter(log => log !== null);
-        
-        // Apply level filter if set
+
+        // Apply level filter
         if (levelFilter) {
             logs = logs.filter(log => log.level.toLowerCase() === levelFilter.toLowerCase());
         }
-        
-        // Render logs (newest first)
-        container.innerHTML = logs.reverse().map(log => `
-            <div class="log-entry ${log.level.toLowerCase()}">
-                <span class="log-time">${log.time}</span>
-                <span class="log-level">${log.level}</span>
-                <span class="log-message">${escapeHtml(log.message)}</span>
-            </div>
-        `).join('');
-        
-        showToast(`Loaded ${logs.length} log entries`, 'info');
+
+        // Apply search filter
+        if (searchTerm) {
+            logs = logs.filter(log => {
+                const searchable = [
+                    log.message,
+                    log.component,
+                    JSON.stringify(log.context)
+                ].join(' ').toLowerCase();
+                return searchable.includes(searchTerm);
+            });
+        }
+
+        if (logs.length === 0) {
+            container.innerHTML = '<div class="log-entry info"><span class="log-message">No logs match your filters</span></div>';
+            return;
+        }
+
+        // Render logs as a table
+        container.innerHTML = `
+            <table class="logs-table">
+                <thead>
+                    <tr>
+                        <th width="140">Time</th>
+                        <th width="80">Level</th>
+                        <th width="120">Component</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${logs.reverse().map(log => `
+                        <tr class="log-row ${log.level.toLowerCase()}">
+                            <td class="log-time-cell">${log.time}</td>
+                            <td><span class="log-level-badge ${log.level.toLowerCase()}">${log.level}</span></td>
+                            <td class="log-component" title="${escapeHtml(log.component || '')}">${escapeHtml(log.component || '-')}</td>
+                            <td class="log-message-cell">
+                                <div class="log-msg-text">${escapeHtml(log.message)}</div>
+                                ${renderLogContext(log.context)}
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+
+        // showToast(`Loaded ${logs.length} log entries`, 'info');
     } catch (error) {
         console.error('Error fetching logs:', error);
         container.innerHTML = '<div class="log-entry error"><span class="log-message">Failed to load logs</span></div>';
@@ -861,37 +897,24 @@ function parseLogLine(line) {
     // Try to parse JSON log format
     try {
         const json = JSON.parse(line);
-        let message = json.msg || '';
-        
-        // Build detailed message with context
-        const details = [];
-        
-        // Add component info
-        if (json.component) details.push(`[${json.component}]`);
-        
-        // Add the main message
-        details.push(message);
-        
-        // Add relevant context fields
-        if (json.from) details.push(`from: ${json.from}`);
-        if (json.to) details.push(`to: ${json.to}`);
-        if (json.recipient) details.push(`recipient: ${json.recipient}`);
-        if (json.sender) details.push(`sender: ${json.sender}`);
-        if (json.remote_addr) details.push(`remote: ${json.remote_addr}`);
-        if (json.session_id) details.push(`session: ${json.session_id.substring(0, 8)}...`);
-        if (json.message_id) details.push(`msg_id: ${json.message_id.substring(0, 12)}...`);
-        if (json.error) details.push(`error: ${json.error}`);
-        if (json.reason) details.push(`reason: ${json.reason}`);
-        if (json.queue_type) details.push(`queue: ${json.queue_type}`);
-        if (json.hostname) details.push(`host: ${json.hostname}`);
-        if (json.duration) details.push(`duration: ${(json.duration / 1000000).toFixed(2)}ms`);
-        if (json.active_connections !== undefined) details.push(`connections: ${json.active_connections}`);
-        
-        return {
-            time: json.time ? new Date(json.time).toLocaleString() : 'Unknown',
-            level: json.level || 'INFO',
-            message: details.join(' ')
-        };
+        const message = json.msg || '';
+        const level = json.level || 'INFO';
+        const time = json.time ? new Date(json.time).toLocaleString() : 'Unknown';
+        const component = json.component || '';
+
+        // Extract context fields (everything except standard fields)
+        const context = { ...json };
+        delete context.msg;
+        delete context.level;
+        delete context.time;
+        delete context.component;
+
+        // Filter out empty context
+        if (Object.keys(context).length === 0) {
+            return { time, level, component, message, context: null };
+        }
+
+        return { time, level, component, message, context };
     } catch {
         // Fallback for non-JSON logs
         const match = line.match(/^(\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{2}:\d{2}:\d{2}[^\s]*)\s*(\w+)?\s*(.*)$/);
@@ -899,16 +922,44 @@ function parseLogLine(line) {
             return {
                 time: match[1],
                 level: match[2] || 'INFO',
-                message: match[3] || line
+                component: '',
+                message: match[3] || line,
+                context: null
             };
         }
         // Plain text log
         return {
             time: new Date().toLocaleString(),
             level: 'INFO',
-            message: line
+            component: '',
+            message: line,
+            context: null
         };
     }
+}
+
+function renderLogContext(context) {
+    if (!context) return '';
+
+    const fields = Object.entries(context).map(([key, value]) => {
+        // Skip internal/noisy fields if needed
+        if (key === 'caller' || key === 'stack') return '';
+
+        let displayValue = value;
+        if (typeof value === 'object') {
+            displayValue = JSON.stringify(value);
+        }
+
+        // Highlight specific keys
+        let className = 'log-ctx-val';
+        if (key === 'error') className += ' ctx-error';
+        if (key === 'message_id') className += ' ctx-id';
+        if (key === 'email' || key === 'from' || key === 'to') className += ' ctx-email';
+
+        return `<span class="log-ctx-item"><span class="log-ctx-key">${escapeHtml(key)}:</span> <span class="${className}">${escapeHtml(String(displayValue))}</span></span>`;
+    }).join('');
+
+    return fields ? `<div class="log-context">${fields}</div>` : '';
 }
 
 function escapeHtml(text) {
@@ -943,7 +994,7 @@ function startAutoRefresh() {
     if (state.refreshInterval) {
         clearInterval(state.refreshInterval);
     }
-    
+
     if (state.refreshRate > 0) {
         state.refreshInterval = setInterval(() => {
             loadQueueStats();
@@ -966,14 +1017,14 @@ function updateLastUpdated() {
 // ============================================================================
 function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
-    
+
     const iconSvg = {
         success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>',
         error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
         warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
         info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
     };
-    
+
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     toast.innerHTML = `
@@ -986,9 +1037,9 @@ function showToast(message, type = 'info') {
             </svg>
         </button>
     `;
-    
+
     container.appendChild(toast);
-    
+
     setTimeout(() => {
         toast.style.animation = 'slideIn 0.3s ease reverse';
         setTimeout(() => toast.remove(), 300);
@@ -1022,7 +1073,7 @@ function formatDate(dateString) {
 
 function formatTimeAgo(dateString) {
     if (!dateString) return 'Unknown';
-    
+
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now - date;
@@ -1030,7 +1081,7 @@ function formatTimeAgo(dateString) {
     const diffMins = Math.floor(diffSecs / 60);
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
-    
+
     if (diffSecs < 60) return 'just now';
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
@@ -1039,15 +1090,15 @@ function formatTimeAgo(dateString) {
 
 function parseMessageHeaders(content) {
     if (!content) return '';
-    
+
     const lines = content.split('\n');
     const headerLines = [];
-    
+
     for (const line of lines) {
         if (line.trim() === '') break;
         headerLines.push(line);
     }
-    
+
     return headerLines.join('\n');
 }
 
@@ -1073,18 +1124,18 @@ function closeLoginModal() {
 
 async function handleLogin(event) {
     event.preventDefault();
-    
+
     const username = document.getElementById('login-username').value;
     const password = document.getElementById('login-password').value;
     const errorEl = document.getElementById('login-error');
-    
+
     try {
         const response = await fetch('/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password })
         });
-        
+
         if (response.ok) {
             const data = await response.json();
             authState.isLoggedIn = true;
@@ -1109,7 +1160,7 @@ async function handleLogout() {
     } catch (error) {
         console.error('Logout error:', error);
     }
-    
+
     authState.isLoggedIn = false;
     authState.username = null;
     authState.permissions = [];
@@ -1125,7 +1176,7 @@ function updateUserUI() {
     const btnLogin = document.getElementById('btn-login');
     const btnLogout = document.getElementById('btn-logout');
     const btnApikeys = document.getElementById('btn-apikeys');
-    
+
     if (authState.isLoggedIn) {
         userDisplay.textContent = authState.username;
         userName.textContent = authState.username;
@@ -1171,18 +1222,18 @@ function closeAPIKeysModal() {
 
 async function loadAPIKeys() {
     const container = document.getElementById('apikey-list');
-    
+
     try {
         const response = await fetch('/auth/apikeys');
         if (!response.ok) throw new Error('Failed to load API keys');
-        
+
         const keys = await response.json();
-        
+
         if (!keys || keys.length === 0) {
             container.innerHTML = '<div class="loading-placeholder">No API keys found</div>';
             return;
         }
-        
+
         container.innerHTML = keys.map(key => `
             <div class="apikey-item">
                 <div class="apikey-info">
@@ -1202,11 +1253,11 @@ async function loadAPIKeys() {
 
 async function createAPIKey(event) {
     event.preventDefault();
-    
+
     const name = document.getElementById('apikey-name').value;
     const description = document.getElementById('apikey-desc').value;
     const expiryDays = document.getElementById('apikey-expiry').value;
-    
+
     try {
         const response = await fetch('/auth/apikeys', {
             method: 'POST',
@@ -1217,7 +1268,7 @@ async function createAPIKey(event) {
                 expiry_days: expiryDays ? parseInt(expiryDays) : null
             })
         });
-        
+
         if (response.ok) {
             const data = await response.json();
             showToast('API key created! Key: ' + data.key, 'success');
@@ -1233,7 +1284,7 @@ async function createAPIKey(event) {
 
 async function revokeAPIKey(keyId) {
     if (!confirm('Revoke this API key? This cannot be undone.')) return;
-    
+
     try {
         const response = await fetch(`/auth/apikeys/${keyId}/revoke`, { method: 'POST' });
         if (response.ok) {
@@ -1254,13 +1305,13 @@ async function refreshHealth() {
     try {
         const response = await fetch(`${API_BASE}/health`);
         const health = await response.json();
-        
+
         // Update status cards
         document.getElementById('health-status').textContent = health.status || 'Unknown';
         document.getElementById('health-uptime').textContent = health.uptime_formatted || '0s';
         document.getElementById('health-goroutines').textContent = health.num_goroutines || 0;
         document.getElementById('health-memory').textContent = (health.memory?.alloc_mb || 0).toFixed(1) + ' MB';
-        
+
         // System info
         document.getElementById('health-go-version').textContent = health.go_version || '-';
         document.getElementById('health-server-version').textContent = health.server_version || '-';
@@ -1268,7 +1319,7 @@ async function refreshHealth() {
         document.getElementById('health-listen-addr').textContent = health.configured_addr || '-';
         document.getElementById('health-auth-enabled').textContent = health.auth_enabled ? 'Yes' : 'No';
         document.getElementById('health-started-at').textContent = health.started_at ? formatDate(health.started_at) : '-';
-        
+
         // Memory details
         const mem = health.memory || {};
         document.getElementById('mem-alloc').textContent = formatBytes(mem.alloc || 0);
@@ -1277,7 +1328,7 @@ async function refreshHealth() {
         document.getElementById('mem-heap-inuse').textContent = formatBytes(mem.heap_inuse || 0);
         document.getElementById('mem-stack-inuse').textContent = formatBytes(mem.stack_inuse || 0);
         document.getElementById('mem-gc-cycles').textContent = mem.num_gc || 0;
-        
+
         // Queue health
         const queue = health.queue || {};
         document.getElementById('queue-total').textContent = queue.total_messages || 0;
@@ -1286,19 +1337,19 @@ async function refreshHealth() {
         document.getElementById('queue-hold-health').textContent = queue.hold_count || 0;
         document.getElementById('queue-failed-health').textContent = queue.failed_count || 0;
         document.getElementById('queue-processor').textContent = queue.processor_active ? 'Yes' : 'No';
-        
+
         // Throughput
         const throughput = health.throughput || {};
         document.getElementById('throughput-per-min').textContent = (throughput.messages_per_minute || 0).toFixed(2);
         document.getElementById('throughput-per-hour').textContent = (throughput.messages_per_hour || 0).toFixed(2);
         document.getElementById('throughput-total').textContent = throughput.total_processed || 0;
-        
+
         // SMTP
         const smtp = health.smtp || {};
         document.getElementById('smtp-connections').textContent = smtp.active_connections || 0;
         document.getElementById('smtp-total-connections').textContent = smtp.total_connections || 0;
         document.getElementById('smtp-tls').textContent = smtp.tls_enabled ? 'Yes' : 'No';
-        
+
     } catch (error) {
         console.error('Error loading health:', error);
         showToast('Failed to load health data', 'error');
@@ -1320,28 +1371,28 @@ const sendHistory = [];
 
 async function sendTestEmail(event) {
     event.preventDefault();
-    
+
     const from = document.getElementById('compose-from').value;
     const to = document.getElementById('compose-to').value;
     const subject = document.getElementById('compose-subject').value;
     const body = document.getElementById('compose-body').value;
-    
+
     const sendBtn = document.getElementById('send-btn');
     sendBtn.disabled = true;
     sendBtn.innerHTML = '<span class="loading">Sending...</span>';
-    
+
     try {
         const response = await fetch(`${API_BASE}/send-test`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ from, to, subject, body })
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok) {
             showToast('Test email queued successfully!', 'success');
-            
+
             // Add to history
             sendHistory.unshift({
                 id: data.message_id,
@@ -1378,12 +1429,12 @@ If you received this message, your mail server is working correctly!`;
 
 function updateSendHistory() {
     const container = document.getElementById('send-history');
-    
+
     if (sendHistory.length === 0) {
         container.innerHTML = '<div class="loading-placeholder">No test emails sent yet</div>';
         return;
     }
-    
+
     container.innerHTML = sendHistory.slice(0, 10).map(item => `
         <div class="activity-item">
             <div class="activity-icon sent">
@@ -1408,19 +1459,19 @@ async function refreshReports() {
     try {
         const response = await fetch(`${API_BASE}/stats/delivery`);
         const stats = await response.json();
-        
+
         // Update stat cards
         document.getElementById('report-delivered').textContent = stats.total_delivered || 0;
         document.getElementById('report-failed').textContent = stats.total_failed || 0;
         document.getElementById('report-deferred').textContent = stats.total_deferred || 0;
         document.getElementById('report-success-rate').textContent = (stats.success_rate || 0).toFixed(1) + '%';
-        
+
         // Update chart
         renderHourlyChart(stats.by_hour || []);
-        
+
         // Update recent errors
         renderRecentErrors(stats.recent_errors || []);
-        
+
     } catch (error) {
         console.error('Error loading reports:', error);
         showToast('Failed to load reports', 'error');
@@ -1430,17 +1481,17 @@ async function refreshReports() {
 function renderHourlyChart(hourlyData) {
     const canvas = document.getElementById('hourly-chart-canvas');
     if (!canvas) return;
-    
+
     const ctx = canvas.getContext('2d');
     const container = canvas.parentElement;
-    
+
     // Set canvas size
     canvas.width = container.offsetWidth;
     canvas.height = 200;
-    
+
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     if (hourlyData.length === 0) {
         ctx.fillStyle = 'var(--text-muted)';
         ctx.font = '14px sans-serif';
@@ -1448,38 +1499,38 @@ function renderHourlyChart(hourlyData) {
         ctx.fillText('No data available', canvas.width / 2, canvas.height / 2);
         return;
     }
-    
+
     // Simple bar chart
     const padding = 40;
     const barWidth = (canvas.width - padding * 2) / hourlyData.length - 4;
     const maxValue = Math.max(...hourlyData.map(h => h.delivered + h.failed + h.deferred), 1);
     const chartHeight = canvas.height - padding * 2;
-    
+
     hourlyData.forEach((hour, i) => {
         const x = padding + i * (barWidth + 4);
         const total = hour.delivered + hour.failed + hour.deferred;
         const height = (total / maxValue) * chartHeight;
-        
+
         // Stacked bars
         let y = canvas.height - padding;
-        
+
         // Delivered (green)
         const deliveredHeight = (hour.delivered / maxValue) * chartHeight;
         ctx.fillStyle = '#22c55e';
         ctx.fillRect(x, y - deliveredHeight, barWidth, deliveredHeight);
         y -= deliveredHeight;
-        
+
         // Deferred (orange)
         const deferredHeight = (hour.deferred / maxValue) * chartHeight;
         ctx.fillStyle = '#f59e0b';
         ctx.fillRect(x, y - deferredHeight, barWidth, deferredHeight);
         y -= deferredHeight;
-        
+
         // Failed (red)
         const failedHeight = (hour.failed / maxValue) * chartHeight;
         ctx.fillStyle = '#ef4444';
         ctx.fillRect(x, y - failedHeight, barWidth, failedHeight);
-        
+
         // Hour label
         if (i % 4 === 0) {
             ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted');
@@ -1488,7 +1539,7 @@ function renderHourlyChart(hourlyData) {
             ctx.fillText(hour.hour, x + barWidth / 2, canvas.height - padding + 15);
         }
     });
-    
+
     // Legend
     ctx.font = '11px sans-serif';
     const legendY = 15;
@@ -1497,12 +1548,12 @@ function renderHourlyChart(hourlyData) {
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-primary');
     ctx.textAlign = 'left';
     ctx.fillText('Delivered', padding + 16, legendY);
-    
+
     ctx.fillStyle = '#f59e0b';
     ctx.fillRect(padding + 80, legendY - 8, 12, 12);
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-primary');
     ctx.fillText('Deferred', padding + 96, legendY);
-    
+
     ctx.fillStyle = '#ef4444';
     ctx.fillRect(padding + 160, legendY - 8, 12, 12);
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-primary');
@@ -1511,12 +1562,12 @@ function renderHourlyChart(hourlyData) {
 
 function renderRecentErrors(errors) {
     const container = document.getElementById('recent-errors');
-    
+
     if (!errors || errors.length === 0) {
         container.innerHTML = '<div class="loading-placeholder">No recent errors</div>';
         return;
     }
-    
+
     container.innerHTML = errors.map(err => `
         <div class="error-item">
             <div class="error-icon">
@@ -1541,12 +1592,12 @@ function switchModalTab(tab) {
     document.querySelectorAll('.modal-tab').forEach(t => {
         t.classList.toggle('active', t.dataset.tab === tab);
     });
-    
+
     const modalBody = document.getElementById('modal-body');
     const message = state.currentMessage;
-    
+
     if (!message) return;
-    
+
     switch (tab) {
         case 'details':
             renderMessageDetails(message);
@@ -1567,14 +1618,14 @@ function switchModalTab(tab) {
 function renderMessagePreview(message) {
     const modalBody = document.getElementById('modal-body');
     const content = message.content || '';
-    
+
     // Extract body from content
     const parts = content.split('\r\n\r\n');
     const body = parts.length > 1 ? parts.slice(1).join('\r\n\r\n') : content;
-    
+
     // Check if HTML
     const isHtml = body.toLowerCase().includes('<html') || body.toLowerCase().includes('<body');
-    
+
     if (isHtml) {
         modalBody.innerHTML = `
             <div class="preview-container">
@@ -1618,7 +1669,7 @@ async function setLogLevel(level) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ level })
         });
-        
+
         if (response.ok) {
             showToast(`Log level set to ${level}`, 'success');
         } else {
@@ -1634,7 +1685,7 @@ async function setLogLevel(level) {
 // ============================================================================
 // Override switchView to load view-specific data
 const originalSwitchView = switchView;
-switchView = function(viewName) {
+switchView = function (viewName) {
     // Call original
     const titles = {
         dashboard: 'Dashboard',
@@ -1645,7 +1696,7 @@ switchView = function(viewName) {
         logs: 'Logs',
         settings: 'Settings'
     };
-    
+
     // Update nav items
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.toggle('active', item.dataset.view === viewName);
