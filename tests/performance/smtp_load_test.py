@@ -24,16 +24,41 @@ class SMTPLoadTester:
         self.lock = threading.Lock()
     
     def send_single_email(self, from_addr: str, to_addr: str, subject: str, 
-                         username: str = None, password: str = None) -> Tuple[float, bool, str]:
+                         username: str = None, password: str = None,
+                         raw_content: str = None) -> Tuple[float, bool, str]:
         """Send a single email and measure performance"""
         start_time = time.time()
         
         try:
             # Create message
-            msg = MIMEText(f"Load test message sent at {time.ctime()}")
-            msg['Subject'] = subject
-            msg['From'] = from_addr
-            msg['To'] = to_addr
+            if raw_content:
+                # Use raw content but update subject if needed
+                # Note: This is a simple replacement, might need more robust parsing for complex MIME
+                msg_data = raw_content
+                if subject:
+                    # Simple header replacement for Subject
+                    import re
+                    if re.search(r'^Subject:', msg_data, re.MULTILINE):
+                        msg_data = re.sub(r'^Subject:.*$', f'Subject: {subject}', msg_data, flags=re.MULTILINE)
+                    else:
+                        msg_data = f"Subject: {subject}\n{msg_data}"
+                
+                # Ensure From/To match what we want
+                if re.search(r'^From:', msg_data, re.MULTILINE):
+                    msg_data = re.sub(r'^From:.*$', f'From: {from_addr}', msg_data, flags=re.MULTILINE)
+                else:
+                    msg_data = f"From: {from_addr}\n{msg_data}"
+                    
+                if re.search(r'^To:', msg_data, re.MULTILINE):
+                    msg_data = re.sub(r'^To:.*$', f'To: {to_addr}', msg_data, flags=re.MULTILINE)
+                else:
+                    msg_data = f"To: {to_addr}\n{msg_data}"
+            else:
+                msg = MIMEText(f"Load test message sent at {time.ctime()}")
+                msg['Subject'] = subject
+                msg['From'] = from_addr
+                msg['To'] = to_addr
+                msg_data = msg.as_string()
             
             # Connect and send
             server = smtplib.SMTP(self.host, self.port)
@@ -41,7 +66,9 @@ class SMTPLoadTester:
             if username and password:
                 server.login(username, password)
             
-            server.send_message(msg)
+            # sendmail expects the sender, recipients, and the message data
+            # print(f"DEBUG: Sending data:\n{msg_data[:500]}")
+            server.sendmail(from_addr, [to_addr], msg_data)
             server.quit()
             
             duration = time.time() - start_time
@@ -53,11 +80,25 @@ class SMTPLoadTester:
     
     def run_concurrent_test(self, num_threads: int, emails_per_thread: int,
                            from_addr: str, to_addr: str, 
-                           username: str = None, password: str = None) -> dict:
+                           username: str = None, password: str = None,
+                           corpus_file: str = None, expected_result: str = "accept") -> dict:
         """Run concurrent SMTP load test"""
         
         print(f"Starting load test: {num_threads} threads, {emails_per_thread} emails per thread")
         print(f"Total emails: {num_threads * emails_per_thread}")
+        if corpus_file:
+            print(f"Using corpus file: {corpus_file}")
+            print(f"Expected result: {expected_result}")
+            
+        # Read corpus file if provided
+        raw_content = None
+        if corpus_file:
+            try:
+                with open(corpus_file, 'r') as f:
+                    raw_content = f.read()
+            except Exception as e:
+                print(f"Error reading corpus file: {e}")
+                return {'error': str(e)}
         
         start_time = time.time()
         
@@ -66,8 +107,33 @@ class SMTPLoadTester:
             results = []
             for i in range(emails_per_thread):
                 subject = f"Load Test - Thread {thread_id} - Email {i+1}"
-                result = self.send_single_email(from_addr, to_addr, subject, username, password)
-                results.append(result)
+                
+                # For reject tests, we expect an exception from smtplib
+                # But send_single_email catches exceptions and returns (duration, success, msg)
+                try:
+                    duration, success, msg = self.send_single_email(
+                        from_addr, to_addr, subject, username, password, raw_content
+                    )
+                    
+                    if expected_result == "reject":
+                        if success:
+                            # It succeeded but we expected rejection
+                            results.append((duration, False, "Message accepted but expected rejection"))
+                        else:
+                            # It failed, which is what we wanted
+                            # Check if it's the right kind of failure
+                            if "554" in str(msg) or "550" in str(msg) or "REJECT" in str(msg) or "SMTPDataError" in str(msg):
+                                results.append((duration, True, "Message rejected as expected"))
+                            else:
+                                results.append((duration, False, f"Unexpected error: {msg}"))
+                    else:
+                        # Normal case: we expect success
+                        results.append((duration, success, msg))
+                        
+                except Exception as e:
+                    # This shouldn't happen given send_single_email catches everything, 
+                    # but just in case
+                    results.append((0.1, False, str(e)))
                 
                 # Brief pause between emails
                 time.sleep(0.1)
@@ -218,6 +284,24 @@ def test_high_load():
     
     return performance_ok
 
+def test_spam_rejection():
+    """Test spam rejection using GTUBE corpus"""
+    print("Testing spam rejection...")
+    
+    tester = SMTPLoadTester()
+    stats = tester.run_concurrent_test(
+        num_threads=3,
+        emails_per_thread=5,
+        from_addr="spammer@example.com",
+        to_addr="victim@example.com",
+        corpus_file="tests/corpus/spam-gtube.eml",
+        expected_result="reject"
+    )
+    
+    # We expect high success rate (meaning successful rejections)
+    tester.print_stats(stats)
+    return stats['success_rate'] > 90
+
 def main():
     """Run SMTP load tests"""
     print("=" * 60)
@@ -227,6 +311,7 @@ def main():
     tests = [
         ("Unauthenticated Relay", test_unauthenticated_relay),
         ("Authenticated SMTP", test_authenticated_smtp),
+        ("Spam Rejection", test_spam_rejection),
         ("High Load Test", test_high_load)
     ]
     
