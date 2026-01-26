@@ -1,0 +1,221 @@
+# Enhanced Mail Schema for Elemta MTA
+# Combines multiple standards for comprehensive email functionality
+# Compatible with Roundcube, Dovecot, and Postfix
+
+# =============================================================================
+# Mail Forwarding and Aliases (Standard attributes)
+# =============================================================================
+
+attributetype ( 1.2.840.113556.1.4.786
+    NAME 'mailAlternateAddress'
+    DESC 'Alternate email addresses for this person'
+    EQUALITY caseIgnoreIA5Match
+    SUBSTR caseIgnoreIA5SubstringsMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.26{256} )
+
+attributetype ( 1.2.840.113556.1.4.896
+    NAME 'mailForwardingAddress'
+    DESC 'Forward email to these addresses'
+    EQUALITY caseIgnoreIA5Match
+    SUBSTR caseIgnoreIA5SubstringsMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.26{256} )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.9
+    NAME 'mailHost'
+    DESC 'Mail server hosting this account'
+    EQUALITY caseIgnoreIA5Match
+    SUBSTR caseIgnoreIA5SubstringsMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.26{256}
+    SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.10
+    NAME 'mailQuota'
+    DESC 'Mail quota in bytes'
+    EQUALITY integerMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.11
+    NAME 'mailStorageDirectory'
+    DESC 'Mail storage directory path'
+    EQUALITY caseExactMatch
+    SUBSTR caseExactSubstringsMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
+    SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.12
+    NAME 'mailEnabled'
+    DESC 'Mail service enabled for this account'
+    EQUALITY booleanMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+    SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.13
+    NAME 'mailDeliveryMode'
+    DESC 'Mail delivery mode: normal, forward-only, disabled'
+    EQUALITY caseIgnoreMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{32}
+    SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.14
+    NAME 'mailAutoReply'
+    DESC 'Auto-reply message text'
+    EQUALITY caseIgnoreMatch
+    SUBSTR caseIgnoreSubstringsMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{4096}
+    SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.15
+    NAME 'mailAutoReplyEnabled'
+    DESC 'Auto-reply enabled'
+    EQUALITY booleanMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+    SINGLE-VALUE )
+
+# =============================================================================
+# Distribution Lists and Groups
+# =============================================================================
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.20
+    NAME 'rfc822MailMember'
+    DESC 'RFC822 email address of group member'
+    EQUALITY caseIgnoreIA5Match
+    SUBSTR caseIgnoreIA5SubstringsMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.26{256} )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.21
+    NAME 'mailGroupMember'
+    DESC 'Member of mail group (DN)'
+    EQUALITY distinguishedNameMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.22
+    NAME 'maillistOwner'
+    DESC 'Owner of mailing list'
+    EQUALITY distinguishedNameMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.23
+    NAME 'maillistModerator'
+    DESC 'Moderator of mailing list'
+    EQUALITY distinguishedNameMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.24
+    NAME 'maillistModerated'
+    DESC 'Mailing list is moderated'
+    EQUALITY booleanMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+    SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.25
+    NAME 'maillistPublic'
+    DESC 'Mailing list is public'
+    EQUALITY booleanMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+    SINGLE-VALUE )
+
+# =============================================================================
+# Advanced Email Features
+# =============================================================================
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.30
+    NAME 'mailSieveFilter'
+    DESC 'Sieve mail filter script'
+    EQUALITY caseIgnoreMatch
+    SUBSTR caseIgnoreSubstringsMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{8192}
+    SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.31
+    NAME 'mailAccessPolicy'
+    DESC 'Mail access policy: accept, reject, hold'
+    EQUALITY caseIgnoreMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{32}
+    SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.32
+    NAME 'mailMaxMessageSize'
+    DESC 'Maximum message size in bytes'
+    EQUALITY integerMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.33
+    NAME 'mailDomainAlias'
+    DESC 'Domain alias for mail routing'
+    EQUALITY caseIgnoreIA5Match
+    SUBSTR caseIgnoreIA5SubstringsMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.26{256} )
+
+# =============================================================================
+# Roundcube Integration Attributes
+# =============================================================================
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.40
+    NAME 'mailPreferredLanguage'
+    DESC 'Preferred language for webmail interface'
+    EQUALITY caseIgnoreMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{8}
+    SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.41
+    NAME 'mailUITheme'
+    DESC 'Webmail UI theme preference'
+    EQUALITY caseIgnoreMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{64}
+    SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.4203.666.1.42
+    NAME 'mailSignature'
+    DESC 'Email signature'
+    EQUALITY caseIgnoreMatch
+    SUBSTR caseIgnoreSubstringsMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{2048}
+    SINGLE-VALUE )
+
+# =============================================================================
+# Object Classes
+# =============================================================================
+
+# Enhanced mail user object
+objectclass ( 1.3.6.1.4.1.4203.666.2.1
+    NAME 'mailUser'
+    DESC 'Enhanced mail user with forwarding and quota support'
+    SUP inetOrgPerson
+    AUXILIARY
+    MAY ( mailAlternateAddress $ mailForwardingAddress $ mailHost $
+          mailQuota $ mailStorageDirectory $ mailEnabled $
+          mailDeliveryMode $ mailAutoReply $ mailAutoReplyEnabled $
+          mailSieveFilter $ mailAccessPolicy $ mailMaxMessageSize $
+          mailPreferredLanguage $ mailUITheme $ mailSignature ) )
+
+# Mail group/distribution list
+objectclass ( 1.3.6.1.4.1.4203.666.2.2
+    NAME 'mailGroup'
+    DESC 'Mail distribution group'
+    SUP groupOfNames
+    STRUCTURAL
+    MUST ( cn $ mail )
+    MAY ( mailAlternateAddress $ rfc822MailMember $ mailGroupMember $
+          maillistOwner $ maillistModerator $ maillistModerated $
+          maillistPublic $ mailHost $ mailAccessPolicy $
+          description ) )
+
+# Domain object for domain-wide settings
+objectclass ( 1.3.6.1.4.1.4203.666.2.3
+    NAME 'mailDomain'
+    DESC 'Mail domain configuration'
+    SUP domain
+    AUXILIARY
+    MAY ( mailHost $ mailDomainAlias $ mailMaxMessageSize $
+          mailAccessPolicy $ description ) )
+
+# Organizational unit for mail routing
+objectclass ( 1.3.6.1.4.1.4203.666.2.4
+    NAME 'mailOrganization'
+    DESC 'Organization with mail routing'
+    SUP organization
+    AUXILIARY
+    MAY ( mailHost $ mailDomainAlias $ mailAccessPolicy $
+          mailMaxMessageSize ) ) 

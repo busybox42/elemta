@@ -20,6 +20,7 @@ import (
 
 // Server represents an API server for Elemta
 type Server struct {
+	config         *Config
 	httpServer     *http.Server
 	queueMgr       *queue.Manager
 	listenAddr     string
@@ -37,6 +38,7 @@ type Config struct {
 	ListenAddr  string `toml:"listen_addr" json:"listen_addr"`
 	WebRoot     string `toml:"web_root" json:"web_root"`
 	AuthEnabled bool   `toml:"auth_enabled" json:"auth_enabled"`
+	AuthFile    string `toml:"auth_file" json:"auth_file"`
 }
 
 // NewServer creates a new API server
@@ -58,6 +60,7 @@ func NewServer(config *Config, queueDir string) (*Server, error) {
 	queueMgr := queue.NewManager(queueDir)
 
 	server := &Server{
+		config:     config,
 		queueMgr:   queueMgr,
 		listenAddr: listenAddr,
 		webRoot:    webRoot,
@@ -82,19 +85,28 @@ func (s *Server) initializeAuth() error {
 		"component", "api-auth",
 	)
 
-	// Use production datasource from environment variables or default to file-based auth
-	authSystem, err := auth.NewFromEnv()
+	// Use config auth file if specified, otherwise try environment, then fallback to default
+	var authSystem *auth.Auth
+	var err error
+
+	authFile := s.config.AuthFile
+	if authFile == "" {
+		authFile = "/app/config/users.txt"
+	}
+
+	// Try environment first
+	authSystem, err = auth.NewFromEnv()
 	if err != nil {
-		// Fallback to file-based authentication with users.txt
+		// Fallback to file-based authentication
 		logger.Warn("Failed to initialize auth from environment, falling back to file-based auth",
 			"error", err,
 		)
-		authSystem, err = auth.NewWithFile("/app/config/users.txt")
+		authSystem, err = auth.NewWithFile(authFile)
 		if err != nil {
-			return fmt.Errorf("failed to initialize file-based authentication: %w", err)
+			return fmt.Errorf("failed to initialize file-based authentication from %s: %w", authFile, err)
 		}
 		logger.Info("Authentication initialized using file-based datasource",
-			"datasource", "/app/config/users.txt",
+			"datasource", authFile,
 		)
 	} else {
 		logger.Info("Authentication initialized from environment configuration")
