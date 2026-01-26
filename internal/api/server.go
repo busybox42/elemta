@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/busybox42/elemta/internal/auth"
+	"github.com/busybox42/elemta/internal/metrics"
 	"github.com/busybox42/elemta/internal/queue"
 	"github.com/gorilla/mux"
 )
@@ -30,6 +31,31 @@ type Server struct {
 	apiKeyManager  *auth.APIKeyManager
 	sessionManager *auth.SessionManager
 	authMiddleware *AuthMiddleware
+	metricsStore   MetricsStore
+}
+
+// MetricsStore interface for delivery metrics
+type MetricsStore interface {
+	GetMetrics(ctx context.Context) (*DeliveryMetricsData, error)
+	GetHourlyStats(ctx context.Context) ([]HourlyStatsData, error)
+	GetRecentErrors(ctx context.Context, limit int64) ([]map[string]string, error)
+}
+
+// DeliveryMetricsData holds delivery statistics
+type DeliveryMetricsData struct {
+	TotalDelivered int64     `json:"total_delivered"`
+	TotalFailed    int64     `json:"total_failed"`
+	TotalDeferred  int64     `json:"total_deferred"`
+	TotalReceived  int64     `json:"total_received"`
+	LastUpdated    time.Time `json:"last_updated"`
+}
+
+// HourlyStatsData holds hourly delivery counts
+type HourlyStatsData struct {
+	Hour      string `json:"hour"`
+	Delivered int64  `json:"delivered"`
+	Failed    int64  `json:"failed"`
+	Deferred  int64  `json:"deferred"`
 }
 
 // Config represents API server configuration
@@ -39,6 +65,7 @@ type Config struct {
 	WebRoot     string `toml:"web_root" json:"web_root"`
 	AuthEnabled bool   `toml:"auth_enabled" json:"auth_enabled"`
 	AuthFile    string `toml:"auth_file" json:"auth_file"`
+	ValkeyAddr  string `toml:"valkey_addr" json:"valkey_addr"`
 }
 
 // NewServer creates a new API server
@@ -66,6 +93,24 @@ func NewServer(config *Config, queueDir string) (*Server, error) {
 		webRoot:    webRoot,
 	}
 
+	// Initialize metrics store (Valkey)
+	valkeyAddr := config.ValkeyAddr
+	if valkeyAddr == "" {
+		// Try environment variable or default
+		valkeyAddr = os.Getenv("VALKEY_ADDR")
+		if valkeyAddr == "" {
+			valkeyAddr = "elemta-valkey:6379"
+		}
+	}
+	metricsStore, err := metrics.NewValkeyStore(valkeyAddr)
+	if err != nil {
+		log.Printf("Warning: Failed to connect to Valkey for metrics: %v", err)
+		// Continue without metrics - not fatal
+	} else {
+		server.metricsStore = &valkeyMetricsAdapter{store: metricsStore}
+		log.Printf("Connected to Valkey for metrics at %s", valkeyAddr)
+	}
+
 	// Initialize authentication if enabled
 	if config.AuthEnabled {
 		if err := server.initializeAuth(); err != nil {
@@ -74,6 +119,46 @@ func NewServer(config *Config, queueDir string) (*Server, error) {
 	}
 
 	return server, nil
+}
+
+// valkeyMetricsAdapter adapts ValkeyStore to MetricsStore interface
+type valkeyMetricsAdapter struct {
+	store *metrics.ValkeyStore
+}
+
+func (a *valkeyMetricsAdapter) GetMetrics(ctx context.Context) (*DeliveryMetricsData, error) {
+	m, err := a.store.GetMetrics(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &DeliveryMetricsData{
+		TotalDelivered: m.TotalDelivered,
+		TotalFailed:    m.TotalFailed,
+		TotalDeferred:  m.TotalDeferred,
+		TotalReceived:  m.TotalReceived,
+		LastUpdated:    m.LastUpdated,
+	}, nil
+}
+
+func (a *valkeyMetricsAdapter) GetHourlyStats(ctx context.Context) ([]HourlyStatsData, error) {
+	stats, err := a.store.GetHourlyStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]HourlyStatsData, len(stats))
+	for i, s := range stats {
+		result[i] = HourlyStatsData{
+			Hour:      s.Hour,
+			Delivered: s.Delivered,
+			Failed:    s.Failed,
+			Deferred:  s.Deferred,
+		}
+	}
+	return result, nil
+}
+
+func (a *valkeyMetricsAdapter) GetRecentErrors(ctx context.Context, limit int64) ([]map[string]string, error) {
+	return a.store.GetRecentErrors(ctx, limit)
 }
 
 // initializeAuth initializes the authentication system

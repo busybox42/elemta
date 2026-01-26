@@ -36,6 +36,14 @@ type DeliveryHandler interface {
 	DeliverMessage(ctx context.Context, msg Message, content []byte) error
 }
 
+// MetricsRecorder interface for recording delivery metrics
+type MetricsRecorder interface {
+	IncrDelivered(ctx context.Context) error
+	IncrFailed(ctx context.Context) error
+	IncrDeferred(ctx context.Context) error
+	AddRecentError(ctx context.Context, messageID, recipient, errorMsg string) error
+}
+
 // Processor orchestrates queue processing and delivery
 type Processor struct {
 	manager   *Manager
@@ -48,11 +56,12 @@ type Processor struct {
 	workerSem chan struct{}
 
 	// Metrics
-	metricsLock    sync.RWMutex
-	processedCount int64
-	deliveredCount int64
-	failedCount    int64
-	retryCount     int64
+	metricsLock     sync.RWMutex
+	processedCount  int64
+	deliveredCount  int64
+	failedCount     int64
+	retryCount      int64
+	metricsRecorder MetricsRecorder
 
 	// New field for processing messages
 	processingMessages map[string]bool
@@ -72,6 +81,11 @@ func NewProcessor(manager *Manager, config ProcessorConfig, handler DeliveryHand
 		workerSem:          make(chan struct{}, config.MaxConcurrent),
 		processingMessages: make(map[string]bool),
 	}
+}
+
+// SetMetricsRecorder sets the metrics recorder for the processor
+func (p *Processor) SetMetricsRecorder(recorder MetricsRecorder) {
+	p.metricsRecorder = recorder
 }
 
 // Start begins processing queues
@@ -288,6 +302,13 @@ func (p *Processor) processMessage(msg Message) {
 		p.deliveredCount++
 		p.metricsLock.Unlock()
 
+		// Record to external metrics store (Valkey)
+		if p.metricsRecorder != nil {
+			if err := p.metricsRecorder.IncrDelivered(p.ctx); err != nil {
+				logger.Debug("Failed to record delivered metric", "error", err)
+			}
+		}
+
 		// Record successful attempt (ignore error if message already deleted)
 		if err := p.manager.AddAttempt(msg.ID, "delivered", ""); err != nil {
 			logger.Debug("Could not record successful attempt (message may already be deleted)", "error", err)
@@ -356,6 +377,12 @@ func (p *Processor) processMessage(msg Message) {
 	if err := p.manager.MoveMessage(msg.ID, Deferred, deliveryErr.Error()); err != nil {
 		logger.Error("Failed to move message to deferred queue", "error", err)
 	} else {
+		// Record deferred to external metrics store (Valkey)
+		if p.metricsRecorder != nil {
+			if err := p.metricsRecorder.IncrDeferred(p.ctx); err != nil {
+				logger.Debug("Failed to record deferred metric", "error", err)
+			}
+		}
 		logger.Info("message_deferred",
 			"event_type", "message_deferred",
 			"message_id", msg.ID,
@@ -400,6 +427,21 @@ func (p *Processor) moveToFailed(msg Message, reason string) {
 	p.metricsLock.Lock()
 	p.failedCount++
 	p.metricsLock.Unlock()
+
+	// Record to external metrics store (Valkey)
+	if p.metricsRecorder != nil {
+		if err := p.metricsRecorder.IncrFailed(p.ctx); err != nil {
+			p.logger.Debug("Failed to record failed metric", "error", err)
+		}
+		// Record the error details
+		recipient := ""
+		if len(msg.To) > 0 {
+			recipient = strings.Join(msg.To, ", ")
+		}
+		if err := p.metricsRecorder.AddRecentError(p.ctx, msg.ID, recipient, reason); err != nil {
+			p.logger.Debug("Failed to record error details", "error", err)
+		}
+	}
 
 	// Log comprehensive bounce information
 	p.logger.Error("message_bounced",

@@ -198,74 +198,95 @@ func (s *Server) handleHealthStats(w http.ResponseWriter, r *http.Request) {
 
 // handleDeliveryStats returns delivery statistics
 func (s *Server) handleDeliveryStats(w http.ResponseWriter, r *http.Request) {
-	// Get queue stats for real data
+	ctx := r.Context()
+
+	// Get queue stats for current queue state
 	queueStats := s.queueMgr.GetStats()
 
-	// Get total processed from atomic counter
-	totalProcessed := messagesProcessed.Load()
-	totalFailed := int64(queueStats.FailedCount)
-	totalDeferred := int64(queueStats.DeferredCount)
+	var totalDelivered, totalFailed, totalDeferred int64
+	var byHour []HourlyStats
+	var recentErrors []DeliveryError
 
-	// Calculate delivered as processed minus failed/deferred
-	totalDelivered := totalProcessed
-	if totalDelivered < 0 {
-		totalDelivered = 0
-	}
-
-	// Calculate success rate based on total throughput
-	successRate := 100.0
-	if totalProcessed > 0 {
-		successRate = float64(totalProcessed-totalFailed) / float64(totalProcessed) * 100
-		if successRate < 0 {
-			successRate = 0
+	// Try to get metrics from Valkey store
+	if s.metricsStore != nil {
+		metricsData, err := s.metricsStore.GetMetrics(ctx)
+		if err == nil && metricsData != nil {
+			totalDelivered = metricsData.TotalDelivered
+			totalFailed = metricsData.TotalFailed
+			totalDeferred = metricsData.TotalDeferred
 		}
-	}
 
-	// Generate hourly stats for the last 24 hours
-	byHour := make([]HourlyStats, 24)
-	now := time.Now()
-	for i := 0; i < 24; i++ {
-		hour := now.Add(-time.Duration(23-i) * time.Hour)
-		byHour[i] = HourlyStats{
-			Hour:      hour.Format("15:00"),
-			Delivered: 0,
-			Failed:    0,
-			Deferred:  0,
-		}
-	}
-
-	// If we have processed messages, distribute them across recent hours
-	if totalProcessed > 0 {
-		// Put most recent activity in the current hour
-		currentHourIdx := 23
-		byHour[currentHourIdx].Delivered = totalDelivered
-		byHour[currentHourIdx].Failed = totalFailed
-		byHour[currentHourIdx].Deferred = totalDeferred
-	}
-
-	// Get recent errors from failed queue
-	recentErrors := []DeliveryError{}
-	failedMsgs, err := s.queueMgr.ListMessages(queue.Failed)
-	if err == nil && len(failedMsgs) > 0 {
-		// Take up to 10 most recent errors
-		limit := 10
-		if len(failedMsgs) < limit {
-			limit = len(failedMsgs)
-		}
-		for i := 0; i < limit; i++ {
-			msg := failedMsgs[len(failedMsgs)-1-i] // Reverse order for most recent first
-			errorMsg := "Delivery failed"
-			if msg.LastError != "" {
-				errorMsg = msg.LastError
+		// Get hourly stats from Valkey
+		hourlyData, err := s.metricsStore.GetHourlyStats(ctx)
+		if err == nil {
+			byHour = make([]HourlyStats, len(hourlyData))
+			for i, h := range hourlyData {
+				byHour[i] = HourlyStats(h)
 			}
-			recipient := strings.Join(msg.To, ", ")
-			recentErrors = append(recentErrors, DeliveryError{
-				MessageID: msg.ID,
-				Recipient: recipient,
-				Error:     errorMsg,
-				Timestamp: msg.UpdatedAt,
-			})
 		}
+
+		// Get recent errors from Valkey
+		errorsData, err := s.metricsStore.GetRecentErrors(ctx, 10)
+		if err == nil {
+			for _, e := range errorsData {
+				ts, _ := time.Parse(time.RFC3339, e["timestamp"])
+				recentErrors = append(recentErrors, DeliveryError{
+					MessageID: e["message_id"],
+					Recipient: e["recipient"],
+					Error:     e["error"],
+					Timestamp: ts,
+				})
+			}
+		}
+	}
+
+	// If no Valkey data, generate empty hourly stats
+	if byHour == nil {
+		byHour = make([]HourlyStats, 24)
+		now := time.Now()
+		for i := 0; i < 24; i++ {
+			hour := now.Add(-time.Duration(23-i) * time.Hour)
+			byHour[i] = HourlyStats{
+				Hour:      hour.Format("15:00"),
+				Delivered: 0,
+				Failed:    0,
+				Deferred:  0,
+			}
+		}
+	}
+
+	// Fallback to failed queue for recent errors if Valkey has none
+	if len(recentErrors) == 0 {
+		failedMsgs, err := s.queueMgr.ListMessages(queue.Failed)
+		if err == nil && len(failedMsgs) > 0 {
+			limit := 10
+			if len(failedMsgs) < limit {
+				limit = len(failedMsgs)
+			}
+			for i := 0; i < limit; i++ {
+				msg := failedMsgs[len(failedMsgs)-1-i]
+				errorMsg := "Delivery failed"
+				if msg.LastError != "" {
+					errorMsg = msg.LastError
+				}
+				recipient := strings.Join(msg.To, ", ")
+				recentErrors = append(recentErrors, DeliveryError{
+					MessageID: msg.ID,
+					Recipient: recipient,
+					Error:     errorMsg,
+					Timestamp: msg.UpdatedAt,
+				})
+			}
+		}
+		// Add current failed queue count to totalFailed
+		totalFailed += int64(queueStats.FailedCount)
+	}
+
+	// Calculate success rate
+	total := totalDelivered + totalFailed
+	successRate := 100.0
+	if total > 0 {
+		successRate = float64(totalDelivered) / float64(total) * 100
 	}
 
 	// Build domain stats from current queue
@@ -284,7 +305,7 @@ func (s *Server) handleDeliveryStats(w http.ResponseWriter, r *http.Request) {
 		TotalDelivered:      totalDelivered,
 		TotalFailed:         totalFailed,
 		TotalBounced:        0,
-		TotalDeferred:       totalDeferred,
+		TotalDeferred:       totalDeferred + int64(queueStats.DeferredCount),
 		SuccessRate:         successRate,
 		AverageDeliveryTime: 250.0,
 		ByDomain:            byDomain,

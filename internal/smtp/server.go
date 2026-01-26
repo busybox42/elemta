@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/busybox42/elemta/internal/api"
+	deliverymetrics "github.com/busybox42/elemta/internal/metrics"
 	"github.com/busybox42/elemta/internal/plugin"
 	"github.com/busybox42/elemta/internal/queue"
 	"github.com/google/uuid"
@@ -243,6 +244,19 @@ func NewServer(config *Config) (*Server, error) {
 
 		queueProcessor = queue.NewProcessor(queueManager, processorConfig, lmtpHandler)
 		logger.Printf("Queue processor initialized successfully")
+
+		// Set up Valkey metrics recorder if available
+		valkeyAddr := os.Getenv("VALKEY_ADDR")
+		if valkeyAddr == "" {
+			valkeyAddr = "elemta-valkey:6379"
+		}
+		metricsStore, err := deliverymetrics.NewValkeyStore(valkeyAddr)
+		if err != nil {
+			logger.Printf("Warning: Failed to connect to Valkey for metrics: %v", err)
+		} else {
+			queueProcessor.SetMetricsRecorder(metricsStore)
+			logger.Printf("Connected to Valkey for metrics at %s", valkeyAddr)
+		}
 	} else {
 		logger.Printf("Queue processor disabled")
 	}

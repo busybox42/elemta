@@ -93,6 +93,7 @@ services:
       - TZ=UTC
       - NODE_ID=web
       - ELEMTA_CONFIG_PATH=/app/config/elemta.toml
+      - VALKEY_ADDR=elemta-valkey:6379
     # Security configuration for the container
     security_opt:
       - no-new-privileges:true
