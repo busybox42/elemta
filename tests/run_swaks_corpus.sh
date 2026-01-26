@@ -38,7 +38,8 @@ run_test() {
     
     # Run swaks
     # We use --data - to read from stdin
-    output=$(cat "$file" | swaks --server "$SERVER" --port "$PORT" --from "test@example.com" --to "demo@example.com" --data - 2>&1)
+    # We use sed to dynamically update the Subject header to match the test description
+    output=$(cat "$file" | sed "s/^Subject: .*/Subject: $description/" | swaks --server "$SERVER" --port "$PORT" --from "test@example.com" --to "demo@example.com" --data - 2>&1)
     exit_code=$?
     
     # Check result
