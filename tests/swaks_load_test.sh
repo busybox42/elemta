@@ -8,6 +8,7 @@ PORT="2525"
 CORPUS_FILE="tests/corpus/clean-text.eml"
 CONCURRENCY=10
 TOTAL_MESSAGES=100
+EXPECTED="accept"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -20,8 +21,20 @@ while [[ $# -gt 0 ]]; do
             TOTAL_MESSAGES="$2"
             shift 2
             ;;
+        -f|--file)
+            CORPUS_FILE="$2"
+            shift 2
+            ;;
+        -e|--expect)
+            EXPECTED="$2"
+            if [[ "$EXPECTED" != "accept" && "$EXPECTED" != "reject" ]]; then
+                echo "Error: --expect must be 'accept' or 'reject'"
+                exit 1
+            fi
+            shift 2
+            ;;
         -h|--help)
-            echo "Usage: $0 [-c concurrency] [-n total_messages]"
+            echo "Usage: $0 [-c concurrency] [-n total_messages] [-f corpus_file] [-e accept|reject]"
             exit 0
             ;;
         *)
@@ -40,6 +53,8 @@ NC='\033[0m' # No Color
 echo -e "${YELLOW}Starting Swaks Load Test against $SERVER:$PORT${NC}"
 echo "Concurrency: $CONCURRENCY"
 echo "Total Messages: $TOTAL_MESSAGES"
+echo "Corpus File: $CORPUS_FILE"
+echo "Expected Result: $EXPECTED"
 echo "=================================================="
 
 # Check if swaks is installed
@@ -54,56 +69,40 @@ echo "Logs will be stored in $LOG_DIR"
 
 start_time=$(date +%s.%N)
 count=0
-pids=()
 
-# Function to run a batch
-run_batch() {
-    local batch_size=$1
-    local batch_id=$2
+# Function to run a single message
+run_message() {
+    local i=$1
+    local subject="Load Test Msg $i ($EXPECTED)"
     
-    for ((i=1; i<=batch_size; i++)); do
-        # Use a unique subject for tracking
-        local subject="Load Test Batch $batch_id Msg $i"
-        
-        # Run swaks in background
-        (
-            if cat "$CORPUS_FILE" | sed "s/^Subject: .*/Subject: $subject/" | swaks --server "$SERVER" --port "$PORT" --from "loadtest@example.com" --to "demo@example.com" --data - --hide-all --quit-after DATA > "$LOG_DIR/$batch_id-$i.log" 2>&1; then
-                echo -n "."
-            else
-                echo -n "E"
-            fi
-        ) &
-        
-        pids+=($!)
-        
-        # Limit concurrency
-        if [[ ${#pids[@]} -ge $CONCURRENCY ]]; then
-            wait -n
-            # Remove finished PID from array (simplified approach: just wait for one slot)
-            # In bash, managing the exact array of running PIDs is tricky without 'wait -n' which is available in newer bash.
-            # Assuming bash 4.3+ which has wait -n
-            
-            # Actually, a simpler way to manage concurrency in bash is using xargs or GNU parallel.
-            # But since we want to stick to pure bash if possible, let's use a semaphore approach or just batches.
+    # Run swaks and capture output
+    if cat "$CORPUS_FILE" | sed "s/^Subject: .*/Subject: $subject/" | swaks --server "$SERVER" --port "$PORT" --from "loadtest@example.com" --to "demo@example.com" --data - > "$LOG_DIR/$i.log" 2>&1; then
+        # Swaks exit code 0 usually means SMTP transaction completed (even if rejected)
+        :
+    fi
+    
+    # Check the log file for the result
+    if [ "$EXPECTED" == "accept" ]; then
+        if grep -q "250 2.0.0 Message accepted" "$LOG_DIR/$i.log"; then
+            echo -n "."
+        else
+            echo -n "F"
         fi
-    done
+    else # expect reject
+        if grep -qE "554|550|REJECT" "$LOG_DIR/$i.log"; then
+            echo -n "."
+        else
+            echo -n "F"
+        fi
+    fi
 }
 
-# Better approach for concurrency in bash without external tools:
-# Use a semaphore loop
+# Run load with concurrency
 run_load() {
     local active_jobs=0
     
     for ((i=1; i<=TOTAL_MESSAGES; i++)); do
-        local subject="Load Test Msg $i"
-        
-        (
-            if cat "$CORPUS_FILE" | sed "s/^Subject: .*/Subject: $subject/" | swaks --server "$SERVER" --port "$PORT" --from "loadtest@example.com" --to "demo@example.com" --data - > "$LOG_DIR/$i.log" 2>&1; then
-                echo -n "."
-            else
-                echo -n "E"
-            fi
-        ) &
+        ( run_message "$i" ) &
         
         ((active_jobs++))
         
@@ -125,21 +124,30 @@ duration=$(echo "$end_time - $start_time" | bc)
 rate=$(echo "$TOTAL_MESSAGES / $duration" | bc)
 
 # Analyze results
-success_count=$(grep -l "250 2.0.0 Message accepted" "$LOG_DIR"/*.log | wc -l)
+if [ "$EXPECTED" == "accept" ]; then
+    success_count=$(grep -l "250 2.0.0 Message accepted" "$LOG_DIR"/*.log | wc -l)
+else
+    success_count=$(grep -lE "554|550|REJECT" "$LOG_DIR"/*.log | wc -l)
+fi
+
 fail_count=$((TOTAL_MESSAGES - success_count))
 
 echo "=================================================="
 echo -e "${YELLOW}Test Complete${NC}"
 echo "Duration: $(printf "%.2f" $duration)s"
 echo "Throughput: $(printf "%.2f" $rate) msgs/sec"
-echo -e "Successful: ${GREEN}$success_count${NC}"
+echo -e "Successful ($EXPECTED): ${GREEN}$success_count${NC}"
 echo -e "Failed: ${RED}$fail_count${NC}"
 
 if [ $fail_count -gt 0 ]; then
-    echo -e "${RED}Some messages failed. Check logs in $LOG_DIR${NC}"
-    echo "Sample error:"
-    grep -L "250 2.0.0 Message accepted" "$LOG_DIR"/*.log | head -1 | xargs cat
+    echo -e "${RED}Some messages failed to match expectation. Check logs in $LOG_DIR${NC}"
+    echo "Sample failure:"
+    if [ "$EXPECTED" == "accept" ]; then
+        grep -L "250 2.0.0 Message accepted" "$LOG_DIR"/*.log | head -1 | xargs cat
+    else
+        grep -L -E "554|550|REJECT" "$LOG_DIR"/*.log | head -1 | xargs cat
+    fi
 else
-    echo -e "${GREEN}All messages accepted!${NC}"
+    echo -e "${GREEN}All messages matched expectation!${NC}"
     rm -rf "$LOG_DIR"
 fi
