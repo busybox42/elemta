@@ -1,0 +1,12 @@
+From: infected@example.com
+To: victim@example.com
+Subject: EICAR Virus Test
+Date: Mon, 26 Jan 2026 10:15:00 -0500
+Message-ID: <virus-eicar-001@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+This message contains the EICAR test string.
+It should be rejected as a virus.
+
+X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*

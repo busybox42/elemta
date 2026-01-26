@@ -1,0 +1,20 @@
+From: sender@example.com
+To: recipient@example.com
+Subject: Clean HTML Message
+Date: Mon, 26 Jan 2026 10:05:00 -0500
+Message-ID: <clean-html-001@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>Clean HTML Message</title>
+</head>
+<body>
+<h1>This is a clean HTML message.</h1>
+<p>It should be accepted by the server.</p>
+<p>No bad content.</p>
+<p>Just <b>HTML</b> text.</p>
+</body>
+</html>

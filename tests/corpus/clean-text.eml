@@ -1,0 +1,12 @@
+From: sender@example.com
+To: recipient@example.com
+Subject: Clean Text Message
+Date: Mon, 26 Jan 2026 10:00:00 -0500
+Message-ID: <clean-text-001@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+This is a clean text message.
+It should be accepted by the server.
+No bad content.
+Just plain text.
