@@ -566,14 +566,29 @@ func (ch *CommandHandler) parseMailFrom(ctx context.Context, args string) (strin
 		return "", fmt.Errorf("501 5.5.4 Syntax: MAIL FROM:<address>")
 	}
 
-	// Extract address
+	// Extract address part
 	addr := strings.TrimPrefix(args, "FROM:")
 	addr = strings.TrimPrefix(addr, "from:")
 	addr = strings.TrimSpace(addr)
 
-	// Remove angle brackets if present
-	if strings.HasPrefix(addr, "<") && strings.HasSuffix(addr, ">") {
-		addr = addr[1 : len(addr)-1]
+	// Handle angle brackets and ESMTP parameters
+	// Format: <address> SIZE=xxx BODY=8BITMIME etc.
+	if strings.HasPrefix(addr, "<") {
+		// Find the closing bracket
+		endBracket := strings.Index(addr, ">")
+		if endBracket > 0 {
+			// Extract just the address inside the brackets
+			addr = addr[1:endBracket]
+		} else {
+			// Malformed, try to extract what we can
+			addr = strings.TrimPrefix(addr, "<")
+		}
+	} else {
+		// No angle brackets - address might have space-separated parameters
+		// Take only the first space-separated token
+		if spaceIdx := strings.Index(addr, " "); spaceIdx > 0 {
+			addr = addr[:spaceIdx]
+		}
 	}
 
 	return addr, nil

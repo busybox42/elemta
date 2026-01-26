@@ -147,8 +147,32 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 		return fmt.Errorf("server rejected LHLO: %s", lhloResp)
 	}
 
-	// Send MAIL FROM
-	mailFromResp, err := sendCommand(fmt.Sprintf("MAIL FROM:<%s>\r\n", msg.From))
+	// Send MAIL FROM - extract clean email address from the stored From field
+	// The From field might contain: "<test@example.com> size=237" or "test@example.com" or "<test@example.com>"
+	sender := msg.From
+
+	// If it starts with <, extract the address between < and >
+	if strings.HasPrefix(sender, "<") {
+		if endIdx := strings.Index(sender, ">"); endIdx > 1 {
+			sender = sender[1:endIdx]
+		} else {
+			sender = strings.TrimPrefix(sender, "<")
+		}
+	}
+
+	// Strip any remaining angle brackets
+	sender = strings.Trim(sender, "<>")
+
+	// Strip any trailing parameters (shouldn't happen after above, but just in case)
+	if spaceIdx := strings.Index(sender, " "); spaceIdx > 0 {
+		h.logger.Warn("MAIL FROM still contains extra parameters after cleanup, stripping",
+			"raw_from", msg.From,
+			"sender_before_strip", sender)
+		sender = sender[:spaceIdx]
+	}
+
+	h.logger.Debug("Sending MAIL FROM", "raw_from", msg.From, "cleaned_sender", sender)
+	mailFromResp, err := sendCommand(fmt.Sprintf("MAIL FROM:<%s>\r\n", sender))
 	if err != nil {
 		return fmt.Errorf("MAIL FROM failed: %w", err)
 	}

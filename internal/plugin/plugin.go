@@ -125,7 +125,7 @@ func (p *BuiltinPlugins) InitBuiltinPlugins(enabledPlugins []string, pluginConfi
 }
 
 // ScanForVirus scans a message for viruses
-func (p *BuiltinPlugins) ScanForVirus(data []byte, messageID string) (bool, string, error) {
+func (p *BuiltinPlugins) ScanForVirus(ctx context.Context, data []byte, messageID string) (bool, string, error) {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 
@@ -158,7 +158,7 @@ func (p *BuiltinPlugins) ScanForVirus(data []byte, messageID string) (bool, stri
 	}
 
 	// Scan data
-	result, err := scanner.ScanBytes(context.TODO(), data)
+	result, err := scanner.ScanBytes(ctx, data)
 	if err != nil {
 		return true, "", fmt.Errorf("failed to scan message: %w", err)
 	}
@@ -176,7 +176,7 @@ func (p *BuiltinPlugins) ScanForVirus(data []byte, messageID string) (bool, stri
 }
 
 // ScanForSpam scans a message for spam
-func (p *BuiltinPlugins) ScanForSpam(data []byte, messageID string) (bool, float64, []string, error) {
+func (p *BuiltinPlugins) ScanForSpam(ctx context.Context, data []byte, messageID string) (bool, float64, []string, error) {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 
@@ -288,7 +288,7 @@ func (p *BuiltinPlugins) ScanForSpam(data []byte, messageID string) (bool, float
 	}
 
 	// Scan data
-	result, err := scanner.ScanBytes(context.TODO(), data)
+	result, err := scanner.ScanBytes(ctx, data)
 	if err != nil {
 		log.Printf("Warning: Failed to scan message: %v", err)
 
