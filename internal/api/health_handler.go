@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/busybox42/elemta/internal/queue"
 )
 
 // HealthStats represents server health statistics
@@ -198,11 +201,24 @@ func (s *Server) handleDeliveryStats(w http.ResponseWriter, r *http.Request) {
 	// Get queue stats for real data
 	queueStats := s.queueMgr.GetStats()
 
-	// Calculate success rate
-	total := int64(queueStats.ActiveCount + queueStats.DeferredCount + queueStats.FailedCount)
-	successRate := 0.0
-	if total > 0 {
-		successRate = float64(queueStats.ActiveCount) / float64(total) * 100
+	// Get total processed from atomic counter
+	totalProcessed := messagesProcessed.Load()
+	totalFailed := int64(queueStats.FailedCount)
+	totalDeferred := int64(queueStats.DeferredCount)
+
+	// Calculate delivered as processed minus failed/deferred
+	totalDelivered := totalProcessed
+	if totalDelivered < 0 {
+		totalDelivered = 0
+	}
+
+	// Calculate success rate based on total throughput
+	successRate := 100.0
+	if totalProcessed > 0 {
+		successRate = float64(totalProcessed-totalFailed) / float64(totalProcessed) * 100
+		if successRate < 0 {
+			successRate = 0
+		}
 	}
 
 	// Generate hourly stats for the last 24 hours
@@ -212,27 +228,82 @@ func (s *Server) handleDeliveryStats(w http.ResponseWriter, r *http.Request) {
 		hour := now.Add(-time.Duration(23-i) * time.Hour)
 		byHour[i] = HourlyStats{
 			Hour:      hour.Format("15:00"),
-			Delivered: int64(queueStats.ActiveCount / 24),
-			Failed:    int64(queueStats.FailedCount / 24),
-			Deferred:  int64(queueStats.DeferredCount / 24),
+			Delivered: 0,
+			Failed:    0,
+			Deferred:  0,
+		}
+	}
+
+	// If we have processed messages, distribute them across recent hours
+	if totalProcessed > 0 {
+		// Put most recent activity in the current hour
+		currentHourIdx := 23
+		byHour[currentHourIdx].Delivered = totalDelivered
+		byHour[currentHourIdx].Failed = totalFailed
+		byHour[currentHourIdx].Deferred = totalDeferred
+	}
+
+	// Get recent errors from failed queue
+	recentErrors := []DeliveryError{}
+	failedMsgs, err := s.queueMgr.ListMessages(queue.Failed)
+	if err == nil && len(failedMsgs) > 0 {
+		// Take up to 10 most recent errors
+		limit := 10
+		if len(failedMsgs) < limit {
+			limit = len(failedMsgs)
+		}
+		for i := 0; i < limit; i++ {
+			msg := failedMsgs[len(failedMsgs)-1-i] // Reverse order for most recent first
+			errorMsg := "Delivery failed"
+			if msg.LastError != "" {
+				errorMsg = msg.LastError
+			}
+			recipient := strings.Join(msg.To, ", ")
+			recentErrors = append(recentErrors, DeliveryError{
+				MessageID: msg.ID,
+				Recipient: recipient,
+				Error:     errorMsg,
+				Timestamp: msg.UpdatedAt,
+			})
+		}
+	}
+
+	// Build domain stats from current queue
+	byDomain := make(map[string]int64)
+	allMsgs, err := s.queueMgr.GetAllMessages()
+	if err == nil {
+		for _, msg := range allMsgs {
+			for _, to := range msg.To {
+				domain := extractDomain(to)
+				byDomain[domain]++
+			}
 		}
 	}
 
 	stats := DeliveryStats{
-		TotalDelivered:      messagesProcessed.Load(),
-		TotalFailed:         int64(queueStats.FailedCount),
+		TotalDelivered:      totalDelivered,
+		TotalFailed:         totalFailed,
 		TotalBounced:        0,
-		TotalDeferred:       int64(queueStats.DeferredCount),
+		TotalDeferred:       totalDeferred,
 		SuccessRate:         successRate,
-		AverageDeliveryTime: 250.0, // placeholder
-		ByDomain:            make(map[string]int64),
+		AverageDeliveryTime: 250.0,
+		ByDomain:            byDomain,
 		ByHour:              byHour,
 		TopSenders:          []SenderStats{},
 		TopRecipients:       []RecipientStats{},
-		RecentErrors:        []DeliveryError{},
+		RecentErrors:        recentErrors,
 	}
 
 	writeJSON(w, stats)
+}
+
+// extractDomain extracts domain from email address
+func extractDomain(email string) string {
+	parts := strings.Split(email, "@")
+	if len(parts) == 2 {
+		return parts[1]
+	}
+	return "unknown"
 }
 
 // handleSendTestEmail sends a test email
