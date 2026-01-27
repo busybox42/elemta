@@ -1289,8 +1289,7 @@ func (dh *DataHandler) handleSecurityThreat(ctx context.Context, scanResult *Sec
 
 // saveMessage saves the message to the queue
 func (dh *DataHandler) saveMessage(ctx context.Context, data []byte, metadata *MessageMetadata) error {
-	// Debug: Verify we're reaching the message processing
-	dh.logger.Info("DEBUG: Processing message data", "message_id", metadata.MessageID, "from", metadata.From, "data_size", len(data))
+	// Process the message
 
 	// Enqueue message for delivery
 	_, err := dh.queueManager.EnqueueMessage(
@@ -1306,8 +1305,7 @@ func (dh *DataHandler) saveMessage(ctx context.Context, data []byte, metadata *M
 		return fmt.Errorf("failed to save message: %w", err)
 	}
 
-	// Debug: Verify we're reaching the LogReception call
-	dh.logger.Info("DEBUG: About to call LogReception", "message_id", metadata.MessageID, "from", metadata.From)
+	// Log message reception
 
 	// Log message reception with timing
 	dh.msgLogger.LogReception(logging.MessageContext{

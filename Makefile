@@ -264,35 +264,35 @@ up:
 		echo "⚠️  No .env file found. Run 'make install' or 'make docker-setup' first."; \
 		exit 1; \
 	fi
-	docker compose -f deployments/compose/docker-compose.yml up -d
+	docker compose up -d
 	@echo "✅ Services started"
 
 down:
 	@echo "🛑 Stopping Elemta services..."
-	docker compose -f deployments/compose/docker-compose.yml down
+	docker compose down
 	@echo "✅ Services stopped"
 
 down-volumes:
 	@echo "🛑 Stopping Elemta services and removing volumes..."
-	docker compose -f deployments/compose/docker-compose.yml down -v
+	docker compose down -v
 	@echo "✅ Services stopped and volumes removed"
 
 restart:
 	@echo "🔄 Restarting Elemta services..."
-	docker compose -f deployments/compose/docker-compose.yml restart
+	docker compose restart
 	@echo "✅ Services restarted"
 
 logs:
 	@echo "📋 Showing Elemta logs (Ctrl+C to exit)..."
-	docker compose -f deployments/compose/docker-compose.yml logs -f
+	docker compose logs -f
 
 logs-elemta:
 	@echo "📋 Showing Elemta SMTP server logs..."
-	docker logs -f elemta-node0
+	docker compose logs -f elemta-node0
 
 status:
 	@echo "📊 Elemta Services Status:"
-	@docker compose -f deployments/compose/docker-compose.yml ps
+	@docker compose ps
 
 rebuild:
 	@echo "🔨 Rebuilding and restarting Elemta..."
