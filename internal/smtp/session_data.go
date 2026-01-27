@@ -8,11 +8,12 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"regexp"
 	"strings"
 	"time"
+
+	"log/slog"
 
 	"github.com/busybox42/elemta/internal/logging"
 	"github.com/busybox42/elemta/internal/plugin"
@@ -69,6 +70,11 @@ type DataHandler struct {
 func NewDataHandler(session *Session, state *SessionState, conn net.Conn, reader *bufio.Reader,
 	config *Config, queueManager queue.QueueManager, builtinPlugins *plugin.BuiltinPlugins, logger *slog.Logger) *DataHandler {
 	baseLogger := logger.With("component", "session-data")
+
+	// Use the existing global logger that writes to both stdout and file
+	// The global logger is configured in logging_handler.go to write to /app/logs/elemta.log
+	msgLogger := logging.NewMessageLogger(baseLogger)
+
 	return &DataHandler{
 		session:           session,
 		state:             state,
@@ -79,7 +85,7 @@ func NewDataHandler(session *Session, state *SessionState, conn net.Conn, reader
 		queueManager:      queueManager,
 		builtinPlugins:    builtinPlugins,
 		enhancedValidator: NewEnhancedValidator(logger.With("component", "enhanced-validator")),
-		msgLogger:         logging.NewMessageLogger(baseLogger),
+		msgLogger:         msgLogger,
 		receptionTime:     time.Now(),
 	}
 }
@@ -1218,6 +1224,26 @@ func (dh *DataHandler) handleSecurityThreat(ctx context.Context, scanResult *Sec
 			"threats", scanResult.Threats,
 			"message_id", metadata.MessageID,
 		)
+
+		// Log rejection event
+		dh.msgLogger.LogRejection(logging.MessageContext{
+			MessageID:      metadata.MessageID,
+			QueueID:        metadata.MessageID,
+			From:           metadata.From,
+			To:             metadata.To,
+			Subject:        metadata.Subject,
+			Size:           metadata.Size,
+			ClientIP:       dh.session.remoteAddr,
+			ClientHostname: dh.session.remoteAddr,
+			Username:       dh.state.GetUsername(),
+			Authenticated:  dh.state.IsAuthenticated(),
+			TLSActive:      dh.state.IsTLSActive(),
+			ReceptionTime:  dh.receptionTime,
+			ProcessingTime: time.Now(),
+			Error:          "virus detected",
+			VirusFound:     true,
+		})
+
 		return fmt.Errorf("554 5.7.1 Message rejected: virus detected")
 	}
 
@@ -1226,6 +1252,26 @@ func (dh *DataHandler) handleSecurityThreat(ctx context.Context, scanResult *Sec
 			"spam_score", scanResult.SpamScore,
 			"message_id", metadata.MessageID,
 		)
+
+		// Log rejection event
+		dh.msgLogger.LogRejection(logging.MessageContext{
+			MessageID:      metadata.MessageID,
+			QueueID:        metadata.MessageID,
+			From:           metadata.From,
+			To:             metadata.To,
+			Subject:        metadata.Subject,
+			Size:           metadata.Size,
+			ClientIP:       dh.session.remoteAddr,
+			ClientHostname: dh.session.remoteAddr,
+			Username:       dh.state.GetUsername(),
+			Authenticated:  dh.state.IsAuthenticated(),
+			TLSActive:      dh.state.IsTLSActive(),
+			ReceptionTime:  dh.receptionTime,
+			ProcessingTime: time.Now(),
+			Error:          "identified as spam",
+			SpamScore:      scanResult.SpamScore,
+		})
+
 		return fmt.Errorf("554 5.7.1 Message rejected: identified as spam")
 	}
 
@@ -1243,38 +1289,42 @@ func (dh *DataHandler) handleSecurityThreat(ctx context.Context, scanResult *Sec
 
 // saveMessage saves the message to the queue
 func (dh *DataHandler) saveMessage(ctx context.Context, data []byte, metadata *MessageMetadata) error {
-	// Save to queue using EnqueueMessage
-	if dh.queueManager != nil {
-		messageID, err := dh.queueManager.EnqueueMessage(
-			metadata.From,
-			metadata.To,
-			metadata.Subject,
-			data,
-			queue.PriorityNormal,
-			dh.receptionTime,
-		)
-		if err != nil {
-			dh.logger.ErrorContext(ctx, "Failed to enqueue message", "error", err)
-			return fmt.Errorf("failed to save message: %w", err)
-		}
+	// Debug: Verify we're reaching the message processing
+	dh.logger.Info("DEBUG: Processing message data", "message_id", metadata.MessageID, "from", metadata.From, "data_size", len(data))
 
-		// Log message reception with timing
-		dh.msgLogger.LogReception(logging.MessageContext{
-			MessageID:      messageID,
-			QueueID:        messageID,
-			From:           metadata.From,
-			To:             metadata.To,
-			Subject:        metadata.Subject,
-			Size:           metadata.Size,
-			ClientIP:       dh.session.remoteAddr,
-			ClientHostname: dh.session.remoteAddr,
-			Username:       dh.state.GetUsername(),
-			Authenticated:  dh.state.IsAuthenticated(),
-			TLSActive:      dh.state.IsTLSActive(),
-			ReceptionTime:  dh.receptionTime,
-			ProcessingTime: time.Now(),
-		})
+	// Enqueue message for delivery
+	_, err := dh.queueManager.EnqueueMessage(
+		metadata.From,
+		metadata.To,
+		metadata.Subject,
+		data,
+		queue.PriorityNormal,
+		dh.receptionTime,
+	)
+	if err != nil {
+		dh.logger.ErrorContext(ctx, "Failed to enqueue message", "error", err)
+		return fmt.Errorf("failed to save message: %w", err)
 	}
+
+	// Debug: Verify we're reaching the LogReception call
+	dh.logger.Info("DEBUG: About to call LogReception", "message_id", metadata.MessageID, "from", metadata.From)
+
+	// Log message reception with timing
+	dh.msgLogger.LogReception(logging.MessageContext{
+		MessageID:      metadata.MessageID,
+		QueueID:        metadata.MessageID,
+		From:           metadata.From,
+		To:             metadata.To,
+		Subject:        metadata.Subject,
+		Size:           metadata.Size,
+		ClientIP:       dh.session.remoteAddr,
+		ClientHostname: dh.session.remoteAddr,
+		Username:       dh.state.GetUsername(),
+		Authenticated:  dh.state.IsAuthenticated(),
+		TLSActive:      dh.state.IsTLSActive(),
+		ReceptionTime:  dh.receptionTime,
+		ProcessingTime: time.Now(),
+	})
 
 	// Note: Queue integration processing would be handled by the queue manager
 

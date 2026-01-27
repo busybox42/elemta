@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/busybox42/elemta/internal/auth"
+	"github.com/busybox42/elemta/internal/logging"
 )
 
 // Note: AuthMethod and constants are defined in auth.go
@@ -87,6 +88,7 @@ type AuthHandler struct {
 	securityManager     *AuthenticationSecurityManager
 	sessionStateMachine *auth.SessionStateMachine
 	logger              *slog.Logger
+	msgLogger           *logging.MessageLogger
 	conn                net.Conn
 }
 
@@ -119,6 +121,7 @@ func NewAuthHandler(session *Session, state *SessionState, authenticator Authent
 		securityManager:     securityManager,
 		sessionStateMachine: sessionStateMachine,
 		logger:              logger.With("component", "session-auth"),
+		msgLogger:           logging.NewMessageLogger(logger.With("component", "auth-logging")),
 		conn:                conn,
 	}
 }
@@ -595,6 +598,17 @@ func (ah *AuthHandler) recordAuthFailure(ctx context.Context, username string, m
 		}
 	}
 
+	// Log structured authentication event
+	ah.msgLogger.LogAuthentication(logging.AuthContext{
+		Success:     false,
+		Username:    username,
+		AuthMethod:  string(method),
+		ClientIP:    remoteAddr,
+		SessionID:   ah.session.sessionID,
+		AttemptTime: time.Now(),
+		TLSActive:   ah.state.IsTLSActive(),
+	})
+
 	// Check if account should be locked
 	attempts := ah.state.GetAuthAttempts()
 	if attempts >= ah.securityManager.config.MaxAuthAttempts {
@@ -605,8 +619,9 @@ func (ah *AuthHandler) recordAuthFailure(ctx context.Context, username string, m
 
 		ah.logger.WarnContext(ctx, "Account locked due to failed authentication attempts",
 			"username", username,
+			"method", string(method),
 			"attempts", attempts,
-			"locked_until", ah.securityManager.accountLockouts[username].LockedUntil,
+			"ip", remoteAddr,
 		)
 	}
 
@@ -634,6 +649,17 @@ func (ah *AuthHandler) recordAuthSuccess(ctx context.Context, username string, m
 
 	// Clear account lockout
 	delete(ah.securityManager.accountLockouts, username)
+
+	// Log structured authentication event
+	ah.msgLogger.LogAuthentication(logging.AuthContext{
+		Success:     true,
+		Username:    username,
+		AuthMethod:  string(method),
+		ClientIP:    remoteAddr,
+		SessionID:   ah.session.sessionID,
+		AttemptTime: time.Now(),
+		TLSActive:   ah.state.IsTLSActive(),
+	})
 
 	// Log security event
 	ah.logger.InfoContext(ctx, "Authentication success recorded",
