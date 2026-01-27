@@ -488,6 +488,11 @@ func (p *Processor) isTemporaryFailure(err error) bool {
 		return false
 	}
 
+	// Check for explicit temporary error interface
+	if tempErr, ok := err.(interface{ Temporary() bool }); ok && tempErr.Temporary() {
+		return true
+	}
+
 	errStr := err.Error()
 	errLower := strings.ToLower(errStr)
 
