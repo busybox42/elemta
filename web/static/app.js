@@ -947,30 +947,56 @@ function parseLogLine(line) {
 function getLogType(log) {
     const msg = log.message.toLowerCase();
     const comp = (log.component || '').toLowerCase();
+    const ctx = log.context || {};
+    const response = (ctx.response || '').toLowerCase();
+    const error = (ctx.error || '').toLowerCase();
+    const eventType = (ctx.event_type || '').toLowerCase();
 
-    // Rejection
-    if (msg.includes('reject') || msg.includes('denied') || msg.includes('554') || msg.includes('550') ||
-        (log.context && log.context.error && (log.context.error.includes('554') || log.context.error.includes('550')))) {
+    // Rejection (5xx) - Check explicit event_type first
+    if (eventType === 'rejection' || msg.includes('reject') || msg.includes('denied') ||
+        response.startsWith('5') || error.includes('554') || error.includes('550')) {
         return 'rejection';
     }
 
+    // TempFail (4xx temporary failures) - Check explicit event_type first
+    if (eventType === 'tempfail' || msg.includes('tempfail') || msg.includes('temporary failure') ||
+        response.startsWith('4') || error.includes('451') || error.includes('421')) {
+        return 'tempfail';
+    }
+
+    // Deferral - Check explicit event_type first
+    if (eventType === 'deferral' || msg.includes('defer') || eventType === 'message_deferred') {
+        return 'defer';
+    }
+
+    // Bounce
+    if (eventType === 'bounce' || msg.includes('bounce') || msg.includes('bounced') || eventType === 'message_bounced') {
+        return 'bounce';
+    }
+
+    // Auth - Check explicit event_type first
+    if (eventType === 'authentication' || msg.includes('auth') || msg.includes('authentication') || comp.includes('auth')) {
+        return 'auth';
+    }
+
     // Delivery
-    if (msg.includes('deliver') || msg.includes('sent') || comp.includes('delivery') || comp.includes('sender')) {
+    if (eventType === 'delivery' || msg.includes('delivered') || msg.includes('delivery successful') || 
+        comp.includes('delivery') || comp.includes('sender') || eventType === 'message_delivered') {
         return 'delivery';
     }
 
     // Reception
-    if (msg.includes('received') || msg.includes('accepted') || msg.includes('client connected') ||
-        comp.includes('smtpd') || comp.includes('receiver')) {
+    if (eventType === 'reception' || msg.includes('received') || msg.includes('accepted') || msg.includes('session created') ||
+        comp.includes('smtp-session') || comp.includes('receiver') || eventType === 'message_received') {
         return 'reception';
     }
 
     // Queue
-    if (msg.includes('queue') || comp.includes('queue')) {
+    if (msg.includes('queue') || comp.includes('queue') || eventType === 'message_accepted') {
         return 'queue';
     }
 
-    // System (default fallback for others if they don't match above)
+    // System (default fallback)
     return 'system';
 }
 
@@ -990,7 +1016,8 @@ function renderLogContext(context) {
         let className = 'log-ctx-val';
         if (key === 'error') className += ' ctx-error';
         if (key === 'message_id') className += ' ctx-id';
-        if (key === 'email' || key === 'from' || key === 'to') className += ' ctx-email';
+        if (key === 'email' || key === 'from' || key === 'to' || key === 'from_envelope' || key === 'to_envelope') className += ' ctx-email';
+        if (key === 'remote_addr' || key === 'client_ip' || key === 'host' || key === 'server_ip') className += ' ctx-ip';
 
         return `<span class="log-ctx-item"><span class="log-ctx-key">${escapeHtml(key)}:</span> <span class="${className}">${escapeHtml(String(displayValue))}</span></span>`;
     }).join('');

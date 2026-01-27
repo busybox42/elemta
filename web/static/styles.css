@@ -1804,6 +1804,7 @@ body {
 .log-level-badge.warn { background: rgba(245, 158, 11, 0.15); color: var(--accent-warning); }
 .log-level-badge.error { background: rgba(239, 68, 68, 0.15); color: var(--accent-danger); }
 .log-level-badge.debug { background: rgba(107, 114, 128, 0.15); color: var(--text-muted); }
+.log-level-badge.tempfail { background: rgba(251, 146, 60, 0.15); color: #f97316; }
 
 .log-component {
     color: var(--text-secondary);
@@ -1863,3 +1864,5 @@ body {
 .log-search input {
     padding: 0.5rem 0;
 }
+
+.ctx-ip { color: var(--accent-warning); }
