@@ -1759,21 +1759,38 @@ function renderChart(data) {
             
             // Convert timezone for display
             let label = item.label;
+            
             if (currentTimeScale === 'hour') {
                 // Parse the hour label and convert to local timezone
                 try {
-                    // Assuming format like "2024-01-28 15:00"
-                    const date = new Date(label);
-                    if (!isNaN(date.getTime())) {
-                        label = date.toLocaleTimeString('en-US', { 
+                    // Backend sends time-only format like "16:00"
+                    // We need to construct a proper date with today's date
+                    const today = new Date();
+                    const [hours, minutes] = label.split(':').map(Number);
+                    
+                    // Create date in UTC with the given time
+                    const utcDate = new Date(Date.UTC(
+                        today.getUTCFullYear(),
+                        today.getUTCMonth(),
+                        today.getUTCDate(),
+                        hours,
+                        minutes
+                    ));
+                    
+                    console.log('Original label:', label, 'UTC date:', utcDate);
+                    
+                    if (!isNaN(utcDate.getTime())) {
+                        label = utcDate.toLocaleTimeString('en-US', { 
                             hour: '2-digit', 
                             minute: '2-digit',
-                            hour12: false 
+                            hour12: false,
+                            timeZone: 'America/New_York' // Force Eastern Time
                         });
+                        console.log('Formatted label (Eastern):', label);
                     }
                 } catch (e) {
                     // Fallback to original label if parsing fails
-                    console.warn('Failed to parse date label:', label);
+                    console.warn('Failed to parse date label:', label, e);
                 }
             } else if (currentTimeScale === 'day') {
                 // Format daily labels
@@ -1786,7 +1803,7 @@ function renderChart(data) {
                         });
                     }
                 } catch (e) {
-                    console.warn('Failed to parse date label:', label);
+                    console.warn('Failed to parse date label:', label, e);
                 }
             }
             
