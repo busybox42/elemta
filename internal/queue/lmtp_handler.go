@@ -42,6 +42,12 @@ func NewLMTPDeliveryHandler(host string, port int, maxPerDomain int) *LMTPDelive
 
 // DeliverMessage attempts to deliver a message via LMTP
 func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, content []byte) error {
+	_, err := h.DeliverMessageWithMetadata(ctx, msg, content)
+	return err
+}
+
+// DeliverMessageWithMetadata attempts to deliver a message via LMTP and returns delivery metadata
+func (h *LMTPDeliveryHandler) DeliverMessageWithMetadata(ctx context.Context, msg Message, content []byte) (*DeliveryResult, error) {
 	h.logger.Info("Attempting LMTP delivery",
 		"message_id", msg.ID,
 		"from", msg.From,
@@ -57,7 +63,7 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 	// Apply simple per-domain in-flight limiter
 	if domain != "" && h.limiter != nil {
 		if !h.limiter.TryAcquire(domain) {
-			return fmt.Errorf("temporary failure: domain %s is over concurrent delivery limit", domain)
+			return nil, fmt.Errorf("temporary failure: domain %s is over concurrent delivery limit", domain)
 		}
 		defer h.limiter.Release(domain)
 	}
@@ -71,7 +77,7 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 	addr := net.JoinHostPort(h.host, fmt.Sprintf("%d", h.port))
 	conn, err := net.DialTimeout("tcp", addr, h.timeout)
 	if err != nil {
-		return fmt.Errorf("failed to connect to LMTP server %s: %w", addr, err)
+		return nil, fmt.Errorf("failed to connect to LMTP server %s: %w", addr, err)
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -109,20 +115,20 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 	// Read server greeting
 	greeting, err := reader.ReadString('\n')
 	if err != nil {
-		return fmt.Errorf("failed to read server greeting: %w", err)
+		return nil, fmt.Errorf("failed to read server greeting: %w", err)
 	}
 	greeting = strings.TrimSpace(greeting)
 	h.logger.Debug("LMTP server greeting", "response", greeting)
 
 	if !strings.HasPrefix(greeting, "220 ") {
-		return fmt.Errorf("unexpected server greeting: %s", greeting)
+		return nil, fmt.Errorf("unexpected server greeting: %s", greeting)
 	}
 
 	// Send LHLO
 	hostname := "elemta.local"
 	lhloResp, err := sendCommand(fmt.Sprintf("LHLO %s\r\n", hostname))
 	if err != nil {
-		return fmt.Errorf("LHLO failed: %w", err)
+		return nil, fmt.Errorf("LHLO failed: %w", err)
 	}
 
 	// Handle multi-line LHLO response
@@ -131,7 +137,7 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 		for {
 			resp, err := reader.ReadString('\n')
 			if err != nil {
-				return fmt.Errorf("failed to read LHLO continuation: %w", err)
+				return nil, fmt.Errorf("failed to read LHLO continuation: %w", err)
 			}
 			resp = strings.TrimSpace(resp)
 			h.logger.Debug("LMTP response", "response", resp)
@@ -140,11 +146,11 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 				break
 			}
 			if !strings.HasPrefix(resp, "250-") {
-				return fmt.Errorf("server rejected LHLO: %s", resp)
+				return &DeliveryResult{}, fmt.Errorf("server rejected LHLO: %s", resp)
 			}
 		}
 	} else if !strings.HasPrefix(lhloResp, "250 ") {
-		return fmt.Errorf("server rejected LHLO: %s", lhloResp)
+		return &DeliveryResult{}, fmt.Errorf("server rejected LHLO: %s", lhloResp)
 	}
 
 	// Send MAIL FROM - extract clean email address from the stored From field
@@ -174,10 +180,10 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 	h.logger.Debug("Sending MAIL FROM", "raw_from", msg.From, "cleaned_sender", sender)
 	mailFromResp, err := sendCommand(fmt.Sprintf("MAIL FROM:<%s>\r\n", sender))
 	if err != nil {
-		return fmt.Errorf("MAIL FROM failed: %w", err)
+		return nil, fmt.Errorf("MAIL FROM failed: %w", err)
 	}
 	if !strings.HasPrefix(mailFromResp, "250 ") {
-		return fmt.Errorf("server rejected sender: %s", mailFromResp)
+		return nil, fmt.Errorf("server rejected sender: %s", mailFromResp)
 	}
 
 	// Send RCPT TO for each recipient
@@ -203,30 +209,30 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 
 	// Check if any recipients were accepted
 	if len(acceptedRecipients) == 0 {
-		return fmt.Errorf("all recipients rejected: %v", failedRecipients)
+		return nil, fmt.Errorf("all recipients rejected: %v", failedRecipients)
 	}
 
 	// Send DATA
 	dataResp, err := sendCommand("DATA\r\n")
 	if err != nil {
-		return fmt.Errorf("DATA command failed: %w", err)
+		return nil, fmt.Errorf("DATA command failed: %w", err)
 	}
 	if !strings.HasPrefix(dataResp, "354 ") {
-		return fmt.Errorf("server rejected DATA command: %s", dataResp)
+		return nil, fmt.Errorf("server rejected DATA command: %s", dataResp)
 	}
 
 	// Send message content
 	h.logger.Debug("Sending message content", "size", len(content))
 	if _, err := writer.Write(content); err != nil {
-		return fmt.Errorf("failed to write message data: %w", err)
+		return &DeliveryResult{}, fmt.Errorf("failed to write message data: %w", err)
 	}
 
 	// Send end-of-data marker
 	if _, err := writer.WriteString("\r\n.\r\n"); err != nil {
-		return fmt.Errorf("failed to send end-of-data marker: %w", err)
+		return &DeliveryResult{}, fmt.Errorf("failed to send end-of-data marker: %w", err)
 	}
 	if err := writer.Flush(); err != nil {
-		return fmt.Errorf("failed to flush message data: %w", err)
+		return &DeliveryResult{}, fmt.Errorf("failed to flush message data: %w", err)
 	}
 
 	// Read response for each accepted recipient (LMTP returns per-recipient responses)
@@ -234,7 +240,7 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 	for range acceptedRecipients {
 		resp, err := reader.ReadString('\n')
 		if err != nil {
-			return fmt.Errorf("failed to read delivery response: %w", err)
+			return nil, fmt.Errorf("failed to read delivery response: %w", err)
 		}
 		resp = strings.TrimSpace(resp)
 		h.logger.Debug("Delivery response", "response", resp)
@@ -256,7 +262,7 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 
 	// Check delivery success
 	if deliveredCount == 0 {
-		return fmt.Errorf("delivery failed for all accepted recipients")
+		return nil, fmt.Errorf("delivery failed for all accepted recipients")
 	} else if deliveredCount < len(acceptedRecipients) {
 		h.logger.Warn("Partial delivery success",
 			"delivered", deliveredCount,
@@ -269,13 +275,37 @@ func (h *LMTPDeliveryHandler) DeliverMessage(ctx context.Context, msg Message, c
 		"total_recipients", len(msg.To),
 		"failed_recipients", len(failedRecipients))
 
-	// Return error if some recipients failed but we had partial success
-	if len(failedRecipients) > 0 {
-		return fmt.Errorf("partial delivery: %d/%d recipients delivered, failed: %v",
-			deliveredCount, len(msg.To), failedRecipients)
+	// Capture delivery IP and host from connection
+	deliveryIP := ""
+	deliveryHost := ""
+	if conn != nil {
+		remoteAddr := conn.RemoteAddr().String()
+		if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+			deliveryIP = host
+			deliveryHost = host
+		} else {
+			deliveryIP = remoteAddr
+			deliveryHost = remoteAddr
+		}
 	}
 
-	return nil
+	// Create delivery result
+	result := &DeliveryResult{
+		Success:         deliveredCount > 0,
+		DeliveryIP:      deliveryIP,
+		DeliveryHost:    deliveryHost,
+		DeliveryTime:    time.Now(),
+		ResponseMessage: fmt.Sprintf("Delivered to %d/%d recipients", deliveredCount, len(msg.To)),
+	}
+
+	// Return error if some recipients failed but we had partial success
+	if len(failedRecipients) > 0 {
+		result.Error = fmt.Errorf("partial delivery: %d/%d recipients delivered, failed: %v",
+			deliveredCount, len(msg.To), failedRecipients)
+		return result, result.Error
+	}
+
+	return result, nil
 }
 
 // domainLimiter implements a simple in-memory per-domain in-flight limiter

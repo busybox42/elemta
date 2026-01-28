@@ -34,6 +34,8 @@ type MessageContext struct {
 	ReceptionTime  time.Time
 	ProcessingTime time.Time
 	DeliveryTime   time.Time
+	DeliveryIP     string
+	DeliveryHost   string
 	RetryCount     int
 	NextRetry      time.Time
 	Error          string
@@ -90,7 +92,8 @@ func (ml *MessageLogger) LogDelivery(ctx MessageContext) {
 		}
 	}
 
-	ml.logger.Info("message_delivery",
+	// Build log fields
+	fields := []any{
 		"event_type", "delivery",
 		"message_id", ctx.MessageID,
 		"queue_id", ctx.QueueID,
@@ -106,7 +109,17 @@ func (ml *MessageLogger) LogDelivery(ctx MessageContext) {
 		"total_delay_ms", receptionToDelivery.Milliseconds(),
 		"queue_delay_ms", processingToDelivery.Milliseconds(),
 		"status", "delivered",
-	)
+	}
+
+	// Add delivery IP and host if available
+	if ctx.DeliveryIP != "" {
+		fields = append(fields, "delivery_ip", ctx.DeliveryIP)
+	}
+	if ctx.DeliveryHost != "" {
+		fields = append(fields, "delivery_host", ctx.DeliveryHost)
+	}
+
+	ml.logger.Info("message_delivery", fields...)
 }
 
 // LogRejection logs when a message is rejected during reception

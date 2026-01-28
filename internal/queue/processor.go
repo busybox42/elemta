@@ -34,8 +34,19 @@ func DefaultProcessorConfig() ProcessorConfig {
 }
 
 // DeliveryHandler defines the interface for actual message delivery
+// DeliveryResult contains metadata about a delivery attempt
+type DeliveryResult struct {
+	Success         bool
+	Error           error
+	DeliveryIP      string
+	DeliveryHost    string
+	DeliveryTime    time.Time
+	ResponseMessage string
+}
+
 type DeliveryHandler interface {
 	DeliverMessage(ctx context.Context, msg Message, content []byte) error
+	DeliverMessageWithMetadata(ctx context.Context, msg Message, content []byte) (*DeliveryResult, error)
 }
 
 // MetricsRecorder interface for recording delivery metrics
@@ -284,10 +295,10 @@ func (p *Processor) processMessage(msg Message) {
 	ctx, cancel := context.WithTimeout(p.ctx, 5*time.Minute)
 	defer cancel()
 
-	deliveryErr := p.handler.DeliverMessage(ctx, msg, content)
+	deliveryResult, deliveryErr := p.handler.DeliverMessageWithMetadata(ctx, msg, content)
 
-	if deliveryErr == nil {
-		// Success - Log comprehensive delivery success
+	if deliveryErr == nil && deliveryResult != nil && deliveryResult.Success {
+		// Success - Log comprehensive delivery success with delivery IP
 		p.msgLogger.LogDelivery(logging.MessageContext{
 			MessageID:      msg.ID,
 			QueueID:        msg.ID,
@@ -297,7 +308,9 @@ func (p *Processor) processMessage(msg Message) {
 			Size:           msg.Size,
 			ReceptionTime:  msg.ReceivedAt,
 			ProcessingTime: msg.CreatedAt,
-			DeliveryTime:   time.Now(),
+			DeliveryTime:   deliveryResult.DeliveryTime,
+			DeliveryIP:     deliveryResult.DeliveryIP,
+			DeliveryHost:   deliveryResult.DeliveryHost,
 			RetryCount:     msg.RetryCount,
 			DeliveryMethod: "lmtp",
 		})
@@ -347,7 +360,7 @@ func (p *Processor) processMessage(msg Message) {
 	} else {
 		// Log permanent failure
 		logger.Error("message_bounced",
-			"event_type", "message_bounced",
+			"event_type", "bounce",
 			"message_id", msg.ID,
 			"from_envelope", msg.From,
 			"to_envelope", msg.To,
@@ -498,10 +511,16 @@ func (p *Processor) isTemporaryFailure(err error) bool {
 
 	// Check for explicit 4xx SMTP response codes
 	// These indicate temporary failures that should be retried
-	if strings.Contains(errStr, "452 ") || // Insufficient system storage
-		strings.Contains(errStr, "450 ") || // Mailbox unavailable
-		strings.Contains(errStr, "451 ") || // Local error in processing
-		strings.Contains(errStr, "421 ") { // Service not available
+	if strings.Contains(errStr, " 452") || // Insufficient system storage
+		strings.Contains(errStr, " 450") || // Mailbox unavailable
+		strings.Contains(errStr, " 451") || // Local error in processing
+		strings.Contains(errStr, " 421") || // Service not available
+		strings.Contains(errStr, " 454") || // Temporary authentication failure
+		strings.HasPrefix(errStr, "452") ||
+		strings.HasPrefix(errStr, "450") ||
+		strings.HasPrefix(errStr, "451") ||
+		strings.HasPrefix(errStr, "421") ||
+		strings.HasPrefix(errStr, "454") {
 		return true
 	}
 
