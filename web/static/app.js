@@ -1568,7 +1568,7 @@ let chartInstance = null;
 
 async function refreshReports() {
     try {
-        const response = await fetch(`${API_BASE}/stats/delivery`);
+        const response = await fetch(`${API_BASE}/stats/delivery?timeScale=${currentTimeScale}`);
         const stats = await response.json();
 
         // Update stat cards
@@ -1577,8 +1577,9 @@ async function refreshReports() {
         document.getElementById('report-deferred').textContent = stats.total_deferred || 0;
         document.getElementById('report-success-rate').textContent = (stats.success_rate || 0).toFixed(1) + '%';
 
-        // Update chart
-        renderHourlyChart(stats.by_hour || []);
+        // Update chart with time scale data
+        const chartData = stats.data || [];
+        renderChart(chartData);
 
         // Update recent errors
         renderRecentErrors(stats.recent_errors || []);
@@ -1589,7 +1590,27 @@ async function refreshReports() {
     }
 }
 
+// Global variable to track current time scale
+let currentTimeScale = 'hour';
+
+function changeTimeScale(scale) {
+    currentTimeScale = scale;
+    
+    // Update button states
+    document.querySelectorAll('.time-scale-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector(`[data-scale="${scale}"]`).classList.add('active');
+    
+    // Refresh reports with new time scale
+    refreshReports();
+}
+
 function renderHourlyChart(hourlyData) {
+    renderChart(hourlyData);
+}
+
+function renderChart(data) {
     const canvas = document.getElementById('hourly-chart-canvas');
     if (!canvas) return;
 
@@ -1645,37 +1666,56 @@ function renderHourlyChart(hourlyData) {
         ctx.fillText(value.toString(), padding - 8, y + 3);
     }
 
-    hourlyData.forEach((hour, i) => {
+    data.forEach((item, i) => {
         const x = padding + i * (barWidth + 4);
-        const total = hour.delivered + hour.failed + hour.deferred;
+        const total = item.delivered + item.failed + item.deferred;
         const height = (total / maxValue) * chartHeight;
 
         // Stacked bars
         let y = canvas.height - padding;
 
         // Delivered (green)
-        const deliveredHeight = (hour.delivered / maxValue) * chartHeight;
+        const deliveredHeight = (item.delivered / maxValue) * chartHeight;
         ctx.fillStyle = '#22c55e';
         ctx.fillRect(x, y - deliveredHeight, barWidth, deliveredHeight);
         y -= deliveredHeight;
 
         // Deferred (orange)
-        const deferredHeight = (hour.deferred / maxValue) * chartHeight;
+        const deferredHeight = (item.deferred / maxValue) * chartHeight;
         ctx.fillStyle = '#f59e0b';
         ctx.fillRect(x, y - deferredHeight, barWidth, deferredHeight);
         y -= deferredHeight;
 
         // Failed (red)
-        const failedHeight = (hour.failed / maxValue) * chartHeight;
+        const failedHeight = (item.failed / maxValue) * chartHeight;
         ctx.fillStyle = '#ef4444';
         ctx.fillRect(x, y - failedHeight, barWidth, failedHeight);
 
-        // Hour label
-        if (i % 4 === 0) {
+        // Time scale label - adjust frequency based on data length
+        let showLabel = false;
+        if (data.length <= 12) {
+            // Show all labels for monthly/weekly data
+            showLabel = true;
+        } else if (data.length <= 30) {
+            // Show every 3rd label for daily data
+            showLabel = i % 3 === 0;
+        } else {
+            // Show every 4th label for hourly data
+            showLabel = i % 4 === 0;
+        }
+
+        if (showLabel) {
             ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted');
             ctx.font = '10px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(hour.hour, x + barWidth / 2, canvas.height - padding + 15);
+            
+            // Truncate long labels if needed
+            let label = item.label;
+            if (label.length > 10 && data.length > 20) {
+                label = label.substring(5); // Remove "YYYY-" for hourly data
+            }
+            
+            ctx.fillText(label, x + barWidth / 2, canvas.height - padding + 15);
         }
     });
 

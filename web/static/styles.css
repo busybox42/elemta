@@ -404,6 +404,42 @@ body {
     border-bottom: 1px solid var(--border-color);
 }
 
+.chart-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.time-scale-selector {
+    display: flex;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    padding: 2px;
+}
+
+.time-scale-btn {
+    padding: 0.375rem 0.75rem;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.time-scale-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.time-scale-btn.active {
+    background: var(--accent-primary);
+    color: white;
+    box-shadow: var(--shadow-sm);
+}
+
 .card-header h3 {
     font-size: 1rem;
     font-weight: 600;

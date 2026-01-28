@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"runtime"
@@ -95,6 +96,14 @@ type DeliveryStats struct {
 // HourlyStats represents hourly delivery statistics
 type HourlyStats struct {
 	Hour      string `json:"hour"`
+	Delivered int64  `json:"delivered"`
+	Failed    int64  `json:"failed"`
+	Deferred  int64  `json:"deferred"`
+}
+
+// TimeScaleStats represents generic time-scale delivery statistics
+type TimeScaleStats struct {
+	Label     string `json:"label"`
 	Delivered int64  `json:"delivered"`
 	Failed    int64  `json:"failed"`
 	Deferred  int64  `json:"deferred"`
@@ -200,11 +209,18 @@ func (s *Server) handleHealthStats(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeliveryStats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	// Get time scale parameter (default: hour)
+	timeScale := r.URL.Query().Get("timeScale")
+	if timeScale == "" {
+		timeScale = "hour"
+	}
+
 	// Get queue stats for current queue state
 	queueStats := s.queueMgr.GetStats()
 
 	var totalDelivered, totalFailed, totalDeferred int64
 	var byHour []HourlyStats
+	var data []TimeScaleStats
 	var recentErrors []DeliveryError
 
 	// Try to get metrics from Valkey store
@@ -216,12 +232,44 @@ func (s *Server) handleDeliveryStats(w http.ResponseWriter, r *http.Request) {
 			totalDeferred = metricsData.TotalDeferred
 		}
 
-		// Get hourly stats from Valkey
-		hourlyData, err := s.metricsStore.GetHourlyStats(ctx)
-		if err == nil {
-			byHour = make([]HourlyStats, len(hourlyData))
-			for i, h := range hourlyData {
-				byHour[i] = HourlyStats(h)
+		// Get stats based on time scale
+		switch timeScale {
+		case "hour":
+			hourlyData, err := s.metricsStore.GetHourlyStats(ctx)
+			if err == nil {
+				byHour = make([]HourlyStats, len(hourlyData))
+				data = make([]TimeScaleStats, len(hourlyData))
+				for i, h := range hourlyData {
+					byHour[i] = HourlyStats(h)
+					data[i] = TimeScaleStats{
+						Label:     h.Hour,
+						Delivered: h.Delivered,
+						Failed:    h.Failed,
+						Deferred:  h.Deferred,
+					}
+				}
+			}
+		case "day":
+			data = s.getDailyStats(ctx)
+		case "week":
+			data = s.getWeeklyStats(ctx)
+		case "month":
+			data = s.getMonthlyStats(ctx)
+		default:
+			// Default to hourly for invalid scales
+			hourlyData, err := s.metricsStore.GetHourlyStats(ctx)
+			if err == nil {
+				byHour = make([]HourlyStats, len(hourlyData))
+				data = make([]TimeScaleStats, len(hourlyData))
+				for i, h := range hourlyData {
+					byHour[i] = HourlyStats(h)
+					data[i] = TimeScaleStats{
+						Label:     h.Hour,
+						Delivered: h.Delivered,
+						Failed:    h.Failed,
+						Deferred:  h.Deferred,
+					}
+				}
 			}
 		}
 
@@ -301,21 +349,15 @@ func (s *Server) handleDeliveryStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	stats := DeliveryStats{
-		TotalDelivered:      totalDelivered,
-		TotalFailed:         totalFailed,
-		TotalBounced:        0,
-		TotalDeferred:       totalDeferred + int64(queueStats.DeferredCount),
-		SuccessRate:         successRate,
-		AverageDeliveryTime: 250.0,
-		ByDomain:            byDomain,
-		ByHour:              byHour,
-		TopSenders:          []SenderStats{},
-		TopRecipients:       []RecipientStats{},
-		RecentErrors:        recentErrors,
-	}
-
-	writeJSON(w, stats)
+	writeJSON(w, map[string]interface{}{
+		"total_delivered": totalDelivered,
+		"total_failed":    totalFailed,
+		"total_deferred":  totalDeferred,
+		"success_rate":    successRate,
+		"data":            data,
+		"by_hour":         byHour, // Keep for backward compatibility
+		"recent_errors":   recentErrors,
+	})
 }
 
 // extractDomain extracts domain from email address
@@ -381,6 +423,211 @@ func (s *Server) handleSendTestEmail(w http.ResponseWriter, r *http.Request) {
 // formatDuration formats a duration as human readable
 func formatDuration(d time.Duration) string {
 	return d.Round(time.Second).String()
+}
+
+// getDailyStats aggregates hourly data into daily statistics
+func (s *Server) getDailyStats(ctx context.Context) []TimeScaleStats {
+	var dailyStats []TimeScaleStats
+
+	if s.metricsStore == nil {
+		return dailyStats
+	}
+
+	// Get last 30 days of hourly data
+	hourlyData, err := s.metricsStore.GetHourlyStats(ctx)
+	if err != nil {
+		return dailyStats
+	}
+
+	// Group by day
+	dailyMap := make(map[string]TimeScaleStats)
+	now := time.Now()
+
+	for _, hour := range hourlyData {
+		// Parse hour label (assuming format like "2023-01-01T15")
+		if len(hour.Hour) < 10 {
+			continue
+		}
+		dayKey := hour.Hour[:10] // Extract YYYY-MM-DD
+
+		stat, exists := dailyMap[dayKey]
+		if !exists {
+			stat = TimeScaleStats{
+				Label:     dayKey,
+				Delivered: 0,
+				Failed:    0,
+				Deferred:  0,
+			}
+		}
+
+		stat.Delivered += hour.Delivered
+		stat.Failed += hour.Failed
+		stat.Deferred += hour.Deferred
+		dailyMap[dayKey] = stat
+	}
+
+	// Convert to slice and sort by date (last 30 days)
+	for i := 0; i < 30; i++ {
+		day := now.AddDate(0, 0, -29+i).Format("2006-01-02")
+		if stat, exists := dailyMap[day]; exists {
+			dailyStats = append(dailyStats, stat)
+		} else {
+			dailyStats = append(dailyStats, TimeScaleStats{
+				Label:     day,
+				Delivered: 0,
+				Failed:    0,
+				Deferred:  0,
+			})
+		}
+	}
+
+	return dailyStats
+}
+
+// getWeeklyStats aggregates hourly data into weekly statistics
+func (s *Server) getWeeklyStats(ctx context.Context) []TimeScaleStats {
+	var weeklyStats []TimeScaleStats
+
+	if s.metricsStore == nil {
+		return weeklyStats
+	}
+
+	// Get last 12 weeks of hourly data
+	hourlyData, err := s.metricsStore.GetHourlyStats(ctx)
+	if err != nil {
+		return weeklyStats
+	}
+
+	// Group by week
+	weeklyMap := make(map[string]TimeScaleStats)
+	now := time.Now()
+
+	for _, hour := range hourlyData {
+		// Parse hour label
+		if len(hour.Hour) < 10 {
+			continue
+		}
+
+		// Parse date and get week start (Monday)
+		date, err := time.Parse("2006-01-02T15", hour.Hour)
+		if err != nil {
+			continue
+		}
+
+		// Get Monday of this week
+		weekday := int(date.Weekday())
+		if weekday == 0 { // Sunday
+			weekday = 7
+		}
+		weekStart := date.AddDate(0, 0, -weekday+1)
+		weekKey := weekStart.Format("2006-01-02")
+
+		stat, exists := weeklyMap[weekKey]
+		if !exists {
+			stat = TimeScaleStats{
+				Label:     "Week of " + weekStart.Format("Jan 02"),
+				Delivered: 0,
+				Failed:    0,
+				Deferred:  0,
+			}
+		}
+
+		stat.Delivered += hour.Delivered
+		stat.Failed += hour.Failed
+		stat.Deferred += hour.Deferred
+		weeklyMap[weekKey] = stat
+	}
+
+	// Convert to slice and sort by week (last 12 weeks)
+	for i := 0; i < 12; i++ {
+		weekStart := now.AddDate(0, 0, -7*11+7*i)
+		// Adjust to Monday
+		for weekStart.Weekday() != time.Monday {
+			weekStart = weekStart.AddDate(0, 0, -1)
+		}
+		weekKey := weekStart.Format("2006-01-02")
+
+		if stat, exists := weeklyMap[weekKey]; exists {
+			weeklyStats = append(weeklyStats, stat)
+		} else {
+			weeklyStats = append(weeklyStats, TimeScaleStats{
+				Label:     "Week of " + weekStart.Format("Jan 02"),
+				Delivered: 0,
+				Failed:    0,
+				Deferred:  0,
+			})
+		}
+	}
+
+	return weeklyStats
+}
+
+// getMonthlyStats aggregates hourly data into monthly statistics
+func (s *Server) getMonthlyStats(ctx context.Context) []TimeScaleStats {
+	var monthlyStats []TimeScaleStats
+
+	if s.metricsStore == nil {
+		return monthlyStats
+	}
+
+	// Get last 12 months of hourly data
+	hourlyData, err := s.metricsStore.GetHourlyStats(ctx)
+	if err != nil {
+		return monthlyStats
+	}
+
+	// Group by month
+	monthlyMap := make(map[string]TimeScaleStats)
+	now := time.Now()
+
+	for _, hour := range hourlyData {
+		// Parse hour label
+		if len(hour.Hour) < 7 {
+			continue
+		}
+
+		// Extract month key (YYYY-MM)
+		monthKey := hour.Hour[:7]
+
+		stat, exists := monthlyMap[monthKey]
+		if !exists {
+			// Parse month for nice label
+			date, err := time.Parse("2006-01", monthKey)
+			if err != nil {
+				continue
+			}
+			stat = TimeScaleStats{
+				Label:     date.Format("Jan 2006"),
+				Delivered: 0,
+				Failed:    0,
+				Deferred:  0,
+			}
+		}
+
+		stat.Delivered += hour.Delivered
+		stat.Failed += hour.Failed
+		stat.Deferred += hour.Deferred
+		monthlyMap[monthKey] = stat
+	}
+
+	// Convert to slice and sort by month (last 12 months)
+	for i := 0; i < 12; i++ {
+		month := now.AddDate(0, -11+i, 0)
+		monthKey := month.Format("2006-01")
+
+		if stat, exists := monthlyMap[monthKey]; exists {
+			monthlyStats = append(monthlyStats, stat)
+		} else {
+			monthlyStats = append(monthlyStats, TimeScaleStats{
+				Label:     month.Format("Jan 2006"),
+				Delivered: 0,
+				Failed:    0,
+				Deferred:  0,
+			})
+		}
+	}
+
+	return monthlyStats
 }
 
 // calculateRate calculates a rate per period

@@ -683,14 +683,22 @@ If you received this message, your mail server is working correctly!</textarea>
                 <div class="reports-grid">
                     <div class="card chart-card">
                         <div class="card-header">
-                            <h3>Hourly Delivery Trends</h3>
-                            <button class="btn btn-secondary" onclick="refreshReports()">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <polyline points="23 4 23 10 17 10" />
-                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-                                </svg>
-                                Refresh
-                            </button>
+                            <h3>Delivery Trends</h3>
+                            <div class="chart-controls">
+                                <div class="time-scale-selector">
+                                    <button class="time-scale-btn active" data-scale="hour" onclick="changeTimeScale('hour')">Hourly</button>
+                                    <button class="time-scale-btn" data-scale="day" onclick="changeTimeScale('day')">Daily</button>
+                                    <button class="time-scale-btn" data-scale="week" onclick="changeTimeScale('week')">Weekly</button>
+                                    <button class="time-scale-btn" data-scale="month" onclick="changeTimeScale('month')">Monthly</button>
+                                </div>
+                                <button class="btn btn-secondary" onclick="refreshReports()">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="23 4 23 10 17 10" />
+                                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                                    </svg>
+                                    Refresh
+                                </button>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div class="chart-container" id="hourly-chart">
