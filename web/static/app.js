@@ -1757,10 +1757,37 @@ function renderChart(data) {
             ctx.font = '10px sans-serif';
             ctx.textAlign = 'center';
             
-            // Truncate long labels if needed
+            // Convert timezone for display
             let label = item.label;
-            if (label.length > 10 && data.length > 20) {
-                label = label.substring(5); // Remove "YYYY-" for hourly data
+            if (currentTimeScale === 'hour') {
+                // Parse the hour label and convert to local timezone
+                try {
+                    // Assuming format like "2024-01-28 15:00"
+                    const date = new Date(label);
+                    if (!isNaN(date.getTime())) {
+                        label = date.toLocaleTimeString('en-US', { 
+                            hour: '2-digit', 
+                            minute: '2-digit',
+                            hour12: false 
+                        });
+                    }
+                } catch (e) {
+                    // Fallback to original label if parsing fails
+                    console.warn('Failed to parse date label:', label);
+                }
+            } else if (currentTimeScale === 'day') {
+                // Format daily labels
+                try {
+                    const date = new Date(label);
+                    if (!isNaN(date.getTime())) {
+                        label = date.toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric' 
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse date label:', label);
+                }
             }
             
             ctx.fillText(label, x + barWidth / 2, canvas.height - padding + 15);
