@@ -1617,6 +1617,34 @@ function renderHourlyChart(hourlyData) {
     const maxValue = Math.max(...hourlyData.map(h => h.delivered + h.failed + h.deferred), 1);
     const chartHeight = canvas.height - padding * 2;
 
+    // Draw Y-axis
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border-color');
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padding, padding);
+    ctx.lineTo(padding, canvas.height - padding);
+    ctx.stroke();
+
+    // Draw Y-axis ticks and labels
+    const tickCount = 5;
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted');
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right';
+    
+    for (let i = 0; i <= tickCount; i++) {
+        const y = canvas.height - padding - (i * chartHeight / tickCount);
+        const value = Math.round((i * maxValue) / tickCount);
+        
+        // Draw tick mark
+        ctx.beginPath();
+        ctx.moveTo(padding - 3, y);
+        ctx.lineTo(padding + 3, y);
+        ctx.stroke();
+        
+        // Draw label
+        ctx.fillText(value.toString(), padding - 8, y + 3);
+    }
+
     hourlyData.forEach((hour, i) => {
         const x = padding + i * (barWidth + 4);
         const total = hour.delivered + hour.failed + hour.deferred;
