@@ -578,18 +578,30 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 // handleLogout handles user logout
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Logout request received")
+
 	if s.sessionManager == nil {
+		log.Printf("Session manager is nil during logout")
 		http.Error(w, "Authentication not enabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	sessionID := s.sessionManager.GetSessionFromRequest(r)
+	log.Printf("Found session ID for logout: %s", sessionID)
+
 	if sessionID != "" {
-		_ = s.sessionManager.RevokeSession(sessionID) // Best effort
+		err := s.sessionManager.RevokeSession(sessionID)
+		if err != nil {
+			log.Printf("Error revoking session: %v", err)
+		} else {
+			log.Printf("Session revoked successfully")
+		}
 	}
 
 	// Clear session cookie
+	log.Printf("Clearing session cookie")
 	s.sessionManager.ClearCookie(w)
+	log.Printf("Session cookie cleared")
 
 	writeJSON(w, map[string]string{"status": "success", "message": "Logged out"})
 }

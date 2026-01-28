@@ -1313,6 +1313,10 @@ async function handleLogout() {
         console.log('Attempting logout...');
         const response = await fetch('/auth/logout', { method: 'POST' });
         console.log('Logout response status:', response.status);
+        
+        // Check if Set-Cookie header is present to clear session
+        const setCookieHeader = response.headers.get('Set-Cookie');
+        console.log('Set-Cookie header:', setCookieHeader);
     } catch (error) {
         console.error('Logout error:', error);
     }
@@ -1325,8 +1329,13 @@ async function handleLogout() {
     document.getElementById('user-dropdown').classList.remove('active');
     showToast('Logged out successfully', 'info');
     
+    console.log('About to redirect to login page...');
     // Force redirect to login with timestamp to prevent caching
-    window.location.replace('/login?t=' + Date.now());
+    // Use multiple methods to ensure redirect happens
+    setTimeout(() => {
+        console.log('Executing redirect now...');
+        window.location.href = '/login?t=' + Date.now() + '&logout=1';
+    }, 500);
 }
 
 function updateUserUI() {
