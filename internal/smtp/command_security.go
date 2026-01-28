@@ -83,7 +83,7 @@ func DefaultCommandSecurityConfig() *CommandSecurityConfig {
 		CommandTimeout:         30 * time.Second, // 30 second timeout for command processing
 		MaxCommandsPerSession:  1000,             // Maximum commands per session
 		EnableMemoryMonitoring: true,             // Enable memory monitoring
-		MaxMemoryPerCommand:    1024 * 1024,      // 1MB max memory per command
+		MaxMemoryPerCommand:    10 * 1024 * 1024, // 10MB max memory per command
 	}
 }
 
@@ -597,12 +597,13 @@ func (csm *CommandSecurityManager) checkMemoryUsage(ctx context.Context, initial
 	// Calculate memory increase
 	memoryIncrease := int64(currentStats.Alloc) - int64(initialStats.Alloc)
 
-	// Check if memory usage exceeds limit
+	// Check if memory increase exceeds the maximum allowed
 	if memoryIncrease > csm.config.MaxMemoryPerCommand {
-		csm.logger.WarnContext(ctx, "Command processing exceeded memory limit",
+		csm.logger.WarnContext(ctx, "Command processing exceeded memory limit - REJECTING message",
 			"event_type", "rejection",
 			"memory_increase", memoryIncrease,
 			"max_memory_per_command", csm.config.MaxMemoryPerCommand,
+			"over_limit_by", memoryIncrease-csm.config.MaxMemoryPerCommand,
 		)
 		// 452 = temporary failure (4xx), client should retry later
 		// This is a resource constraint, not a permanent rejection
