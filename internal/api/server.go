@@ -601,8 +601,9 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authCtx := GetAuthContext(r)
-	if authCtx == nil {
+	// Authenticate using the same method as RequireAuth middleware
+	authCtx, err := s.authMiddleware.authenticate(r)
+	if err != nil {
 		http.Error(w, "Not authenticated", http.StatusUnauthorized)
 		return
 	}
