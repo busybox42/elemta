@@ -1278,6 +1278,13 @@ body {
 .activity-icon.failed { background: rgba(239, 68, 68, 0.15); color: var(--accent-danger); }
 .activity-icon.deferred { background: rgba(245, 158, 11, 0.15); color: var(--accent-warning); }
 
+/* Hide failed queue elements when retention is disabled */
+body.hide-failed-queue .failed-stat-card,
+body.hide-failed-queue .queue-tab[data-queue="failed"],
+body.hide-failed-queue .failed-health-stat {
+    display: none;
+}
+
 .activity-content {
     flex: 1;
     min-width: 0;

@@ -14,20 +14,21 @@ import (
 
 // HealthStats represents server health statistics
 type HealthStats struct {
-	Status          string         `json:"status"`
-	Uptime          int64          `json:"uptime"`           // seconds
-	UptimeFormatted string         `json:"uptime_formatted"` // human readable
-	StartedAt       time.Time      `json:"started_at"`
-	GoVersion       string         `json:"go_version"`
-	NumGoroutines   int            `json:"num_goroutines"`
-	NumCPU          int            `json:"num_cpu"`
-	Memory          MemoryStats    `json:"memory"`
-	Queue           QueueHealth    `json:"queue"`
-	SMTP            SMTPHealth     `json:"smtp"`
-	Throughput      ThroughputInfo `json:"throughput"`
-	ServerVersion   string         `json:"server_version"`
-	ConfiguredAddr  string         `json:"configured_addr"`
-	AuthEnabled     bool           `json:"auth_enabled"`
+	Status                    string         `json:"status"`
+	Uptime                    int64          `json:"uptime"`           // seconds
+	UptimeFormatted           string         `json:"uptime_formatted"` // human readable
+	StartedAt                 time.Time      `json:"started_at"`
+	GoVersion                 string         `json:"go_version"`
+	NumGoroutines             int            `json:"num_goroutines"`
+	NumCPU                    int            `json:"num_cpu"`
+	Memory                    MemoryStats    `json:"memory"`
+	Queue                     QueueHealth    `json:"queue"`
+	SMTP                      SMTPHealth     `json:"smtp"`
+	Throughput                ThroughputInfo `json:"throughput"`
+	ServerVersion             string         `json:"server_version"`
+	ConfiguredAddr            string         `json:"configured_addr"`
+	AuthEnabled               bool           `json:"auth_enabled"`
+	FailedQueueRetentionHours int            `json:"failed_queue_retention_hours"`
 }
 
 // MemoryStats represents memory usage statistics
@@ -210,12 +211,21 @@ func (s *Server) handleHealthStats(w http.ResponseWriter, r *http.Request) {
 			TotalProcessed:    totalProcessed,
 			TotalBytes:        totalBytes,
 		},
-		ServerVersion:  "1.0.0",
-		ConfiguredAddr: s.listenAddr,
-		AuthEnabled:    s.authSystem != nil,
+		ServerVersion:             "1.0.0",
+		ConfiguredAddr:            s.listenAddr,
+		AuthEnabled:               s.authSystem != nil,
+		FailedQueueRetentionHours: s.getFailedQueueRetentionHours(),
 	}
 
 	writeJSON(w, health)
+}
+
+// getFailedQueueRetentionHours returns the failed queue retention setting
+func (s *Server) getFailedQueueRetentionHours() int {
+	if s.queueMgr != nil {
+		return s.queueMgr.GetFailedQueueRetentionHours()
+	}
+	return 0 // Default to immediate deletion
 }
 
 // handleDeliveryStats returns delivery statistics

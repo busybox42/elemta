@@ -256,7 +256,7 @@
                             <span class="stat-label">On Hold</span>
                         </div>
                     </div>
-                    <div class="stat-card">
+                    <div class="stat-card failed-stat-card">
                         <div class="stat-icon failed-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <circle cx="12" cy="12" r="10" />
@@ -440,8 +440,8 @@
                                 <dd id="queue-deferred-health">-</dd>
                                 <dt>On Hold</dt>
                                 <dd id="queue-hold-health">-</dd>
-                                <dt>Failed</dt>
-                                <dd id="queue-failed-health">-</dd>
+                                <dt class="failed-health-stat">Failed</dt>
+                                <dd id="queue-failed-health" class="failed-health-stat">-</dd>
                                 <dt>Processor Active</dt>
                                 <dd id="queue-processor">-</dd>
                             </dl>
@@ -642,7 +642,7 @@ If you received this message, your mail server is working correctly!</textarea>
                             <span class="stat-label">Delivered</span>
                         </div>
                     </div>
-                    <div class="stat-card">
+                    <div class="stat-card failed-stat-card">
                         <div class="stat-icon failed-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <circle cx="12" cy="12" r="10" />

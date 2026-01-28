@@ -33,6 +33,9 @@ document.addEventListener('DOMContentLoaded', () => {
         checkAuthStatus(); // Check authentication status on page load
     }, 300);
     
+    // Initial health check to set failed queue visibility
+    refreshHealth();
+    
     loadFromURL();
     refreshAllData();
     startAutoRefresh();
@@ -1462,6 +1465,14 @@ async function refreshHealth() {
         document.getElementById('health-uptime').textContent = health.uptime_formatted || '0s';
         document.getElementById('health-goroutines').textContent = health.num_goroutines || 0;
         document.getElementById('health-memory').textContent = (health.memory?.alloc_mb || 0).toFixed(1) + ' MB';
+
+        // Check failed queue retention setting and hide UI elements if disabled
+        const failedRetentionHours = health.failed_queue_retention_hours || 0;
+        if (failedRetentionHours === 0) {
+            document.body.classList.add('hide-failed-queue');
+        } else {
+            document.body.classList.remove('hide-failed-queue');
+        }
 
         // System info
         document.getElementById('health-go-version').textContent = health.go_version || '-';
