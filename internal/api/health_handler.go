@@ -149,6 +149,18 @@ func (s *Server) handleHealthStats(w http.ResponseWriter, r *http.Request) {
 	// Get queue stats
 	queueStats := s.queueMgr.GetStats()
 
+	// Get metrics from Valkey store for throughput calculation
+	var totalProcessed int64
+	var totalBytes int64
+	if s.metricsStore != nil {
+		metricsData, err := s.metricsStore.GetMetrics(ctx)
+		if err == nil && metricsData != nil {
+			totalProcessed = metricsData.TotalDelivered + metricsData.TotalFailed + metricsData.TotalDeferred
+			// Note: bytes data may not be available in metrics store, using 0 for now
+			totalBytes = 0
+		}
+	}
+
 	health := HealthStats{
 		Status:          "healthy",
 		Uptime:          int64(uptime.Seconds()),
@@ -191,11 +203,11 @@ func (s *Server) handleHealthStats(w http.ResponseWriter, r *http.Request) {
 			TotalConnections:  totalConnections.Load(),
 		},
 		Throughput: ThroughputInfo{
-			MessagesPerMinute: calculateRate(messagesProcessed.Load(), uptime, time.Minute),
-			MessagesPerHour:   calculateRate(messagesProcessed.Load(), uptime, time.Hour),
-			BytesPerMinute:    calculateRate(bytesProcessed.Load(), uptime, time.Minute),
-			TotalProcessed:    messagesProcessed.Load(),
-			TotalBytes:        bytesProcessed.Load(),
+			MessagesPerMinute: calculateRate(totalProcessed, uptime, time.Minute),
+			MessagesPerHour:   calculateRate(totalProcessed, uptime, time.Hour),
+			BytesPerMinute:    calculateRate(totalBytes, uptime, time.Minute),
+			TotalProcessed:    totalProcessed,
+			TotalBytes:        totalBytes,
 		},
 		ServerVersion:  "1.0.0",
 		ConfiguredAddr: s.listenAddr,
