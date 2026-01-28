@@ -955,6 +955,26 @@ func (dh *DataHandler) performAntivirusScan(ctx context.Context, data []byte, re
 			result.VirusFound = true
 			result.Threats = append(result.Threats, "Virus detected: "+pattern)
 
+			// Log rejection event for virus detection
+			dh.msgLogger.LogRejection(logging.MessageContext{
+				MessageID:      "", // Will be set later when metadata is available
+				QueueID:        "",
+				From:           "",
+				To:             []string{},
+				Subject:        "",
+				Size:           int64(len(data)),
+				ClientIP:       dh.session.remoteAddr,
+				ClientHostname: dh.session.remoteAddr,
+				Username:       dh.state.GetUsername(),
+				Authenticated:  dh.state.IsAuthenticated(),
+				TLSActive:      dh.state.IsTLSActive(),
+				ReceptionTime:  dh.receptionTime,
+				ProcessingTime: time.Now(),
+				VirusFound:     true,
+				VirusScanned:   true,
+				Error:          fmt.Sprintf("Message rejected due to virus: %s", pattern),
+			})
+
 			dh.logger.WarnContext(ctx, "Virus detected in message",
 				"pattern", pattern,
 				"message_id", "unknown",
@@ -1026,6 +1046,26 @@ func (dh *DataHandler) performSpamScan(ctx context.Context, data []byte, metadat
 	if spamScore >= 5.0 {
 		result.Passed = false
 		result.Threats = append(result.Threats, fmt.Sprintf("High spam score: %.1f", spamScore))
+
+		// Log rejection event for spam detection
+		dh.msgLogger.LogRejection(logging.MessageContext{
+			MessageID:      metadata.MessageID,
+			QueueID:        metadata.MessageID,
+			From:           metadata.From,
+			To:             metadata.To,
+			Subject:        metadata.Subject,
+			Size:           metadata.Size,
+			ClientIP:       dh.session.remoteAddr,
+			ClientHostname: dh.session.remoteAddr,
+			Username:       dh.state.GetUsername(),
+			Authenticated:  dh.state.IsAuthenticated(),
+			TLSActive:      dh.state.IsTLSActive(),
+			ReceptionTime:  dh.receptionTime,
+			ProcessingTime: time.Now(),
+			SpamScore:      spamScore,
+			SpamScanned:    true,
+			Error:          fmt.Sprintf("Message rejected due to spam score: %.1f", spamScore),
+		})
 
 		dh.logger.WarnContext(ctx, "Message flagged as spam",
 			"spam_score", spamScore,
@@ -1221,6 +1261,7 @@ func min(a, b int) int {
 func (dh *DataHandler) handleSecurityThreat(ctx context.Context, scanResult *SecurityScanResult, metadata *MessageMetadata) error {
 	if scanResult.VirusFound {
 		dh.logger.WarnContext(ctx, "Message rejected due to virus",
+			"event_type", "rejection",
 			"threats", scanResult.Threats,
 			"message_id", metadata.MessageID,
 		)
@@ -1249,6 +1290,7 @@ func (dh *DataHandler) handleSecurityThreat(ctx context.Context, scanResult *Sec
 
 	if scanResult.SpamScore >= 10.0 {
 		dh.logger.WarnContext(ctx, "Message rejected due to high spam score",
+			"event_type", "rejection",
 			"spam_score", scanResult.SpamScore,
 			"message_id", metadata.MessageID,
 		)

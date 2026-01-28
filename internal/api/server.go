@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -926,6 +927,11 @@ func (s *Server) handleGetMessageLogs(w http.ResponseWriter, r *http.Request) {
 		eventType, _ := logEntry["event_type"].(string)
 		component, _ := logEntry["component"].(string)
 
+		// Enforce strict categorization for 4xx/5xx errors if event_type is missing or system
+		if eventType == "" || eventType == "system" {
+			eventType = categorizeLogEntry(logEntry, msg)
+		}
+
 		// Apply filters
 		if eventTypeFilter != "" {
 			if eventTypeFilter == "system" {
@@ -1094,4 +1100,85 @@ func (s *Server) isAdmin(authCtx *AuthContext) bool {
 		}
 	}
 	return false
+}
+
+// Regex patterns for SMTP code detection
+var (
+	smtp5xxPattern = regexp.MustCompile(`\b5[0-9]{2}\b`)
+	smtp4xxPattern = regexp.MustCompile(`\b4[0-9]{2}\b`)
+)
+
+// categorizeLogEntry determines the event_type for a log entry based on its content
+// This ensures 5xx errors are categorized as rejection and 4xx as tempfail/deferral
+func categorizeLogEntry(logEntry map[string]interface{}, msg string) string {
+	msgLower := strings.ToLower(msg)
+
+	// 1. Check for rejection keywords in message
+	rejectionKeywords := []string{
+		"rejected", "virus", "spam", "blocked", "denied", "refused",
+		"malware", "threat", "infected", "banned", "blacklist",
+	}
+	for _, keyword := range rejectionKeywords {
+		if strings.Contains(msgLower, keyword) {
+			return "rejection"
+		}
+	}
+
+	// 2. Check for tempfail/deferral keywords in message
+	tempfailKeywords := []string{
+		"deferred", "retry", "temporary", "tempfail", "greylisted",
+		"try again", "later", "busy", "throttled", "rate limit",
+	}
+	for _, keyword := range tempfailKeywords {
+		if strings.Contains(msgLower, keyword) {
+			return "tempfail"
+		}
+	}
+
+	// 3. Check for spam_score field (content-based rejection)
+	if spamScore, ok := logEntry["spam_score"].(float64); ok && spamScore > 0 {
+		return "rejection"
+	}
+
+	// 4. Check for threats field (virus/content rejection)
+	if _, ok := logEntry["threats"]; ok {
+		return "rejection"
+	}
+
+	// 5. Check for virus_found field
+	if virusFound, ok := logEntry["virus_found"].(bool); ok && virusFound {
+		return "rejection"
+	}
+
+	// 6. Scan ALL string fields for SMTP 5xx codes (permanent failures)
+	for _, v := range logEntry {
+		if str, ok := v.(string); ok {
+			if smtp5xxPattern.MatchString(str) {
+				return "rejection"
+			}
+		}
+	}
+
+	// 7. Scan ALL string fields for SMTP 4xx codes (temporary failures)
+	for _, v := range logEntry {
+		if str, ok := v.(string); ok {
+			if smtp4xxPattern.MatchString(str) {
+				return "tempfail"
+			}
+		}
+	}
+
+	// 8. Check for delivery/bounce status fields
+	if status, ok := logEntry["status"].(string); ok {
+		statusLower := strings.ToLower(status)
+		if statusLower == "rejected" || statusLower == "bounced" {
+			return "rejection"
+		}
+		if statusLower == "deferred" || statusLower == "temporary_failure" {
+			return "tempfail"
+		}
+	}
+
+	// Default: remain as system/empty (will be filtered appropriately)
+	return ""
 }
