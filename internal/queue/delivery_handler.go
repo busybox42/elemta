@@ -13,19 +13,21 @@ import (
 
 // SMTPDeliveryHandler implements DeliveryHandler for SMTP delivery
 type SMTPDeliveryHandler struct {
-	logger       *slog.Logger
-	timeout      time.Duration
-	retryDNS     bool
-	maxMXLookups int
+	logger                    *slog.Logger
+	timeout                   time.Duration
+	retryDNS                  bool
+	maxMXLookups              int
+	failedQueueRetentionHours int
 }
 
 // NewSMTPDeliveryHandler creates a new SMTP delivery handler
-func NewSMTPDeliveryHandler() *SMTPDeliveryHandler {
+func NewSMTPDeliveryHandler(failedQueueRetentionHours int) *SMTPDeliveryHandler {
 	return &SMTPDeliveryHandler{
-		logger:       slog.Default().With("component", "smtp-delivery"),
-		timeout:      30 * time.Second,
-		retryDNS:     true,
-		maxMXLookups: 3,
+		logger:                    slog.Default().With("component", "smtp-delivery"),
+		timeout:                   30 * time.Second,
+		retryDNS:                  true,
+		maxMXLookups:              3,
+		failedQueueRetentionHours: failedQueueRetentionHours,
 	}
 }
 
@@ -346,19 +348,26 @@ func (h *SMTPDeliveryHandler) connectSMTPWithMetadata(ctx context.Context, addre
 	return client, conn, nil
 }
 
+// GetFailedQueueRetentionHours returns the failed queue retention setting
+func (h *SMTPDeliveryHandler) GetFailedQueueRetentionHours() int {
+	return h.failedQueueRetentionHours
+}
+
 // MockDeliveryHandler implements DeliveryHandler for testing
 type MockDeliveryHandler struct {
-	logger     *slog.Logger
-	shouldFail bool
-	deliveries []Message
-	mutex      sync.Mutex
+	logger                    *slog.Logger
+	shouldFail                bool
+	deliveries                []Message
+	mutex                     sync.Mutex
+	failedQueueRetentionHours int
 }
 
 // NewMockDeliveryHandler creates a new mock delivery handler for testing
-func NewMockDeliveryHandler() *MockDeliveryHandler {
+func NewMockDeliveryHandler(failedQueueRetentionHours int) *MockDeliveryHandler {
 	return &MockDeliveryHandler{
-		logger:     slog.Default().With("component", "mock-delivery"),
-		deliveries: make([]Message, 0),
+		logger:                    slog.Default().With("component", "mock-delivery"),
+		deliveries:                make([]Message, 0),
+		failedQueueRetentionHours: failedQueueRetentionHours,
 	}
 }
 
@@ -412,6 +421,7 @@ func (m *MockDeliveryHandler) DeliverMessageWithMetadata(ctx context.Context, ms
 
 	return &DeliveryResult{
 		Success:         true,
+		Error:           nil,
 		DeliveryIP:      "127.0.0.1",
 		DeliveryHost:    "localhost",
 		DeliveryTime:    time.Now(),
@@ -424,6 +434,11 @@ func (m *MockDeliveryHandler) SetShouldFail(fail bool) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.shouldFail = fail
+}
+
+// GetFailedQueueRetentionHours returns the failed queue retention setting
+func (m *MockDeliveryHandler) GetFailedQueueRetentionHours() int {
+	return m.failedQueueRetentionHours
 }
 
 // GetDeliveries returns all delivered messages

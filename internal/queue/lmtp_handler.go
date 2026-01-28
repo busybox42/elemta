@@ -13,16 +13,17 @@ import (
 
 // LMTPDeliveryHandler implements DeliveryHandler for LMTP delivery (e.g., to Dovecot)
 type LMTPDeliveryHandler struct {
-	logger   *slog.Logger
-	timeout  time.Duration
-	host     string
-	port     int
-	limiter  *domainLimiter
-	maxInFly int
+	logger                    *slog.Logger
+	timeout                   time.Duration
+	host                      string
+	port                      int
+	limiter                   *domainLimiter
+	maxInFly                  int
+	failedQueueRetentionHours int
 }
 
 // NewLMTPDeliveryHandler creates a new LMTP delivery handler
-func NewLMTPDeliveryHandler(host string, port int, maxPerDomain int) *LMTPDeliveryHandler {
+func NewLMTPDeliveryHandler(host string, port int, maxPerDomain int, failedQueueRetentionHours int) *LMTPDeliveryHandler {
 	if port == 0 {
 		port = 2424 // Default LMTP port (common for Dovecot)
 	}
@@ -31,12 +32,13 @@ func NewLMTPDeliveryHandler(host string, port int, maxPerDomain int) *LMTPDelive
 	}
 
 	return &LMTPDeliveryHandler{
-		logger:   slog.Default().With("component", "lmtp-delivery"),
-		timeout:  30 * time.Second,
-		host:     host,
-		port:     port,
-		limiter:  newDomainLimiter(maxPerDomain),
-		maxInFly: maxPerDomain,
+		logger:                    slog.Default().With("component", "lmtp-delivery"),
+		timeout:                   30 * time.Second,
+		host:                      host,
+		port:                      port,
+		limiter:                   newDomainLimiter(maxPerDomain),
+		maxInFly:                  maxPerDomain,
+		failedQueueRetentionHours: failedQueueRetentionHours,
 	}
 }
 
@@ -347,4 +349,9 @@ func (l *domainLimiter) Release(domain string) {
 			l.inFlight[domain] = current - 1
 		}
 	}
+}
+
+// GetFailedQueueRetentionHours returns the failed queue retention setting
+func (h *LMTPDeliveryHandler) GetFailedQueueRetentionHours() int {
+	return h.failedQueueRetentionHours
 }

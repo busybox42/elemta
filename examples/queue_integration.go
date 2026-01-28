@@ -22,7 +22,7 @@ func main() {
 	defer manager.Stop()
 
 	// Create delivery handler (use mock for example)
-	deliveryHandler := queue.NewMockDeliveryHandler()
+	deliveryHandler := queue.NewMockDeliveryHandler(0) // Default: immediate deletion
 
 	// Configure processor
 	config := queue.ProcessorConfig{

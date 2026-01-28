@@ -233,7 +233,7 @@ func NewServer(config *Config) (*Server, error) {
 		}
 
 		slogger.Info("Creating LMTP delivery handler", "host", deliveryHost, "port", deliveryPort, "max_per_domain", maxPerDomain)
-		lmtpHandler := queue.NewLMTPDeliveryHandler(deliveryHost, deliveryPort, maxPerDomain)
+		lmtpHandler := queue.NewLMTPDeliveryHandler(deliveryHost, deliveryPort, maxPerDomain, config.FailedQueueRetentionHours)
 
 		// Create processor configuration
 		processorConfig := queue.ProcessorConfig{

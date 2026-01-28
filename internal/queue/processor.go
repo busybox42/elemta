@@ -47,6 +47,7 @@ type DeliveryResult struct {
 type DeliveryHandler interface {
 	DeliverMessage(ctx context.Context, msg Message, content []byte) error
 	DeliverMessageWithMetadata(ctx context.Context, msg Message, content []byte) (*DeliveryResult, error)
+	GetFailedQueueRetentionHours() int
 }
 
 // MetricsRecorder interface for recording delivery metrics
@@ -488,10 +489,26 @@ func (p *Processor) moveToFailed(msg Message, reason string) {
 		DeliveryMethod: "lmtp",
 	})
 
-	if err := p.manager.MoveMessage(msg.ID, Failed, reason); err != nil {
-		p.logger.Error("Failed to move message to failed queue",
-			"message_id", msg.ID,
-			"error", err)
+	// Check failed queue retention setting
+	retentionHours := p.handler.GetFailedQueueRetentionHours()
+	if retentionHours == 0 {
+		// Immediate deletion - remove message entirely
+		if err := p.manager.DeleteMessage(msg.ID); err != nil {
+			p.logger.Error("Failed to delete message with permanent failure",
+				"message_id", msg.ID,
+				"error", err)
+		} else {
+			p.logger.Info("Message permanently deleted (5xx error)",
+				"message_id", msg.ID,
+				"reason", reason)
+		}
+	} else {
+		// Move to failed queue with retention
+		if err := p.manager.MoveMessage(msg.ID, Failed, reason); err != nil {
+			p.logger.Error("Failed to move message to failed queue",
+				"message_id", msg.ID,
+				"error", err)
+		}
 	}
 }
 
@@ -508,6 +525,9 @@ func (p *Processor) isTemporaryFailure(err error) bool {
 
 	errStr := err.Error()
 	errLower := strings.ToLower(errStr)
+
+	// DEBUG: Log the actual error string for troubleshooting
+	p.logger.Debug("isTemporaryFailure checking error", "error_string", errStr)
 
 	// Check for explicit 4xx SMTP response codes
 	// These indicate temporary failures that should be retried

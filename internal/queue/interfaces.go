@@ -29,6 +29,7 @@ type QueueManager interface {
 	// Statistics and monitoring
 	GetStats() QueueStats
 	UpdateStats() error
+	GetFailedQueueRetentionHours() int
 
 	// Cleanup
 	CleanupExpiredMessages(retentionHours int) (int, error)
@@ -46,6 +47,7 @@ type DeliveryManager interface {
 	// Delivery configuration
 	SetMaxConcurrent(count int)
 	SetRetrySchedule(schedule []int)
+	GetFailedQueueRetentionHours() int
 
 	// Delivery hooks and events
 	AddDeliveryHook(hook DeliveryHook)
@@ -170,8 +172,9 @@ type QueueConfiguration struct {
 	DeliveryTimeout int   `toml:"delivery_timeout" json:"delivery_timeout"` // seconds
 
 	// Retention configuration
-	RetentionHours  int `toml:"retention_hours" json:"retention_hours"`
-	CleanupInterval int `toml:"cleanup_interval" json:"cleanup_interval"` // hours
+	RetentionHours            int `toml:"retention_hours" json:"retention_hours"`
+	FailedQueueRetentionHours int `toml:"failed_queue_retention_hours" json:"failed_queue_retention_hours"` // 0 = immediate deletion
+	CleanupInterval           int `toml:"cleanup_interval" json:"cleanup_interval"`                         // hours
 
 	// Rate limiting configuration
 	RateLimitEnabled   bool `toml:"rate_limit_enabled" json:"rate_limit_enabled"`

@@ -42,7 +42,10 @@ type Config struct {
 	DNSCacheSize int           `yaml:"dns_cache_size" json:"dns_cache_size"`
 	DNSCacheTTL  time.Duration `yaml:"dns_cache_ttl" json:"dns_cache_ttl"`
 	DNSTimeout   time.Duration `yaml:"dns_timeout" json:"dns_timeout"`
-	DNSRetries   int           `yaml:"dns_retries" json:"dns_retries"`
+
+	// Failed queue settings
+	FailedQueueRetentionHours int `yaml:"failed_queue_retention_hours" json:"failed_queue_retention_hours"` // 0 = immediate deletion
+	DNSRetries                int `yaml:"dns_retries" json:"dns_retries"`
 
 	// Delivery settings
 	MaxConcurrentDeliveries int           `yaml:"max_concurrent_deliveries" json:"max_concurrent_deliveries"`

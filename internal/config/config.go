@@ -108,16 +108,17 @@ func DefaultRateLimiterPluginConfig() *RateLimiterPluginConfig {
 // Config represents the application configuration
 type Config struct {
 	// Top-level server settings (from flat TOML structure)
-	Hostname       string   `toml:"hostname"`
-	ListenAddr     string   `toml:"listen_addr"`
-	QueueDir       string   `toml:"queue_dir"`
-	MaxSize        int64    `toml:"max_size"`
-	MaxWorkers     int      `toml:"max_workers"`
-	MaxRetries     int      `toml:"max_retries"`
-	MaxQueueTime   int      `toml:"max_queue_time"`
-	RetrySchedule  []int    `toml:"retry_schedule"`
-	SessionTimeout string   `toml:"session_timeout"`
-	LocalDomains   []string `toml:"local_domains"`
+	Hostname                  string   `toml:"hostname"`
+	ListenAddr                string   `toml:"listen_addr"`
+	QueueDir                  string   `toml:"queue_dir"`
+	MaxSize                   int64    `toml:"max_size"`
+	MaxWorkers                int      `toml:"max_workers"`
+	MaxRetries                int      `toml:"max_retries"`
+	MaxQueueTime              int      `toml:"max_queue_time"`
+	RetrySchedule             []int    `toml:"retry_schedule"`
+	SessionTimeout            string   `toml:"session_timeout"`
+	LocalDomains              []string `toml:"local_domains"`
+	FailedQueueRetentionHours int      `toml:"failed_queue_retention_hours"` // 0 = immediate deletion
 
 	// Server configuration (legacy nested structure)
 	Server struct {

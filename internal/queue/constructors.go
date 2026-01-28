@@ -91,6 +91,15 @@ func (dm *SimpleDeliveryManager) SetRetrySchedule(schedule []int) {
 	dm.config.RetrySchedule = schedule
 }
 
+// GetFailedQueueRetentionHours returns the failed queue retention setting
+func (dm *SimpleDeliveryManager) GetFailedQueueRetentionHours() int {
+	// Default to 0 (immediate deletion) if not set
+	if dm.config.FailedQueueRetentionHours < 0 {
+		return 0
+	}
+	return dm.config.FailedQueueRetentionHours
+}
+
 // AddDeliveryHook adds a delivery hook
 func (dm *SimpleDeliveryManager) AddDeliveryHook(hook DeliveryHook) {
 	dm.hooks = append(dm.hooks, hook)

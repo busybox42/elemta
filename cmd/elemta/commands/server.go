@@ -142,13 +142,14 @@ func startServer() {
 	}
 
 	smtpConfig := &smtp.Config{
-		Hostname:     cfg.Hostname,     // Use top-level hostname
-		ListenAddr:   cfg.ListenAddr,   // Use top-level listen_addr
-		QueueDir:     queueDir,         // Use queue directory (prioritize flat, fallback to nested)
-		MaxSize:      cfg.MaxSize,      // Use top-level max_size
-		LocalDomains: cfg.LocalDomains, // Use top-level local_domains
-		TLS:          cfg.TLS,
-		DevMode:      devMode || cfg.Server.DevMode,
+		Hostname:                  cfg.Hostname,     // Use top-level hostname
+		ListenAddr:                cfg.ListenAddr,   // Use top-level listen_addr
+		QueueDir:                  queueDir,         // Use queue directory (prioritize flat, fallback to nested)
+		MaxSize:                   cfg.MaxSize,      // Use top-level max_size
+		LocalDomains:              cfg.LocalDomains, // Use top-level local_domains
+		TLS:                       cfg.TLS,
+		DevMode:                   devMode || cfg.Server.DevMode,
+		FailedQueueRetentionHours: cfg.FailedQueueRetentionHours, // Use failed queue retention setting
 	}
 
 	slog.Info("SMTP Config", "hostname", smtpConfig.Hostname, "queue_dir", smtpConfig.QueueDir, "local_domains", smtpConfig.LocalDomains)

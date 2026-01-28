@@ -25,7 +25,7 @@ func TestProcessor(t *testing.T) {
 
 	t.Run("StartStop", func(t *testing.T) {
 		// Create fresh mock handler for this test
-		mockHandler := NewMockDeliveryHandler()
+		mockHandler := NewMockDeliveryHandler(0) // Default: immediate deletion
 		processor := NewProcessor(manager, config, mockHandler)
 
 		if err := processor.Start(); err != nil {
@@ -42,7 +42,7 @@ func TestProcessor(t *testing.T) {
 
 	t.Run("ProcessMessage", func(t *testing.T) {
 		// Create fresh mock handler for this test
-		mockHandler := NewMockDeliveryHandler()
+		mockHandler := NewMockDeliveryHandler(0) // Default: immediate deletion
 		processor := NewProcessor(manager, config, mockHandler)
 
 		// Ensure mock handler is configured for success
@@ -89,7 +89,7 @@ func TestProcessor(t *testing.T) {
 
 	t.Run("RetryLogic", func(t *testing.T) {
 		// Create fresh mock handler for this test
-		mockHandler := NewMockDeliveryHandler()
+		mockHandler := NewMockDeliveryHandler(0) // Default: immediate deletion
 		processor := NewProcessor(manager, config, mockHandler)
 
 		// Configure to fail
@@ -140,7 +140,7 @@ func TestProcessor(t *testing.T) {
 
 	t.Run("PriorityProcessing", func(t *testing.T) {
 		// Create fresh mock handler for this test
-		mockHandler := NewMockDeliveryHandler()
+		mockHandler := NewMockDeliveryHandler(0) // Default: immediate deletion
 		processor := NewProcessor(manager, config, mockHandler)
 
 		// Ensure success mode
@@ -204,7 +204,7 @@ func TestProcessor(t *testing.T) {
 
 	t.Run("ConcurrencyLimit", func(t *testing.T) {
 		// Create fresh mock handler for this test
-		mockHandler := NewMockDeliveryHandler()
+		mockHandler := NewMockDeliveryHandler(0) // Default: immediate deletion
 
 		// Create a processor with concurrency limit of 1
 		limitedConfig := config
@@ -247,7 +247,7 @@ func TestProcessor(t *testing.T) {
 
 	t.Run("MetricsTracking", func(t *testing.T) {
 		// Create fresh mock handler for this test
-		mockHandler := NewMockDeliveryHandler()
+		mockHandler := NewMockDeliveryHandler(0) // Default: immediate deletion
 		processor := NewProcessor(manager, config, mockHandler)
 
 		// Ensure success mode

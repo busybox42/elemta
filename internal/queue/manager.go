@@ -593,14 +593,18 @@ func calculateNextRetry(retryCount int) time.Time {
 	return time.Now().Add(time.Duration(delaySeconds) * time.Second)
 }
 
+// GetFailedQueueRetentionHours returns the failed queue retention setting
+func (m *Manager) GetFailedQueueRetentionHours() int {
+	// Default to 0 (immediate deletion) if not configured
+	return 0
+}
+
 // Stop stops the queue manager and cleans up resources
 func (m *Manager) Stop() {
-	// Only close the channel if it hasn't been closed already
 	m.mutex.Lock()
-	select {
-	case <-m.stopCh:
-		// Channel is already closed
-	default:
+	defer m.mutex.Unlock()
+
+	if m.stopCh != nil {
 		close(m.stopCh)
 	}
 	m.mutex.Unlock()
