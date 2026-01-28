@@ -259,7 +259,7 @@ func (s *Server) Start() error {
 
 	// Public routes (must be registered before protected routes)
 	r.HandleFunc("/login", s.handleLoginPage).Methods("GET")
-	r.HandleFunc("/static/images/elemta.png", s.handleLogo).Methods("GET")
+	r.HandleFunc("/logo.png", s.handleLogo).Methods("GET")
 
 	// Serve static files for the web interface (protected)
 	if s.authMiddleware != nil {
@@ -511,7 +511,25 @@ func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 
 // handleLogo serves the Elemta logo for the login page (public)
 func (s *Server) handleLogo(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "images/elemta.png")
+	log.Printf("Logo request received for path: %s", r.URL.Path)
+
+	// Try different possible paths
+	paths := []string{
+		"images/elemta.png",
+		"./images/elemta.png",
+		"web/../images/elemta.png",
+	}
+
+	for _, path := range paths {
+		if _, err := os.Stat(path); err == nil {
+			log.Printf("Serving logo from: %s", path)
+			http.ServeFile(w, r, path)
+			return
+		}
+	}
+
+	log.Printf("Logo file not found in any expected path")
+	http.NotFound(w, r)
 }
 
 // handleDashboard serves the main dashboard page
