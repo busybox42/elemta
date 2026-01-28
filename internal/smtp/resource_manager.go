@@ -663,6 +663,7 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 			rm.logger.Debug("Memory limit check failed", "error", err)
 			atomic.AddInt64(&rm.rejectedRequests, 1)
 			rm.logger.Warn("Connection rejected: memory limit exceeded",
+				"event_type", "rejection",
 				"remote_addr", remoteAddr,
 				"error", err,
 			)
@@ -675,6 +676,7 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 			rm.logger.Debug("Goroutine limit check failed", "error", err)
 			atomic.AddInt64(&rm.rejectedRequests, 1)
 			rm.logger.Warn("Connection rejected: goroutine limit exceeded",
+				"event_type", "rejection",
 				"remote_addr", remoteAddr,
 				"error", err,
 			)
@@ -691,6 +693,7 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 		rm.logger.Debug("Global connection limit reached")
 		atomic.AddInt64(&rm.rejectedRequests, 1)
 		rm.logger.Warn("Connection rejected: global limit reached",
+			"event_type", "rejection",
 			"active_connections", rm.activeConnections,
 			"max_connections", rm.limits.MaxConnections,
 			"remote_addr", remoteAddr,
@@ -711,6 +714,7 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 		rm.logger.Debug("Per-IP connection limit reached", "host", host)
 		atomic.AddInt64(&rm.rejectedRequests, 1)
 		rm.logger.Warn("Connection rejected: IP limit reached",
+			"event_type", "rejection",
 			"ip", host,
 			"ip_connections", rm.ipTracker.GetConnectionCount(host),
 			"max_per_ip", rm.limits.MaxConnectionsPerIP,
@@ -725,6 +729,7 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 		rm.logger.Debug("Global rate limit exceeded")
 		atomic.AddInt64(&rm.rejectedRequests, 1)
 		rm.logger.Warn("Connection rejected: global rate limit exceeded",
+			"event_type", "rejection",
 			"remote_addr", remoteAddr,
 		)
 		return false
@@ -738,6 +743,7 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 		rm.logger.Debug("Per-IP rate limit exceeded")
 		atomic.AddInt64(&rm.rejectedRequests, 1)
 		rm.logger.Warn("Connection rejected: IP rate limit exceeded",
+			"event_type", "rejection",
 			"ip", host,
 		)
 		return false
@@ -757,6 +763,7 @@ func (rm *ResourceManager) CanAcceptConnection(remoteAddr string) bool {
 			rm.logger.Debug("Valkey distributed rate limit exceeded", "host", host)
 			atomic.AddInt64(&rm.rejectedRequests, 1)
 			rm.logger.Warn("Connection rejected: distributed rate limit exceeded",
+				"event_type", "rejection",
 				"ip", host,
 				"valkey_enabled", true,
 			)
@@ -788,6 +795,7 @@ func (rm *ResourceManager) AcceptConnection(conn net.Conn) string {
 		if err := rm.memoryManager.CheckConnectionMemoryLimit(sessionID, estimatedMemory); err != nil {
 			rm.logger.Debug("Connection memory limit check failed", "error", err)
 			rm.logger.Warn("Connection rejected due to memory limit",
+				"event_type", "rejection",
 				"remote_addr", remoteAddr,
 				"session_id", sessionID,
 				"error", err,
@@ -801,8 +809,9 @@ func (rm *ResourceManager) AcceptConnection(conn net.Conn) string {
 	if !rm.ipTracker.AddConnection(host) {
 		// IP limit exceeded, reject connection
 		rm.logger.Warn("Connection rejected due to IP limit",
+			"event_type", "rejection",
 			"remote_addr", remoteAddr,
-			"host", host,
+			"session_id", sessionID,
 		)
 		return ""
 	}

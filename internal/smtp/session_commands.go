@@ -713,14 +713,31 @@ func (ch *CommandHandler) isRelayAllowed(recipient string) bool {
 // logCommandResult logs the result of a command execution
 func (ch *CommandHandler) logCommandResult(ctx context.Context, command string, success bool, response string, duration time.Duration) {
 	level := slog.LevelInfo
+	var eventType string
 	if !success {
 		level = slog.LevelWarn
+		eventType = "rejection"
+		// Check for tempfail (4xx)
+		if len(response) >= 3 && response[0] == '4' {
+			eventType = "tempfail"
+		}
+	} else {
+		// For successful commands, we can use specific event types if needed,
+		// or leave empty to be categorized as system/info
+		if strings.HasPrefix(strings.ToUpper(command), "MAIL FROM") {
+			eventType = "mail_from_accepted"
+		} else if strings.HasPrefix(strings.ToUpper(command), "RCPT TO") {
+			eventType = "rcpt_to_accepted"
+		} else if strings.HasPrefix(strings.ToUpper(command), "DATA") {
+			eventType = "data_accepted"
+		}
 	}
 
 	// Sanitize command for safe logging
 	sanitizedCommand := ch.securityManager.SanitizeCommand(command)
 
 	ch.logger.Log(ctx, level, "SMTP command processed",
+		"event_type", eventType,
 		"command", sanitizedCommand,
 		"success", success,
 		"response", response,

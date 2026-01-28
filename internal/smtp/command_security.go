@@ -600,6 +600,7 @@ func (csm *CommandSecurityManager) checkMemoryUsage(ctx context.Context, initial
 	// Check if memory usage exceeds limit
 	if memoryIncrease > csm.config.MaxMemoryPerCommand {
 		csm.logger.WarnContext(ctx, "Command processing exceeded memory limit",
+			"event_type", "rejection",
 			"memory_increase", memoryIncrease,
 			"max_memory_per_command", csm.config.MaxMemoryPerCommand,
 		)

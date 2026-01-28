@@ -296,6 +296,7 @@ func (s *Session) processCommands(ctx context.Context) error {
 		// Process regular commands
 		if err := s.commandHandler.ProcessCommand(ctx, line); err != nil {
 			s.logger.WarnContext(ctx, "Command processing failed",
+				"event_type", "rejection",
 				"command", line,
 				"error", err,
 			)
@@ -393,7 +394,20 @@ func (s *Session) writeError(ctx context.Context, err error) {
 
 	// Extract SMTP error code if present, otherwise use generic error
 	if len(errorMsg) >= 3 && errorMsg[0] >= '4' && errorMsg[0] <= '5' {
-		s.writeWithLog(errorMsg)
+		// Determine if it's a tempfail (4xx) or rejection (5xx)
+		eventType := "rejection"
+		if errorMsg[0] == '4' {
+			eventType = "tempfail"
+		}
+
+		s.logger.WarnContext(ctx, "SMTP error response sent",
+			"event_type", eventType,
+			"error", err,
+			"response", errorMsg,
+			"service", "elemta-mta",
+			"session_id", s.sessionID,
+		)
+		s.write(errorMsg)
 	} else {
 		s.writeWithLog("451 4.3.0 Internal server error")
 	}

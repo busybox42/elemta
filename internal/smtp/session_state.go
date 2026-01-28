@@ -368,6 +368,7 @@ func (ss *SessionState) AddError(ctx context.Context, err error) {
 	ss.lastActivityTime = time.Now()
 
 	ss.logger.ErrorContext(ctx, "Session error recorded",
+		"event_type", "rejection",
 		"error", err,
 		"total_errors", len(ss.errors),
 	)
@@ -424,7 +425,7 @@ func (ss *SessionState) GetStateSnapshot() map[string]interface{} {
 func (ss *SessionState) isValidPhaseTransition(from, to SMTPPhase) bool {
 	// Define valid transitions
 	validTransitions := map[SMTPPhase][]SMTPPhase{
-		PhaseInit: {PhaseMail, PhaseAuth, PhaseTLS, PhaseQuit},
+		PhaseInit: {PhaseMail, PhaseAuth, PhaseTLS, PhaseQuit, PhaseInit},
 		PhaseMail: {PhaseRcpt, PhaseInit, PhaseQuit},
 		PhaseRcpt: {PhaseRcpt, PhaseData, PhaseInit, PhaseQuit}, // Can add more recipients
 		PhaseData: {PhaseInit, PhaseQuit},                       // Back to init after data

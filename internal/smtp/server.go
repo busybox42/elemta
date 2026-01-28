@@ -360,6 +360,7 @@ func NewServer(config *Config) (*Server, error) {
 		MaxRequests:        1000,
 		Interval:           time.Minute,
 		Timeout:            30 * time.Second,
+		MaxGoroutines:      int32(resourceLimits.MaxGoroutines),
 		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
 			slogger.Info("SMTP connection circuit breaker state changed",
 				"name", name,
