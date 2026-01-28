@@ -257,14 +257,12 @@ func (s *Server) Start() error {
 		log.Printf("API Server: Auth middleware available")
 	}
 
+	// Public routes (must be registered before protected routes)
+	r.HandleFunc("/login", s.handleLoginPage).Methods("GET")
+	r.HandleFunc("/static/images/elemta.png", s.handleLogo).Methods("GET")
+
 	// Serve static files for the web interface (protected)
 	if s.authMiddleware != nil {
-		// Public login page
-		r.HandleFunc("/login", s.handleLoginPage).Methods("GET")
-
-		// Public logo for login page
-		r.HandleFunc("/static/images/elemta.png", s.handleLogo).Methods("GET")
-
 		// Protected routes
 		r.PathPrefix("/static/").Handler(s.authMiddleware.RequireAuth(http.StripPrefix("/static/", http.FileServer(http.Dir(s.webRoot)))))
 		// Serve the main dashboard at root (requires authentication)
