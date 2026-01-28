@@ -28,10 +28,10 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeNavigation();
     initializeEventListeners();
     
-    // Check authentication status with a small delay to ensure cookies are ready
+    // Check authentication status with a delay to ensure cookies are ready after redirect
     setTimeout(() => {
         checkAuthStatus(); // Check authentication status on page load
-    }, 100);
+    }, 300);
     
     loadFromURL();
     refreshAllData();
