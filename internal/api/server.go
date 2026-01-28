@@ -603,7 +603,9 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	s.sessionManager.ClearCookie(w)
 	log.Printf("Session cookie cleared")
 
-	writeJSON(w, map[string]string{"status": "success", "message": "Logged out"})
+	// Redirect to login page instead of returning JSON
+	log.Printf("Redirecting to login page")
+	http.Redirect(w, r, "/login?logout=1", http.StatusFound)
 }
 
 // handleMe returns current user information

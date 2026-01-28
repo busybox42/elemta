@@ -1230,25 +1230,16 @@ const authState = {
 
 async function checkAuthStatus() {
     try {
-        console.log('Checking authentication status...');
         const response = await fetch('/auth/me');
-        console.log('Auth check response status:', response.status);
         
         if (response.ok) {
             const data = await response.json();
-            console.log('Auth check successful, user data:', data);
-            console.log('Data.user:', data.user);
-            console.log('Data.user.username:', data.user?.username);
-            console.log('Data.username:', data.username);
-            
             authState.isLoggedIn = true;
             // Username is nested in user object with capital U
             authState.username = data.user?.Username || data.user?.username || data.username;
-            console.log('Set authState.username to:', authState.username);
             authState.permissions = data.permissions || [];
             updateUserUI();
         } else {
-            console.log('Auth check failed, status:', response.status);
             // Not authenticated, keep default state
             authState.isLoggedIn = false;
             authState.username = null;
@@ -1256,7 +1247,6 @@ async function checkAuthStatus() {
             updateUserUI();
         }
     } catch (error) {
-        console.error('Error checking auth status:', error);
         // Error checking auth status, assume not authenticated
         authState.isLoggedIn = false;
         authState.username = null;
@@ -1309,33 +1299,23 @@ async function handleLogin(event) {
 }
 
 async function handleLogout() {
-    try {
-        console.log('Attempting logout...');
-        const response = await fetch('/auth/logout', { method: 'POST' });
-        console.log('Logout response status:', response.status);
-        
-        // Check if Set-Cookie header is present to clear session
-        const setCookieHeader = response.headers.get('Set-Cookie');
-        console.log('Set-Cookie header:', setCookieHeader);
-    } catch (error) {
-        console.error('Logout error:', error);
-    }
-
-    console.log('Clearing auth state and redirecting...');
+    console.log('Attempting logout...');
+    
+    // Clear local auth state immediately
     authState.isLoggedIn = false;
     authState.username = null;
     authState.permissions = [];
-    updateUserUI();
     document.getElementById('user-dropdown').classList.remove('active');
-    showToast('Logged out successfully', 'info');
     
-    console.log('About to redirect to login page...');
-    // Force redirect to login with timestamp to prevent caching
-    // Use multiple methods to ensure redirect happens
-    setTimeout(() => {
-        console.log('Executing redirect now...');
-        window.location.href = '/login?t=' + Date.now() + '&logout=1';
-    }, 500);
+    // Server will handle redirect, but we use redirect: 'manual' to follow it
+    try {
+        // Navigate to logout endpoint - server will redirect to login
+        window.location.href = '/auth/logout';
+    } catch (error) {
+        console.error('Logout error:', error);
+        // Fallback: redirect to login manually
+        window.location.href = '/login';
+    }
 }
 
 function updateUserUI() {
@@ -1346,18 +1326,14 @@ function updateUserUI() {
     const btnLogout = document.getElementById('btn-logout');
     const btnApikeys = document.getElementById('btn-apikeys');
 
-    console.log('updateUserUI called - isLoggedIn:', authState.isLoggedIn, 'username:', authState.username);
-
     if (authState.isLoggedIn) {
-        console.log('Setting userDisplay to:', authState.username);
-        userDisplay.textContent = authState.username;
-        userName.textContent = authState.username;
+        userDisplay.textContent = authState.username || 'User';
+        userName.textContent = authState.username || 'User';
         userInfoPanel.style.display = 'block';
         btnLogin.style.display = 'none';
         btnLogout.style.display = 'flex';
         btnApikeys.style.display = 'flex';
     } else {
-        console.log('Setting userDisplay to Guest');
         userDisplay.textContent = 'Guest';
         userInfoPanel.style.display = 'none';
         btnLogin.style.display = 'flex';
