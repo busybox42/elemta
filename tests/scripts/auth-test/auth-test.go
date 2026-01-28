@@ -41,7 +41,9 @@ func testAuthSuccess() error {
 	if err != nil {
 		return fmt.Errorf("failed to create SMTP client: %v", err)
 	}
-	defer client.Quit()
+	defer func() {
+		_ = client.Quit()
+	}()
 
 	// Test AUTH PLAIN with valid credentials
 	auth := smtp.PlainAuth("", "testuser", "testpass", "localhost")
@@ -79,7 +81,9 @@ func testAuthFailure() error {
 	if err != nil {
 		return fmt.Errorf("failed to create SMTP client: %v", err)
 	}
-	defer client.Quit()
+	defer func() {
+		_ = client.Quit()
+	}()
 
 	// Test AUTH PLAIN with invalid credentials
 	auth := smtp.PlainAuth("", "wronguser", "wrongpass", "localhost")
