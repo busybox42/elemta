@@ -262,6 +262,9 @@ func (s *Server) Start() error {
 		// Public login page
 		r.HandleFunc("/login", s.handleLoginPage).Methods("GET")
 
+		// Public logo for login page
+		r.HandleFunc("/static/images/elemta.png", s.handleLogo).Methods("GET")
+
 		// Protected routes
 		r.PathPrefix("/static/").Handler(s.authMiddleware.RequireAuth(http.StripPrefix("/static/", http.FileServer(http.Dir(s.webRoot)))))
 		// Serve the main dashboard at root (requires authentication)
@@ -506,6 +509,11 @@ func (s *Server) handleGetQueueStats(w http.ResponseWriter, r *http.Request) {
 // handleLoginPage serves the public login page
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "web/login.html")
+}
+
+// handleLogo serves the Elemta logo for the login page (public)
+func (s *Server) handleLogo(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "images/elemta.png")
 }
 
 // handleDashboard serves the main dashboard page
