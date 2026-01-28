@@ -1322,6 +1322,7 @@ function updateUserUI() {
     const userDisplay = document.getElementById('user-display');
     const userInfoPanel = document.getElementById('user-info-panel');
     const userName = document.getElementById('user-name');
+    const userRole = document.getElementById('user-role');
     const btnLogin = document.getElementById('btn-login');
     const btnLogout = document.getElementById('btn-logout');
     const btnApikeys = document.getElementById('btn-apikeys');
@@ -1329,6 +1330,7 @@ function updateUserUI() {
     if (authState.isLoggedIn) {
         userDisplay.textContent = authState.username || 'User';
         userName.textContent = authState.username || 'User';
+        userRole.textContent = 'Administrator'; // Set role instead of leaving as "-"
         userInfoPanel.style.display = 'block';
         btnLogin.style.display = 'none';
         btnLogout.style.display = 'flex';
