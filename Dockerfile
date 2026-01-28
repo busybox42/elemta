@@ -67,6 +67,9 @@ COPY --chown=elemta:elemta config/dev.toml /app/config/dev.toml
 # Copy web files with proper ownership
 COPY --chown=elemta:elemta web /app/web
 
+# Copy images directory for logo
+COPY --from=builder --chown=elemta:elemta /build/images /app/images
+
 # Set proper permissions for executables
 RUN chmod +x /app/elemta /app/elemta-queue /app/elemta-cli
 
