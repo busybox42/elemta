@@ -27,7 +27,12 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeTheme();
     initializeNavigation();
     initializeEventListeners();
-    checkAuthStatus(); // Check authentication status on page load
+    
+    // Check authentication status with a small delay to ensure cookies are ready
+    setTimeout(() => {
+        checkAuthStatus(); // Check authentication status on page load
+    }, 100);
+    
     loadFromURL();
     refreshAllData();
     startAutoRefresh();
@@ -1320,8 +1325,8 @@ async function handleLogout() {
     document.getElementById('user-dropdown').classList.remove('active');
     showToast('Logged out successfully', 'info');
     
-    // Immediate redirect to login page
-    window.location.href = '/login';
+    // Force redirect to login with timestamp to prevent caching
+    window.location.replace('/login?t=' + Date.now());
 }
 
 function updateUserUI() {
