@@ -1182,6 +1182,24 @@ var (
 func categorizeLogEntry(logEntry map[string]interface{}, msg string) string {
 	msgLower := strings.ToLower(msg)
 
+	// Check log level first - INFO level messages should not be categorized as rejection/tempfail
+	if level, ok := logEntry["level"].(string); ok {
+		if level == "INFO" || level == "DEBUG" {
+			// INFO and DEBUG messages are system events unless they contain explicit rejection keywords
+			systemKeywords := []string{
+				"plugin", "enabled", "initialized", "started", "stopped",
+				"configuration", "loading", "loaded", "shutdown",
+			}
+			for _, keyword := range systemKeywords {
+				if strings.Contains(msgLower, keyword) {
+					return "system"
+				}
+			}
+			// Default INFO/DEBUG to system unless clearly a rejection
+			return "system"
+		}
+	}
+
 	// 1. Check for rejection keywords in message
 	rejectionKeywords := []string{
 		"rejected", "virus", "spam", "blocked", "denied", "refused",
