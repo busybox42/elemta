@@ -517,8 +517,17 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 // handleLogin handles user login
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Login attempt received")
+
 	if s.authSystem == nil {
+		log.Printf("Auth system is nil - authentication not enabled")
 		http.Error(w, "Authentication not enabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	if s.sessionManager == nil {
+		log.Printf("Session manager is nil")
+		http.Error(w, "Session management not available", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -541,14 +550,20 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create session
+	log.Printf("Creating session for user: %s", loginReq.Username)
 	session, err := s.sessionManager.CreateSession(loginReq.Username, r.UserAgent(), r.RemoteAddr)
 	if err != nil {
+		log.Printf("Failed to create session: %v", err)
 		http.Error(w, "Failed to create session", http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("Session created successfully, ID: %s", session.ID)
+
 	// Set session cookie
+	log.Printf("Setting session cookie")
 	s.sessionManager.SetCookie(w, session.ID)
+	log.Printf("Session cookie set")
 
 	// Get user permissions
 	permissions, _ := s.rbac.GetUserPermissions(ctx, loginReq.Username)

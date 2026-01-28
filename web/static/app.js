@@ -1225,14 +1225,19 @@ const authState = {
 
 async function checkAuthStatus() {
     try {
+        console.log('Checking authentication status...');
         const response = await fetch('/auth/me');
+        console.log('Auth check response status:', response.status);
+        
         if (response.ok) {
             const data = await response.json();
+            console.log('Auth check successful, user data:', data);
             authState.isLoggedIn = true;
             authState.username = data.username;
             authState.permissions = data.permissions || [];
             updateUserUI();
         } else {
+            console.log('Auth check failed, status:', response.status);
             // Not authenticated, keep default state
             authState.isLoggedIn = false;
             authState.username = null;
@@ -1240,6 +1245,7 @@ async function checkAuthStatus() {
             updateUserUI();
         }
     } catch (error) {
+        console.error('Error checking auth status:', error);
         // Error checking auth status, assume not authenticated
         authState.isLoggedIn = false;
         authState.username = null;
