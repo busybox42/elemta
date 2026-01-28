@@ -257,12 +257,22 @@ func (s *Server) Start() error {
 		log.Printf("API Server: Auth middleware available")
 	}
 
-	// Serve static files for the web interface
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(s.webRoot))))
+	// Serve static files for the web interface (protected)
+	if s.authMiddleware != nil {
+		// Public login page
+		r.HandleFunc("/login", s.handleLoginPage).Methods("GET")
 
-	// Serve the main dashboard at root (no auth required for now)
-	r.HandleFunc("/", s.handleDashboard).Methods("GET")
-	r.HandleFunc("/dashboard", s.handleDashboard).Methods("GET")
+		// Protected routes
+		r.PathPrefix("/static/").Handler(s.authMiddleware.RequireAuth(http.StripPrefix("/static/", http.FileServer(http.Dir(s.webRoot)))))
+		// Serve the main dashboard at root (requires authentication)
+		r.Handle("/", s.authMiddleware.RequireAuth(http.HandlerFunc(s.handleDashboard))).Methods("GET")
+		r.Handle("/dashboard", s.authMiddleware.RequireAuth(http.HandlerFunc(s.handleDashboard))).Methods("GET")
+	} else {
+		// Fallback to no auth if auth system is not configured
+		r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(s.webRoot))))
+		r.HandleFunc("/", s.handleDashboard).Methods("GET")
+		r.HandleFunc("/dashboard", s.handleDashboard).Methods("GET")
+	}
 
 	// Debug routes (no auth required for debugging)
 	r.HandleFunc("/debug/auth", s.handleDebugAuth).Methods("GET")
@@ -491,6 +501,11 @@ func (s *Server) handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetQueueStats(w http.ResponseWriter, r *http.Request) {
 	stats := s.queueMgr.GetStats()
 	writeJSON(w, stats)
+}
+
+// handleLoginPage serves the public login page
+func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "web/login.html")
 }
 
 // handleDashboard serves the main dashboard page

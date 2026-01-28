@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/busybox42/elemta/internal/auth"
 )
@@ -44,7 +45,19 @@ func (am *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authCtx, err := am.authenticate(r)
 		if err != nil {
-			am.writeError(w, http.StatusUnauthorized, "Authentication required", err.Error())
+			// Check if this is a browser request (accepts HTML) vs API request (accepts JSON)
+			acceptHeader := r.Header.Get("Accept")
+			isBrowserRequest := strings.Contains(acceptHeader, "text/html") ||
+				strings.Contains(acceptHeader, "*/*") ||
+				r.Header.Get("X-Requested-With") == ""
+
+			if isBrowserRequest && r.Method == http.MethodGet {
+				// Redirect browser requests to login page
+				http.Redirect(w, r, "/login", http.StatusFound)
+			} else {
+				// Return 401 JSON for API requests
+				am.writeError(w, http.StatusUnauthorized, "Authentication required", err.Error())
+			}
 			return
 		}
 
