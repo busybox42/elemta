@@ -281,7 +281,7 @@ func (s *Server) Start() error {
 	if s.authMiddleware != nil {
 		auth := r.PathPrefix("/auth").Subrouter()
 		auth.HandleFunc("/login", s.handleLogin).Methods("POST")
-		auth.HandleFunc("/logout", s.handleLogout).Methods("POST")
+		auth.HandleFunc("/logout", s.handleLogout).Methods("POST", "GET")
 		auth.HandleFunc("/me", s.handleMe).Methods("GET")
 
 		// API key management routes (require authentication)
