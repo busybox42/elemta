@@ -140,6 +140,7 @@ var (
 
 // handleHealthStats returns server health statistics
 func (s *Server) handleHealthStats(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
