@@ -1568,8 +1568,15 @@ let chartInstance = null;
 
 async function refreshReports() {
     try {
+        console.log(`Loading reports with timeScale: ${currentTimeScale}`);
         const response = await fetch(`${API_BASE}/stats/delivery?timeScale=${currentTimeScale}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         const stats = await response.json();
+        console.log('Reports data received:', stats);
 
         // Update stat cards
         document.getElementById('report-delivered').textContent = stats.total_delivered || 0;
@@ -1579,6 +1586,7 @@ async function refreshReports() {
 
         // Update chart with time scale data
         const chartData = stats.data || [];
+        console.log('Chart data:', chartData);
         renderChart(chartData);
 
         // Update recent errors
@@ -1586,7 +1594,7 @@ async function refreshReports() {
 
     } catch (error) {
         console.error('Error loading reports:', error);
-        showToast('Failed to load reports', 'error');
+        showToast('Failed to load reports: ' + error.message, 'error');
     }
 }
 
@@ -1624,7 +1632,7 @@ function renderChart(data) {
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (hourlyData.length === 0) {
+    if (!data || data.length === 0) {
         ctx.fillStyle = 'var(--text-muted)';
         ctx.font = '14px sans-serif';
         ctx.textAlign = 'center';
@@ -1634,8 +1642,8 @@ function renderChart(data) {
 
     // Simple bar chart
     const padding = 40;
-    const barWidth = (canvas.width - padding * 2) / hourlyData.length - 4;
-    const maxValue = Math.max(...hourlyData.map(h => h.delivered + h.failed + h.deferred), 1);
+    const barWidth = (canvas.width - padding * 2) / data.length - 4;
+    const maxValue = Math.max(...data.map(h => h.delivered + h.failed + h.deferred), 1);
     const chartHeight = canvas.height - padding * 2;
 
     // Draw Y-axis

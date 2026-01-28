@@ -435,7 +435,7 @@ func (s *Server) getDailyStats(ctx context.Context) []TimeScaleStats {
 
 	// Get last 30 days of hourly data
 	hourlyData, err := s.metricsStore.GetHourlyStats(ctx)
-	if err != nil {
+	if err != nil || len(hourlyData) == 0 {
 		return dailyStats
 	}
 
@@ -494,7 +494,7 @@ func (s *Server) getWeeklyStats(ctx context.Context) []TimeScaleStats {
 
 	// Get last 12 weeks of hourly data
 	hourlyData, err := s.metricsStore.GetHourlyStats(ctx)
-	if err != nil {
+	if err != nil || len(hourlyData) == 0 {
 		return weeklyStats
 	}
 
@@ -572,7 +572,7 @@ func (s *Server) getMonthlyStats(ctx context.Context) []TimeScaleStats {
 
 	// Get last 12 months of hourly data
 	hourlyData, err := s.metricsStore.GetHourlyStats(ctx)
-	if err != nil {
+	if err != nil || len(hourlyData) == 0 {
 		return monthlyStats
 	}
 
