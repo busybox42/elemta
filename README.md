@@ -12,6 +12,8 @@ Elemta: A high-performance SMTP server written in Go with comprehensive email au
 - **Container Security**: Non-root execution with hardened Docker and Kubernetes configurations
 - **Cloud-Native**: Ready for Docker and Kubernetes deployment
 - **Comprehensive Monitoring**: Prometheus/Grafana integration with pre-built dashboards
+- **Enhanced Delivery Tracking**: IP address logging and detailed delivery analytics
+- **Flexible Time-Scale Reporting**: Hourly, daily, weekly, and monthly delivery trend analysis
 - **API-Driven**: RESTful API for management and monitoring
 
 ## Quick Start
@@ -50,6 +52,7 @@ go build -o elemta cmd/elemta/main.go
 ### Core Documentation
 - **[Installation & Deployment](docs/installation.md)** - Detailed setup instructions
 - **[Configuration Reference](docs/configuration.md)** - Complete configuration options
+- **[API Reference](docs/api-reference.md)** - Complete REST API documentation
 - **[Email Authentication](docs/email_authentication.md)** - SPF, DKIM, DMARC, ARC setup
 - **[Plugin Development](docs/plugin-development.md)** - Creating custom plugins
 

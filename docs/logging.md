@@ -101,6 +101,57 @@ Elemta uses the following log levels, in order of increasing severity:
 4. **Error**: An error occurred, but the application can still function
 5. **Fatal**: A severe error occurred, and the application cannot continue
 
+## Log Categories
+
+Elemta categorizes logs into different types for better filtering and analysis:
+
+- **Info**: General information about system operation
+- **Warn**: Warning messages that don't prevent the system from functioning
+- **Error**: Error messages that indicate problems but don't stop the system
+- **Fatal**: Fatal errors that cause the system to stop
+
+### Message Event Types
+
+For message delivery logs, Elemta uses specific event types for accurate categorization:
+
+- **delivery**: Successful message delivery
+- **rejection**: Permanent failures (5xx SMTP codes, virus detection, spam rejection)
+- **tempfail**: Temporary failures (4xx SMTP codes, greylisting, rate limiting)
+- **system**: System-level events and uncategorized messages
+
+## Enhanced Delivery Logging
+
+Elemta now includes detailed delivery information in message logs:
+
+### Delivery IP Address Fields
+
+When messages are delivered, the following fields are added to log entries:
+
+```json
+{
+  "timestamp": "2026-01-28T12:00:00Z",
+  "event_type": "delivery",
+  "message_id": "msg-12345",
+  "recipient": "user@example.com",
+  "delivery_ip": "192.168.1.100",
+  "delivery_host": "mail.example.com",
+  "status": "delivered"
+}
+```
+
+- **delivery_ip**: IP address of the destination mail server
+- **delivery_host**: Hostname of the destination mail server
+- **event_type**: Categorized event type for accurate filtering
+
+### Log Categorization Improvements
+
+The system now automatically categorizes SMTP responses:
+
+- **5xx codes** → `rejection` (permanent failures)
+- **4xx codes** → `tempfail` (temporary failures)
+- **Spam/virus detection** → `rejection`
+- **Greylisting/rate limiting** → `tempfail`
+
 ## Structured Logging
 
 Elemta's logging system supports structured logging, which allows you to include additional context with your log messages:

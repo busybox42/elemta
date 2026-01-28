@@ -1,6 +1,22 @@
 # Elemta Changelog
 
-## Recent Improvements (June 2025)
+## Latest Improvements (January 2026)
+
+### Enhanced Logging & Monitoring
+- **Delivery IP Address Logging**: Added `delivery_ip` and `delivery_host` fields to message delivery logs for enhanced tracking
+- **Improved Log Categorization**: Fixed categorization logic for spam/virus/4xx/5xx SMTP responses to ensure proper separation of rejection, deferral, and system logs
+- **Comprehensive Log Filtering**: Enhanced web interface log filtering with accurate event type classification
+
+### Web Interface Enhancements
+- **Reports Chart Time Scales**: Added time scale selector with Hourly, Daily, Weekly, and Monthly views for delivery trend analysis
+- **Chart Y-Axis Fix**: Resolved missing y-axis issue on reports page charts with proper tick marks and value labels
+- **Adaptive Chart Rendering**: Charts now automatically adjust label frequency based on data length and time scale
+
+### API Improvements
+- **Enhanced Delivery Stats API**: Added `timeScale` parameter to `/api/stats/delivery` endpoint for flexible data aggregation
+- **Backward Compatibility**: Maintained existing `by_hour` field while adding new `data` field for generic time-scale responses
+
+## Previous Improvements (June 2025)
 
 ### Email Security & Scanning
 - **Added ClamAV and Rspamd Integration**: Messages now scanned for viruses and spam
