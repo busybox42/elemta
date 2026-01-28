@@ -257,55 +257,54 @@ install-dev: docker-build
 
 docker-setup: install-dev
 
-# Modern Docker commands using .env
+# Define compose file location
+COMPOSE_FILE := deployments/compose/docker-compose.yml
+
+# Modern Docker commands
 up:
 	@echo "🚀 Starting Elemta services..."
-	@if [ ! -f .env ]; then \
-		echo "⚠️  No .env file found. Run 'make install' or 'make docker-setup' first."; \
-		exit 1; \
-	fi
-	docker compose up -d
+	docker compose -f $(COMPOSE_FILE) up -d
 	@echo "✅ Services started"
 
 down:
 	@echo "🛑 Stopping Elemta services..."
-	docker compose down
+	docker compose -f $(COMPOSE_FILE) down
 	@echo "✅ Services stopped"
 
 down-volumes:
 	@echo "🛑 Stopping Elemta services and removing volumes..."
-	docker compose down -v
+	docker compose -f $(COMPOSE_FILE) down -v
 	@echo "✅ Services stopped and volumes removed"
 
 restart:
 	@echo "🔄 Restarting Elemta services..."
-	docker compose restart
+	docker compose -f $(COMPOSE_FILE) restart
 	@echo "✅ Services restarted"
 
 logs:
 	@echo "📋 Showing Elemta logs (Ctrl+C to exit)..."
-	docker compose logs -f
+	docker compose -f $(COMPOSE_FILE) logs -f
 
 logs-elemta:
 	@echo "📋 Showing Elemta SMTP server logs..."
-	docker compose logs -f elemta-node0
+	docker compose -f $(COMPOSE_FILE) logs -f elemta
 
 status:
 	@echo "📊 Elemta Services Status:"
-	@docker compose ps
+	@docker compose -f $(COMPOSE_FILE) ps
 
 rebuild:
 	@echo "🔨 Rebuilding and restarting Elemta..."
-	@make down
-	@make docker-build
-	@make up
+	@$(MAKE) down
+	docker compose -f $(COMPOSE_FILE) build --no-cache elemta elemta-web
+	@$(MAKE) up
 	@echo "✅ Rebuild complete"
 
 rebuild-dev:
-	@echo "🔨 Quick rebuild for development (skips cert check)..."
-	@make down
-	@docker compose -f deployments/compose/docker-compose.yml build elemta
-	@make up
+	@echo "🔨 Quick rebuild for development..."
+	@$(MAKE) down
+	docker compose -f $(COMPOSE_FILE) build elemta elemta-web
+	@$(MAKE) up
 	@echo "✅ Development rebuild complete"
 
 docker-down: down-volumes

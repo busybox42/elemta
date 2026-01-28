@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -78,9 +77,7 @@ func NewSession(ctx context.Context, conn net.Conn, config *Config, authenticato
 	startTime := time.Now()
 
 	// Create structured logger for the session
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	})).With(
+	logger := slog.Default().With(
 		"component", "smtp-session",
 		"remote_addr", remoteAddr,
 		"session_id", sessionID,

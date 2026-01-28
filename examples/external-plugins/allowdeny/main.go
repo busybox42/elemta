@@ -437,3 +437,5 @@ func (p *AllowDenyPlugin) updateExternalFeed(ctx context.Context, feed FeedConfi
 
 // Export the plugin instance
 var Plugin = NewAllowDenyPlugin()
+
+func main() {}

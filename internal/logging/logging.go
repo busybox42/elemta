@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"unicode"
@@ -312,4 +314,113 @@ func SetDefault(name string) error {
 // CloseAll closes all loggers in the global manager
 func CloseAll() error {
 	return globalManager.CloseAll()
+}
+
+// ============================================================================
+// Global File Logger Initialization (for stdout + file logging)
+// ============================================================================
+
+// LogLevelManager manages runtime log level adjustment
+type LogLevelManager struct {
+	currentLevel slog.Level
+	mu           sync.RWMutex
+}
+
+var globalLogLevelManager = &LogLevelManager{
+	currentLevel: slog.LevelInfo, // Default to INFO
+}
+
+// GetLogLevelManager returns the global log level manager
+func GetLogLevelManager() *LogLevelManager {
+	return globalLogLevelManager
+}
+
+// SetLevel sets the current log level
+func (m *LogLevelManager) SetLevel(level slog.Level) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.currentLevel = level
+	slog.SetLogLoggerLevel(level)
+}
+
+// GetLevel returns the current log level
+func (m *LogLevelManager) GetLevel() slog.Level {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.currentLevel
+}
+
+// LevelToString converts slog.Level to string
+func LevelToString(level slog.Level) string {
+	switch level {
+	case slog.LevelDebug:
+		return "DEBUG"
+	case slog.LevelInfo:
+		return "INFO"
+	case slog.LevelWarn:
+		return "WARN"
+	case slog.LevelError:
+		return "ERROR"
+	default:
+		return "INFO"
+	}
+}
+
+// StringToLevel converts string to slog.Level
+func StringToLevel(levelStr string) (slog.Level, error) {
+	switch levelStr {
+	case "DEBUG", "debug":
+		return slog.LevelDebug, nil
+	case "INFO", "info":
+		return slog.LevelInfo, nil
+	case "WARN", "warn", "WARNING", "warning":
+		return slog.LevelWarn, nil
+	case "ERROR", "error":
+		return slog.LevelError, nil
+	default:
+		return slog.LevelInfo, errors.New("invalid log level")
+	}
+}
+
+// InitializeLogging initializes global logging to write to both stdout and file
+// This should be called early in the application startup
+func InitializeLogging(levelStr string) {
+	level, err := StringToLevel(levelStr)
+	if err != nil {
+		slog.Warn("invalid log level in config, defaulting to INFO",
+			"configured_level", levelStr)
+		level = slog.LevelInfo
+	}
+
+	// Create logs directory if it doesn't exist
+	if err := os.MkdirAll("/app/logs", 0755); err != nil {
+		slog.Warn("failed to create logs directory", "error", err)
+	}
+
+	// Open log file
+	logFile, err := os.OpenFile("/app/logs/elemta.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		slog.Warn("failed to open log file", "error", err)
+		// Fallback to default logging if file creation fails
+		globalLogLevelManager.SetLevel(level)
+		slog.Info("logging initialized (stdout only)",
+			"log_level", LevelToString(level))
+		return
+	}
+
+	// Create multi-writer to write to both stdout and file
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+
+	// Create a new handler that writes to both stdout and file
+	handler := slog.NewJSONHandler(multiWriter, &slog.HandlerOptions{
+		Level: level,
+	})
+
+	// Set the default logger
+	slog.SetDefault(slog.New(handler))
+	globalLogLevelManager.SetLevel(level)
+
+	slog.Info("logging initialized",
+		"log_level", LevelToString(level),
+		"log_file", "/app/logs/elemta.log")
 }

@@ -824,7 +824,13 @@ async function refreshLogs() {
     const searchTerm = document.getElementById('log-search-input')?.value.toLowerCase() || '';
 
     try {
-        const response = await fetch(`${API_BASE}/logs?tail=200`);
+        // Build query parameters
+        const params = new URLSearchParams();
+        params.set('limit', '200');
+        if (typeFilter) params.set('event_type', typeFilter);
+        if (levelFilter) params.set('level', levelFilter);
+
+        const response = await fetch(`${API_BASE}/logs/messages?${params.toString()}`);
         if (!response.ok) throw new Error('Failed to fetch logs');
 
         const data = await response.json();
@@ -834,26 +840,16 @@ async function refreshLogs() {
             return;
         }
 
-        // Parse and filter logs
-        let logs = data.logs.map(line => parseLogLine(line)).filter(log => log !== null);
-
-        // Apply level filter
-        if (levelFilter) {
-            logs = logs.filter(log => log.level.toLowerCase() === levelFilter.toLowerCase());
-        }
-
-        // Apply type filter
-        if (typeFilter) {
-            logs = logs.filter(log => getLogType(log) === typeFilter);
-        }
+        let logs = data.logs;
 
         // Apply search filter
         if (searchTerm) {
             logs = logs.filter(log => {
                 const searchable = [
-                    log.message,
+                    log.msg,
                     log.component,
-                    JSON.stringify(log.context)
+                    log.event_type,
+                    JSON.stringify(log.fields)
                 ].join(' ').toLowerCase();
                 return searchable.includes(searchTerm);
             });
@@ -871,32 +867,84 @@ async function refreshLogs() {
                     <tr>
                         <th width="140">Time</th>
                         <th width="80">Level</th>
-                        <th width="120">Component</th>
+                        <th width="120">Type</th>
                         <th>Message</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${logs.reverse().map(log => `
-                        <tr class="log-row ${log.level.toLowerCase()}">
-                            <td class="log-time-cell">${log.time}</td>
-                            <td><span class="log-level-badge ${log.level.toLowerCase()}">${log.level}</span></td>
-                            <td class="log-component" title="${escapeHtml(log.component || '')}">${escapeHtml(log.component || '-')}</td>
+                    ${logs.map(log => {
+            const time = log.time ? new Date(log.time).toLocaleString() : 'Unknown';
+            const level = (log.level || 'INFO').toUpperCase();
+            const eventType = log.event_type || log.component || '-';
+            const eventTypeClass = getEventTypeClass(log.event_type);
+
+            return `
+                        <tr class="log-row ${level.toLowerCase()}">
+                            <td class="log-time-cell">${escapeHtml(time)}</td>
+                            <td><span class="log-level-badge ${level.toLowerCase()}">${level}</span></td>
+                            <td><span class="log-type-badge ${eventTypeClass}">${escapeHtml(eventType)}</span></td>
                             <td class="log-message-cell">
-                                <div class="log-msg-text">${escapeHtml(log.message)}</div>
-                                ${renderLogContext(log.context)}
+                                <div class="log-msg-text">${escapeHtml(log.msg || '')}</div>
+                                ${renderLogFields(log.fields)}
                             </td>
                         </tr>
-                    `).join('')}
+                        `;
+        }).join('')}
                 </tbody>
             </table>
         `;
 
-        // showToast(`Loaded ${logs.length} log entries`, 'info');
     } catch (error) {
         console.error('Error fetching logs:', error);
         container.innerHTML = '<div class="log-entry error"><span class="log-message">Failed to load logs</span></div>';
         showToast('Failed to load logs', 'error');
     }
+}
+
+function getEventTypeClass(eventType) {
+    const typeMap = {
+        'reception': 'event-reception',
+        'delivery': 'event-delivery',
+        'rejection': 'event-rejection',
+        'deferral': 'event-deferral',
+        'bounce': 'event-bounce',
+        'tempfail': 'event-tempfail',
+        'authentication': 'event-auth'
+    };
+    return typeMap[eventType] || 'event-system';
+}
+
+function renderLogFields(fields) {
+    if (!fields || Object.keys(fields).length === 0) return '';
+
+    const items = Object.entries(fields).map(([key, value]) => {
+        // Skip internal/noisy fields
+        if (key === 'caller' || key === 'stack') return '';
+
+        let displayValue = value;
+        if (typeof value === 'object') {
+            displayValue = JSON.stringify(value);
+        }
+
+        // Highlight specific keys
+        let className = 'log-ctx-val';
+        if (key === 'error' || key === 'rejection_reason' || key === 'deferral_reason' || key === 'bounce_reason') {
+            className += ' ctx-error';
+        }
+        if (key === 'message_id' || key === 'queue_id') {
+            className += ' ctx-id';
+        }
+        if (key === 'from' || key === 'to' || key === 'recipient_count') {
+            className += ' ctx-email';
+        }
+        if (key === 'client_ip' || key === 'remote_addr') {
+            className += ' ctx-ip';
+        }
+
+        return `<span class="log-ctx-item"><span class="log-ctx-key">${escapeHtml(key)}:</span> <span class="${className}">${escapeHtml(String(displayValue))}</span></span>`;
+    }).filter(item => item !== '').join('');
+
+    return items ? `<div class="log-context">${items}</div>` : '';
 }
 
 function parseLogLine(line) {
@@ -980,7 +1028,7 @@ function getLogType(log) {
     }
 
     // Delivery
-    if (eventType === 'delivery' || msg.includes('delivered') || msg.includes('delivery successful') || 
+    if (eventType === 'delivery' || msg.includes('delivered') || msg.includes('delivery successful') ||
         comp.includes('delivery') || comp.includes('sender') || eventType === 'message_delivered') {
         return 'delivery';
     }

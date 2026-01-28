@@ -308,6 +308,7 @@ func (s *Server) Start() error {
 
 	// Logs endpoint (no authentication required for web interface)
 	api.HandleFunc("/logs", s.handleGetLogs).Methods("GET")
+	api.HandleFunc("/logs/messages", s.handleGetMessageLogs).Methods("GET")
 
 	// Health and monitoring endpoints (no auth required for dashboard)
 	api.HandleFunc("/health", s.handleHealthStats).Methods("GET")
@@ -854,6 +855,151 @@ func (s *Server) handleGetLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, response)
+}
+
+// MessageLog represents a structured message lifecycle log entry
+type MessageLog struct {
+	Time      string                 `json:"time"`
+	Level     string                 `json:"level"`
+	Message   string                 `json:"msg"`
+	EventType string                 `json:"event_type,omitempty"`
+	Component string                 `json:"component,omitempty"`
+	Fields    map[string]interface{} `json:"fields,omitempty"`
+}
+
+// handleGetMessageLogs fetches structured message lifecycle logs
+func (s *Server) handleGetMessageLogs(w http.ResponseWriter, r *http.Request) {
+	// Get query parameters
+	limitStr := r.URL.Query().Get("limit")
+	if limitStr == "" {
+		limitStr = "100"
+	}
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000 // Cap at 1000 entries
+	}
+
+	eventTypeFilter := r.URL.Query().Get("event_type")
+	levelFilter := r.URL.Query().Get("level")
+
+	// Read log file
+	logFile := "/app/logs/elemta.log"
+	data, err := os.ReadFile(logFile)
+	if err != nil {
+		// Try alternate location
+		logFile = "./logs/elemta.log"
+		data, err = os.ReadFile(logFile)
+		if err != nil {
+			writeJSON(w, map[string]interface{}{
+				"logs":    []MessageLog{},
+				"count":   0,
+				"message": "No log file found",
+			})
+			return
+		}
+	}
+
+	// Parse log lines
+	lines := strings.Split(string(data), "\n")
+	var messageLogs []MessageLog
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Try to parse as JSON
+		var logEntry map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &logEntry); err != nil {
+			// Skip non-JSON lines
+			continue
+		}
+
+		// Extract common fields
+		timeStr, _ := logEntry["time"].(string)
+		level, _ := logEntry["level"].(string)
+		msg, _ := logEntry["msg"].(string)
+		eventType, _ := logEntry["event_type"].(string)
+		component, _ := logEntry["component"].(string)
+
+		// Apply filters
+		if eventTypeFilter != "" && eventType != eventTypeFilter {
+			continue
+		}
+		if levelFilter != "" && !strings.EqualFold(level, levelFilter) {
+			continue
+		}
+
+		// Only include message lifecycle events or interesting logs
+		includeLog := false
+		messageLifecycleTypes := []string{
+			"reception", "delivery", "rejection", "deferral", "bounce", "tempfail", "authentication",
+		}
+
+		// Include if it's a message lifecycle event
+		for _, t := range messageLifecycleTypes {
+			if eventType == t {
+				includeLog = true
+				break
+			}
+		}
+
+		// Also include queue-related logs
+		if component == "queue" || component == "smtp-session" || component == "message-lifecycle" {
+			includeLog = true
+		}
+
+		// Include if no event_type filter is specified (show all)
+		if eventTypeFilter == "" && eventType == "" && (component != "" || msg != "") {
+			includeLog = true
+		}
+
+		if !includeLog {
+			continue
+		}
+
+		// Extract remaining fields
+		fields := make(map[string]interface{})
+		standardFields := map[string]bool{
+			"time": true, "level": true, "msg": true, "event_type": true, "component": true,
+		}
+		for k, v := range logEntry {
+			if !standardFields[k] {
+				fields[k] = v
+			}
+		}
+
+		messageLog := MessageLog{
+			Time:      timeStr,
+			Level:     level,
+			Message:   msg,
+			EventType: eventType,
+			Component: component,
+			Fields:    fields,
+		}
+
+		messageLogs = append(messageLogs, messageLog)
+	}
+
+	// Sort by time (newest first) and limit
+	if len(messageLogs) > limit {
+		messageLogs = messageLogs[len(messageLogs)-limit:]
+	}
+
+	// Reverse to show newest first
+	for i, j := 0, len(messageLogs)-1; i < j; i, j = i+1, j-1 {
+		messageLogs[i], messageLogs[j] = messageLogs[j], messageLogs[i]
+	}
+
+	writeJSON(w, map[string]interface{}{
+		"logs":     messageLogs,
+		"count":    len(messageLogs),
+		"has_more": false,
+	})
 }
 
 // handleDebugAuth provides authentication debugging information

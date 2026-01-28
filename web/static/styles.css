@@ -1806,6 +1806,57 @@ body {
 .log-level-badge.debug { background: rgba(107, 114, 128, 0.15); color: var(--text-muted); }
 .log-level-badge.tempfail { background: rgba(251, 146, 60, 0.15); color: #f97316; }
 
+/* Event Type Badges */
+.log-type-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-align: center;
+    min-width: 80px;
+}
+
+.log-type-badge.event-reception {
+    background: rgba(34, 197, 94, 0.1);
+    color: #16a34a;
+}
+
+.log-type-badge.event-delivery {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--accent-primary);
+}
+
+.log-type-badge.event-rejection {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--accent-danger);
+}
+
+.log-type-badge.event-deferral {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--accent-warning);
+}
+
+.log-type-badge.event-bounce {
+    background: rgba(220, 38, 38, 0.15);
+    color: #dc2626;
+}
+
+.log-type-badge.event-tempfail {
+    background: rgba(251, 146, 60, 0.15);
+    color: #f97316;
+}
+
+.log-type-badge.event-auth {
+    background: rgba(168, 85, 247, 0.1);
+    color: #a855f7;
+}
+
+.log-type-badge.event-system {
+    background: rgba(107, 114, 128, 0.15);
+    color: var(--text-muted);
+}
+
 .log-component {
     color: var(--text-secondary);
     font-family: 'SF Mono', Monaco, monospace;

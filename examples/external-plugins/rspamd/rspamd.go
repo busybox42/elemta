@@ -187,3 +187,5 @@ func (p *RspamdPlugin) GetPriority() plugin.PluginPriority {
 
 // Plugin is the exported plugin instance
 var Plugin RspamdPlugin
+
+func main() {}

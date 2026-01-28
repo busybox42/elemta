@@ -7,7 +7,7 @@ linux-package-builder/build_tmp/
 *.deb
 
 # Compiled binary
-elemta
+/elemta
 
 # Temporary files
 config/elemta.db
@@ -149,7 +149,7 @@ config/*.db
 config/*.sqlite
 *.db-journal
 bin/test-*
-elemta
+/elemta
 *.prof
 *.test
 .idea/

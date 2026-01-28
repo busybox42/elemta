@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"os"
@@ -11,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/busybox42/elemta/internal/api"
+	"github.com/busybox42/elemta/internal/logging"
 	"github.com/busybox42/elemta/internal/server"
 	"github.com/busybox42/elemta/internal/smtp"
 	"github.com/spf13/cobra"
@@ -49,11 +48,11 @@ func init() {
 }
 
 func startServer() {
-	fmt.Println("Starting Elemta MTA server...")
+	slog.Info("Starting Elemta MTA server")
 
 	// Load configuration
 	if cfg == nil {
-		fmt.Fprintf(os.Stderr, "Error: Configuration not loaded\n")
+		slog.Error("Configuration not loaded")
 		os.Exit(1)
 	}
 
@@ -65,9 +64,9 @@ func startServer() {
 	if devMode {
 		logLevel = "DEBUG" // Override to DEBUG in dev mode
 	}
-	api.InitializeLogging(logLevel)
+	logging.InitializeLogging(logLevel)
 
-	slog.Info("Elemta MTA server starting",
+	slog.Info("Elemta MTA server starting", "event_type", "system",
 		"hostname", cfg.Hostname,
 		"listen_addr", cfg.ListenAddr,
 		"log_level", logLevel,
@@ -75,7 +74,7 @@ func startServer() {
 
 	// Apply flag overrides
 	if devMode {
-		fmt.Println("Running in DEVELOPMENT mode - using simplified settings")
+		slog.Info("Running in DEVELOPMENT mode - using simplified settings")
 		cfg.Server.TLS = false // Disable TLS in dev mode
 
 		// Set other dev mode settings here if needed
@@ -96,13 +95,13 @@ func startServer() {
 					// Close the listener, we'll reopen it in the server
 					listener.Close()
 					cfg.Server.Listen = port
-					fmt.Printf("DEV MODE: Changed listen port from %s to %s (non-privileged)\n", originalPort, port)
+					slog.Info("DEV MODE: Changed listen port (non-privileged)", "original_port", originalPort, "new_port", port)
 					break
 				}
 			}
 
 			if cfg.Server.Listen == ":25" {
-				fmt.Println("WARNING: Could not find an available development port. Will try to use port 25, but this may fail without privileges.")
+				slog.Warn("Could not find an available development port. Will try to use port 25, but this may fail without privileges.")
 			}
 		}
 	}
@@ -118,11 +117,11 @@ func startServer() {
 
 		// Create new listen address with specified port
 		cfg.Server.Listen = fmt.Sprintf("%s:%d", host, portFlag)
-		fmt.Printf("Overriding listen port to: %s\n", cfg.Server.Listen)
+		slog.Info("Overriding listen port", "address", cfg.Server.Listen)
 	}
 
 	if noAuthRequired && cfg.Auth != nil {
-		fmt.Println("Authentication requirement disabled via command line flag")
+		slog.Info("Authentication requirement disabled via command line flag")
 		cfg.Auth.Required = false
 	}
 
@@ -152,7 +151,7 @@ func startServer() {
 		DevMode:      devMode || cfg.Server.DevMode,
 	}
 
-	fmt.Printf("[INFO] SMTP Config: hostname=%s, queue_dir=%s, local_domains=%v\n", smtpConfig.Hostname, smtpConfig.QueueDir, smtpConfig.LocalDomains)
+	slog.Info("SMTP Config", "hostname", smtpConfig.Hostname, "queue_dir", smtpConfig.QueueDir, "local_domains", smtpConfig.LocalDomains)
 
 	// Map authentication config
 	smtpConfig.Auth = cfg.Auth
@@ -211,23 +210,23 @@ func startServer() {
 	smtpConfig.QueueProcessorEnabled = cfg.QueueProcessor.Enabled
 	smtpConfig.QueueProcessInterval = cfg.QueueProcessor.Interval
 	smtpConfig.QueueWorkers = cfg.QueueProcessor.Workers
-	fmt.Printf("Queue processor config: enabled=%v, interval=%d, workers=%d\n",
-		cfg.QueueProcessor.Enabled,
-		cfg.QueueProcessor.Interval,
-		cfg.QueueProcessor.Workers)
+	slog.Info("Queue processor config",
+		"enabled", cfg.QueueProcessor.Enabled,
+		"interval", cfg.QueueProcessor.Interval,
+		"workers", cfg.QueueProcessor.Workers)
 
 	// Create SMTP server
-	fmt.Println("Creating SMTP server...")
+	slog.Info("Creating SMTP server")
 	server, err := smtp.NewServer(smtpConfig)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating server: %v\n", err)
+		slog.Error("Error creating server", "error", err)
 		os.Exit(1)
 	}
 
 	// Start SMTP server
-	fmt.Println("Starting SMTP server...")
+	slog.Info("Starting SMTP server")
 	if err := server.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error starting server: %v\n", err)
+		slog.Error("Error starting server", "error", err)
 		os.Exit(1)
 	}
 
@@ -238,26 +237,27 @@ func startServer() {
 	}
 
 	// Log server configuration details
-	fmt.Printf("Server configuration details:\n")
-	fmt.Printf("  Server hostname: %s\n", cfg.Server.Hostname)
-	fmt.Printf("  Server listening on: %s\n", cfg.Server.Listen)
-	fmt.Printf("  Queue directory: %s\n", cfg.Queue.Dir)
-	fmt.Printf("  Max message size: %d bytes\n", smtpConfig.MaxSize)
-	fmt.Printf("  Queue processor: %v\n", smtpConfig.QueueProcessorEnabled)
-	if cfg.Server.TLS {
-		fmt.Printf("  TLS enabled: Yes\n")
-		fmt.Printf("  Certificate directory: %s\n", certDir)
-	}
-	fmt.Printf("  Development mode: %v\n", devMode)
-	if cfg.Auth != nil {
-		fmt.Printf("  Authentication required: %v\n", cfg.Auth.Required)
-	}
+	slog.Info("Server configuration details",
+		"hostname", cfg.Server.Hostname,
+		"listen_addr", cfg.Server.Listen,
+		"queue_dir", cfg.Queue.Dir,
+		"max_size", smtpConfig.MaxSize,
+		"queue_processor", smtpConfig.QueueProcessorEnabled,
+		"tls_enabled", cfg.Server.TLS,
+		"cert_dir", certDir,
+		"dev_mode", devMode,
+		"auth_required", func() bool {
+			if cfg.Auth != nil {
+				return cfg.Auth.Required
+			}
+			return false
+		}())
 
-	log.Printf("Elemta MTA starting on %s", cfg.Server.Listen)
-	fmt.Println("SMTP server started successfully!")
+	slog.Info("Elemta MTA starting", "event_type", "system", "listen_addr", cfg.Server.Listen)
+	slog.Info("SMTP server started successfully")
 
 	// Wait for signal to quit
-	fmt.Println("Server running. Press Ctrl+C to stop.")
+	slog.Info("Server running. Press Ctrl+C to stop")
 
 	// Set up signal channel
 	sigChan := make(chan os.Signal, 1)
@@ -271,28 +271,27 @@ func startServer() {
 
 	select {
 	case <-sigChan:
-		fmt.Println("\nShutdown signal received, stopping server...")
+		slog.Info("Shutdown signal received, stopping server")
 	case err := <-errChan:
 		if err != nil {
-			fmt.Printf("Server error occurred: %v\n", err)
+			slog.Error("Server error occurred", "error", err)
 		} else {
-			fmt.Println("Server stopped normally")
+			slog.Info("Server stopped normally")
 		}
 	}
 
 	// Perform graceful shutdown
-	fmt.Println("Shutting down server...")
+	slog.Info("Shutting down server")
 	server.Close()
 }
 
 // initializeCertificateMonitoring starts monitoring TLS certificates
 func initializeCertificateMonitoring(certDir string) {
-	logger := log.New(os.Stdout, "[CertMonitor] ", log.LstdFlags)
-	logger.Printf("Starting TLS certificate monitoring for directory: %s", certDir)
+	slog.Info("Starting TLS certificate monitoring", "directory", certDir)
 
 	// Initial scan of certificates
 	if err := server.GetCertificateMetrics(certDir+"/fullchain.pem", ""); err != nil {
-		logger.Printf("Initial certificate metrics collection failed: %v", err)
+		slog.Warn("Initial certificate metrics collection failed", "error", err)
 	}
 
 	// Start periodic monitoring

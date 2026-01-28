@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net"
 	"os"
@@ -34,7 +33,6 @@ type Server struct {
 	queueManager    queue.QueueManager // Unified queue system
 	queueProcessor  *queue.Processor   // Queue processor for message delivery
 	tlsManager      TLSHandler
-	logger          *log.Logger
 	resourceManager *ResourceManager // Resource management and rate limiting
 	slogger         *slog.Logger     // Structured logger for resource management
 
@@ -69,37 +67,39 @@ func NewServer(config *Config) (*Server, error) {
 	}
 
 	// Set up logger
-	logger := log.New(os.Stdout, "SMTP: ", log.LstdFlags)
-	logger.Printf("Initializing SMTP server with hostname: %s", config.Hostname)
+	// Set up logger
+	// logger := log.New(os.Stdout, "SMTP: ", log.LstdFlags) - Removed in favor of slogger
 
 	// Set up structured logger for resource management
-	slogger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})).With(
+	slogger := slog.Default().With(
 		"component", "smtp-server",
 		"hostname", config.Hostname,
 	)
+
+	slogger.Info("Initializing SMTP server",
+		"event_type", "system",
+		"hostname", config.Hostname)
 
 	// Initialize plugin manager if enabled
 	var pluginManager *plugin.Manager
 	var builtinPlugins *plugin.BuiltinPlugins
 	if config.Plugins != nil && config.Plugins.Enabled {
 		pluginManager = plugin.NewManager(config.Plugins.PluginPath)
-		logger.Printf("Plugin system enabled, using path: %s", config.Plugins.PluginPath)
+		slogger.Info("Plugin system enabled", "path", config.Plugins.PluginPath)
 
 		// Load plugins
 		if err := pluginManager.LoadPlugins(); err != nil {
-			logger.Printf("Warning: failed to load plugins: %v", err)
+			slogger.Warn("Failed to load plugins", "error", err)
 		}
 
 		// Load specific plugins if specified
 		if len(config.Plugins.Plugins) > 0 {
-			logger.Printf("Attempting to load %d specified plugins", len(config.Plugins.Plugins))
+			slogger.Info("Attempting to load specified plugins", "count", len(config.Plugins.Plugins))
 			for _, pluginName := range config.Plugins.Plugins {
 				if err := pluginManager.LoadPlugin(pluginName); err != nil {
-					logger.Printf("Warning: failed to load plugin %s: %v", pluginName, err)
+					slogger.Warn("Failed to load plugin", "plugin", pluginName, "error", err)
 				} else {
-					logger.Printf("Successfully loaded plugin: %s", pluginName)
+					slogger.Info("Successfully loaded plugin", "plugin", pluginName)
 				}
 			}
 		}
@@ -124,9 +124,9 @@ func NewServer(config *Config) (*Server, error) {
 		}
 
 		if err := builtinPlugins.InitBuiltinPlugins(config.Plugins.Plugins, pluginConfig); err != nil {
-			logger.Printf("Warning: failed to initialize builtin plugins: %v", err)
+			slogger.Warn("Failed to initialize builtin plugins", "error", err)
 		} else {
-			logger.Printf("Builtin plugins initialized successfully")
+			slogger.Info("Builtin plugins initialized successfully")
 		}
 	} else {
 		// Initialize with basic builtin scanning even if no plugins specified
@@ -151,9 +151,9 @@ func NewServer(config *Config) (*Server, error) {
 		}
 
 		if err := builtinPlugins.InitBuiltinPlugins(basicPlugins, pluginConfig); err != nil {
-			logger.Printf("Warning: failed to initialize basic builtin plugins: %v", err)
+			slogger.Warn("Failed to initialize basic builtin plugins", "error", err)
 		} else {
-			logger.Printf("Basic builtin plugins initialized successfully")
+			slogger.Info("Basic builtin plugins initialized successfully")
 		}
 	}
 
@@ -161,20 +161,20 @@ func NewServer(config *Config) (*Server, error) {
 	var authenticator Authenticator
 	var err error
 	if config.Auth != nil && config.Auth.Enabled {
-		logger.Printf("Authentication enabled, initializing authenticator")
+		slogger.Info("Authentication enabled, initializing authenticator")
 		authenticator, err = NewAuthenticator(config.Auth)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize authenticator: %w", err)
 		}
 
 		if config.Auth.Required {
-			logger.Printf("Authentication will be required for all mail transactions")
+			slogger.Info("Authentication will be required for all mail transactions")
 		} else {
-			logger.Printf("Authentication available but not required")
+			slogger.Info("Authentication available but not required")
 		}
 	} else {
 		// Create a dummy authenticator that always returns true
-		logger.Printf("Authentication disabled, using dummy authenticator")
+		slogger.Info("Authentication disabled, using dummy authenticator")
 		authenticator = &SMTPAuthenticator{
 			config: &AuthConfig{
 				Enabled:  false,
@@ -185,34 +185,34 @@ func NewServer(config *Config) (*Server, error) {
 
 	// Initialize metrics
 	metrics := GetMetrics()
-	logger.Printf("Metrics system initialized")
+	slogger.Info("Metrics system initialized")
 
 	// Initialize metrics manager
-	metricsManager := NewMetricsManager(config, logger, metrics)
+	metricsManager := NewMetricsManager(config, slogger, metrics)
 
 	// Debug: print AuthConfig and TLSConfig
 	if config.Auth != nil {
-		logger.Printf("Auth config loaded: enabled=%v, required=%v, datasource=%s",
-			config.Auth.Enabled,
-			config.Auth.Required,
-			config.Auth.DataSourceType)
+		slogger.Info("Auth config loaded",
+			"enabled", config.Auth.Enabled,
+			"required", config.Auth.Required,
+			"datasource", config.Auth.DataSourceType)
 	}
 
 	if config.TLS != nil {
-		logger.Printf("TLS config loaded: enabled=%v, starttls=%v",
-			config.TLS.Enabled,
-			config.TLS.EnableStartTLS)
+		slogger.Info("TLS config loaded",
+			"enabled", config.TLS.Enabled,
+			"starttls", config.TLS.EnableStartTLS)
 	}
 
 	// Initialize unified queue system
-	logger.Printf("Initializing unified queue system with directory: %s", config.QueueDir)
+	slogger.Info("Initializing unified queue system", "directory", config.QueueDir)
 	queueManager := queue.NewManager(config.QueueDir)
-	logger.Printf("Unified queue system initialized")
+	slogger.Info("Unified queue system initialized")
 
 	// Initialize queue processor if enabled
 	var queueProcessor *queue.Processor
 	if config.QueueProcessorEnabled {
-		logger.Printf("Queue processor enabled, initializing...")
+		slogger.Info("Queue processor enabled, initializing")
 
 		// Create LMTP delivery handler
 		deliveryHost := "elemta-dovecot"
@@ -232,7 +232,7 @@ func NewServer(config *Config) (*Server, error) {
 			maxPerDomain = 10
 		}
 
-		logger.Printf("Creating LMTP delivery handler: %s:%d (max_per_domain=%d)", deliveryHost, deliveryPort, maxPerDomain)
+		slogger.Info("Creating LMTP delivery handler", "host", deliveryHost, "port", deliveryPort, "max_per_domain", maxPerDomain)
 		lmtpHandler := queue.NewLMTPDeliveryHandler(deliveryHost, deliveryPort, maxPerDomain)
 
 		// Create processor configuration
@@ -245,11 +245,13 @@ func NewServer(config *Config) (*Server, error) {
 			CleanupAge:    24 * time.Hour,
 		}
 
-		logger.Printf("Creating queue processor with config: enabled=%v, interval=%v, workers=%d",
-			processorConfig.Enabled, processorConfig.Interval, processorConfig.MaxConcurrent)
+		slogger.Info("Creating queue processor",
+			"enabled", processorConfig.Enabled,
+			"interval", processorConfig.Interval,
+			"workers", processorConfig.MaxConcurrent)
 
 		queueProcessor = queue.NewProcessor(queueManager, processorConfig, lmtpHandler)
-		logger.Printf("Queue processor initialized successfully")
+		slogger.Info("Queue processor initialized successfully")
 
 		// Set up Valkey metrics recorder if available
 		valkeyAddr := os.Getenv("VALKEY_ADDR")
@@ -258,13 +260,13 @@ func NewServer(config *Config) (*Server, error) {
 		}
 		metricsStore, err := deliverymetrics.NewValkeyStore(valkeyAddr)
 		if err != nil {
-			logger.Printf("Warning: Failed to connect to Valkey for metrics: %v", err)
+			slogger.Warn("Failed to connect to Valkey for metrics", "error", err)
 		} else {
 			queueProcessor.SetMetricsRecorder(metricsStore)
-			logger.Printf("Connected to Valkey for metrics at %s", valkeyAddr)
+			slogger.Info("Connected to Valkey for metrics", "address", valkeyAddr)
 		}
 	} else {
-		logger.Printf("Queue processor disabled")
+		slogger.Info("Queue processor disabled")
 	}
 
 	// Initialize resource manager with limits from config
@@ -276,14 +278,14 @@ func NewServer(config *Config) (*Server, error) {
 		var memoryConfig *MemoryConfig
 		if config.Memory != nil {
 			memoryConfig = config.Memory
-			logger.Printf("Using memory configuration: %dMB total, %dMB per connection",
-				memoryConfig.MaxMemoryUsage/(1024*1024),
-				memoryConfig.PerConnectionMemoryLimit/(1024*1024))
+			slogger.Info("Using memory configuration",
+				"total_mb", memoryConfig.MaxMemoryUsage/(1024*1024),
+				"per_conn_mb", memoryConfig.PerConnectionMemoryLimit/(1024*1024))
 		} else {
 			memoryConfig = DefaultMemoryConfig()
-			logger.Printf("Using default memory configuration: %dMB total, %dMB per connection",
-				memoryConfig.MaxMemoryUsage/(1024*1024),
-				memoryConfig.PerConnectionMemoryLimit/(1024*1024))
+			slogger.Info("Using default memory configuration",
+				"total_mb", memoryConfig.MaxMemoryUsage/(1024*1024),
+				"per_conn_mb", memoryConfig.PerConnectionMemoryLimit/(1024*1024))
 		}
 
 		// Handle missing fields with sensible defaults
@@ -334,14 +336,14 @@ func NewServer(config *Config) (*Server, error) {
 		memoryManager := NewMemoryManager(memoryConfig, slogger)
 		resourceManager.SetMemoryManager(memoryManager)
 
-		logger.Printf("Resource manager initialized with memory protection enabled")
+		slogger.Info("Resource manager initialized with memory protection enabled")
 	} else {
 		resourceLimits = DefaultResourceLimits()
 		resourceManager = NewResourceManager(resourceLimits, slogger)
 		// Initialize default memory manager
 		memoryManager := NewMemoryManager(DefaultMemoryConfig(), slogger)
 		resourceManager.SetMemoryManager(memoryManager)
-		logger.Printf("Resource manager initialized with default memory protection")
+		slogger.Info("Resource manager initialized with default memory protection")
 	}
 
 	// Initialize concurrency management with hierarchical context
@@ -378,7 +380,6 @@ func NewServer(config *Config) (*Server, error) {
 		metricsManager:  metricsManager,
 		queueManager:    queueManager,
 		queueProcessor:  queueProcessor,
-		logger:          logger,
 		resourceManager: resourceManager,
 		slogger:         slogger,
 
@@ -393,24 +394,25 @@ func NewServer(config *Config) (*Server, error) {
 
 	// Initialize TLS manager if TLS is enabled
 	if config.TLS != nil && config.TLS.Enabled {
-		logger.Printf("TLS enabled, initializing TLS manager")
+		slogger.Info("TLS enabled, initializing TLS manager")
 		tlsManager, err := NewTLSManager(config)
 		if err != nil {
 			// TLS is explicitly enabled; failing to initialize it is a hard error
 			return nil, fmt.Errorf("failed to initialize TLS manager: %w", err)
 		}
 		server.tlsManager = tlsManager
-		logger.Printf("TLS manager initialized successfully")
+		server.tlsManager = tlsManager
+		slogger.Info("TLS manager initialized successfully")
 
 		// Log certificate information
 		if config.TLS.CertFile != "" {
-			logger.Printf("Using TLS certificate: %s", config.TLS.CertFile)
+			slogger.Info("Using TLS certificate", "file", config.TLS.CertFile)
 		}
 		if config.TLS.LetsEncrypt != nil && config.TLS.LetsEncrypt.Enabled {
-			logger.Printf("Let's Encrypt enabled for domain: %s", config.TLS.LetsEncrypt.Domain)
+			slogger.Info("Let's Encrypt enabled", "domain", config.TLS.LetsEncrypt.Domain)
 		}
 	} else {
-		logger.Printf("TLS disabled")
+		slogger.Info("TLS disabled")
 	}
 
 	// Initialize scanner manager
@@ -433,7 +435,9 @@ func (s *Server) Start() error {
 		return fmt.Errorf("server already running")
 	}
 
-	s.logger.Printf("Starting SMTP server on %s", s.config.ListenAddr)
+	s.slogger.Info("Starting SMTP server",
+		"event_type", "system",
+		"listen_addr", s.config.ListenAddr)
 
 	// Create all required queue directories
 	if err := s.setupQueueDirectories(); err != nil {
@@ -441,7 +445,7 @@ func (s *Server) Start() error {
 	}
 
 	// Create listener
-	s.logger.Printf("Creating TCP listener on %s", s.config.ListenAddr)
+	s.slogger.Info("Creating TCP listener", "address", s.config.ListenAddr)
 	var err error
 	s.listener, err = net.Listen("tcp", s.config.ListenAddr)
 	if err != nil {
@@ -449,28 +453,32 @@ func (s *Server) Start() error {
 	}
 
 	s.running = true
-	s.logger.Printf("SMTP server running on %s", s.config.ListenAddr)
+	s.slogger.Info("SMTP server running",
+		"event_type", "system",
+		"listen_addr", s.config.ListenAddr)
 
 	// Start the new queue system if available
 	if s.queueManager != nil {
-		s.logger.Printf("Starting unified queue system")
+
 		// The new queue system doesn't need explicit startup
-		s.logger.Printf("Unified queue system started successfully")
+		s.slogger.Info("Starting unified queue system")
+		// The new queue system doesn't need explicit startup
+		s.slogger.Info("Unified queue system started successfully")
 	}
 
 	// Start queue processor if available
 	if s.queueProcessor != nil {
-		s.logger.Printf("Starting queue processor")
+		s.slogger.Info("Starting queue processor")
 		if err := s.queueProcessor.Start(); err != nil {
-			s.logger.Printf("Warning: failed to start queue processor: %v", err)
+			s.slogger.Warn("Failed to start queue processor", "error", err)
 		} else {
-			s.logger.Printf("Queue processor started successfully")
+			s.slogger.Info("Queue processor started successfully")
 		}
 	}
 
 	// Start metrics server if enabled
 	if err := s.metricsManager.Start(); err != nil {
-		s.logger.Printf("Failed to start metrics server: %v", err)
+		s.slogger.Error("Failed to start metrics server", "error", err)
 		return err
 	}
 
@@ -479,26 +487,27 @@ func (s *Server) Start() error {
 
 	// Start API server if enabled
 	if s.config.API != nil && s.config.API.Enabled {
-		s.logger.Printf("Starting API server on %s", s.config.API.ListenAddr)
-		apiServer, err := api.NewServer(&api.Config{
+		s.slogger.Info("Starting API server", "address", s.config.API.ListenAddr)
+		apiSrv, err := api.NewServer(&api.Config{
 			Enabled:    s.config.API.Enabled,
 			ListenAddr: s.config.API.ListenAddr,
 		}, s.config.QueueDir)
 
 		if err != nil {
-			s.logger.Printf("Warning: failed to create API server: %v", err)
+			s.slogger.Warn("Failed to create API server", "error", err)
 		} else {
-			s.apiServer = apiServer
-			if err := s.apiServer.Start(); err != nil {
-				s.logger.Printf("Warning: failed to start API server: %v", err)
-			} else {
-				s.logger.Printf("API server started successfully")
-			}
+			s.apiServer = apiSrv
+			go func() {
+				if err := s.apiServer.Start(); err != nil {
+					s.slogger.Warn("Failed to start API server", "error", err)
+				}
+			}()
+			s.slogger.Info("API server started successfully")
 		}
 	}
 
 	// Start worker pool for connection handling
-	s.logger.Printf("Starting worker pool with %d workers", s.workerPool.size)
+	s.slogger.Info("Starting worker pool", "workers", s.workerPool.size)
 	if err := s.workerPool.Start(); err != nil {
 		return fmt.Errorf("failed to start worker pool: %w", err)
 	}
@@ -528,7 +537,7 @@ func (s *Server) setupQueueDirectories() error {
 		if err := os.MkdirAll(qDir, 0700); err != nil {
 			return fmt.Errorf("failed to create %s queue directory: %w", qType, err)
 		}
-		s.logger.Printf("Created secure queue directory: %s (0700)", qDir)
+		s.slogger.Info("Created secure queue directory", "path", qDir, "mode", "0700")
 	}
 
 	return nil
@@ -545,12 +554,13 @@ func (s *Server) updateQueueMetricsWithRetry() {
 			// Use defer to catch any panics that might occur
 			defer func() {
 				if r := recover(); r != nil {
-					s.logger.Printf("Panic in queue metrics update: %v", r)
+					s.slogger.Error("Panic in queue metrics update", "panic", r)
 				}
 			}()
 
+			// Update queue metrics
 			s.metricsManager.UpdateQueueSizes()
-			s.logger.Printf("Queue metrics updated successfully")
+			s.slogger.Debug("Queue metrics updated successfully")
 		}()
 
 		<-ticker.C
@@ -559,13 +569,13 @@ func (s *Server) updateQueueMetricsWithRetry() {
 
 // acceptConnections accepts and handles incoming connections with standardized worker pool
 func (s *Server) acceptConnections() error {
-	s.logger.Printf("Starting connection acceptance loop")
+	s.slogger.Info("Starting connection acceptance loop")
 	s.slogger.Debug("acceptConnections goroutine started")
 
 	for {
 		select {
 		case <-s.ctx.Done():
-			s.logger.Printf("Context cancelled, stopping connection acceptance")
+			s.slogger.Info("Context cancelled, stopping connection acceptance")
 			return s.ctx.Err()
 		default:
 		}
@@ -573,7 +583,7 @@ func (s *Server) acceptConnections() error {
 		// Set a short timeout on accept to allow periodic context checking
 		if tcpListener, ok := s.listener.(*net.TCPListener); ok {
 			if err := tcpListener.SetDeadline(time.Now().Add(1 * time.Second)); err != nil {
-				s.logger.Printf("Failed to set accept deadline: %v", err)
+				s.slogger.Error("Failed to set accept deadline", "error", err)
 			}
 		}
 
@@ -585,7 +595,7 @@ func (s *Server) acceptConnections() error {
 			}
 
 			if s.running {
-				s.logger.Printf("Failed to accept connection: %v", err)
+				s.slogger.Error("Failed to accept connection", "error", err)
 			}
 			continue
 		}
@@ -601,7 +611,7 @@ func (s *Server) acceptConnections() error {
 		clientAddr := conn.RemoteAddr().String()
 		s.slogger.Debug("Checking if connection can be accepted", "client_addr", clientAddr)
 		if !s.resourceManager.CanAcceptConnection(clientAddr) {
-			s.logger.Printf("Connection rejected due to resource limits: %s", clientAddr)
+			s.slogger.Warn("Connection rejected due to resource limits", "client_ip", clientAddr)
 			conn.Close()
 			continue
 		}
@@ -682,9 +692,8 @@ func (s *Server) handleAndCloseSession(ctx context.Context, conn net.Conn) {
 	var cleanupDone bool
 
 	// Initialize logger if it's nil
-	if s.logger == nil {
-		s.logger = log.New(os.Stdout, "SMTP: ", log.LstdFlags)
-	}
+	// Initialize logger if it's nil
+	// if s.logger == nil { ... } - Removed
 
 	// Guaranteed cleanup function that runs even on panic
 	cleanup := func() {
@@ -700,14 +709,14 @@ func (s *Server) handleAndCloseSession(ctx context.Context, conn net.Conn) {
 
 		// Close the connection
 		if err := conn.Close(); err != nil {
-			s.logger.Printf("failed to close connection during cleanup: %v, client: %s, session: %s", err, clientIP, sessionID)
+			s.slogger.Error("Failed to close connection during cleanup", "error", err, "client_ip", clientIP, "session_id", sessionID)
 		}
 	}
 
 	// Ensure cleanup happens even on panic
 	defer func() {
 		if r := recover(); r != nil {
-			s.logger.Printf("panic in session handling: %v, client: %s, session: %s", r, clientIP, sessionID)
+			s.slogger.Error("Panic in session handling", "panic", r, "client_ip", clientIP, "session_id", sessionID)
 			cleanup()
 			panic(r) // Re-panic to maintain panic behavior
 		}
@@ -718,13 +727,13 @@ func (s *Server) handleAndCloseSession(ctx context.Context, conn net.Conn) {
 	s.slogger.Debug("Registering connection with resource manager")
 	sessionID = s.resourceManager.AcceptConnection(conn)
 	s.slogger.Debug("Connection registered", "session_id", sessionID)
-	s.logger.Printf("new connection: %s (session: %s)", clientIP, sessionID)
+	s.slogger.Info("New connection", "client_ip", clientIP, "session_id", sessionID)
 
 	// Set connection timeout
 	s.slogger.Debug("Setting connection deadline")
 	if err := conn.SetDeadline(time.Now().Add(s.resourceManager.GetConnectionTimeout())); err != nil {
 		s.slogger.Debug("Failed to set connection deadline", "error", err)
-		s.logger.Printf("failed to set connection deadline: %v, client: %s, session: %s", err, clientIP, sessionID)
+		s.slogger.Error("Failed to set connection deadline", "error", err, "client_ip", clientIP, "session_id", sessionID)
 	} else {
 		s.slogger.Debug("Connection deadline set successfully")
 	}
@@ -757,7 +766,7 @@ func (s *Server) handleAndCloseSession(ctx context.Context, conn net.Conn) {
 
 	if err != nil {
 		if err != io.EOF && err != context.DeadlineExceeded {
-			s.logger.Printf("session error: %v, client: %s, session: %s", err, clientIP, sessionID)
+			s.slogger.Error("Session error", "error", err, "client_ip", clientIP, "session_id", sessionID)
 		}
 	}
 }
@@ -767,33 +776,33 @@ func (s *Server) Close() error {
 	var shutdownErr error
 
 	s.shutdownOnce.Do(func() {
-		s.logger.Printf("Initiating graceful server shutdown")
+		s.slogger.Info("Initiating graceful server shutdown")
 		s.running = false
 
 		// Cancel root context first to propagate cancellation to all sessions
 		if s.rootCancel != nil {
-			s.logger.Printf("Cancelling server root context to propagate shutdown signal")
+			s.slogger.Debug("Cancelling server root context to propagate shutdown signal")
 			s.rootCancel()
 		}
 
 		// Close listener first to stop accepting new connections
 		if s.listener != nil {
 			if err := s.listener.Close(); err != nil {
-				s.logger.Printf("Error closing listener: %v", err)
+				s.slogger.Error("Error closing listener", "error", err)
 				shutdownErr = err
 			}
 		}
 
 		// Stop worker pool gracefully
 		if s.workerPool != nil {
-			s.logger.Printf("Stopping worker pool...")
+			s.slogger.Info("Stopping worker pool")
 			if err := s.workerPool.Stop(); err != nil {
-				s.logger.Printf("Error stopping worker pool: %v", err)
+				s.slogger.Error("Error stopping worker pool", "error", err)
 				if shutdownErr == nil {
 					shutdownErr = err
 				}
 			} else {
-				s.logger.Printf("Worker pool stopped successfully")
+				s.slogger.Info("Worker pool stopped successfully")
 			}
 		}
 
@@ -803,7 +812,7 @@ func (s *Server) Close() error {
 			shutdownTimeout = 30 * time.Second // fallback default
 		}
 
-		s.logger.Printf("Waiting for goroutines to complete (timeout: %v)", shutdownTimeout)
+		s.slogger.Info("Waiting for goroutines to complete", "timeout", shutdownTimeout)
 		done := make(chan error, 1)
 		go func() {
 			done <- s.errGroup.Wait()
@@ -812,15 +821,15 @@ func (s *Server) Close() error {
 		select {
 		case err := <-done:
 			if err != nil {
-				s.logger.Printf("Error during goroutine shutdown: %v", err)
+				s.slogger.Error("Error during goroutine shutdown", "error", err)
 				if shutdownErr == nil {
 					shutdownErr = err
 				}
 			} else {
-				s.logger.Printf("All goroutines stopped successfully")
+				s.slogger.Info("All goroutines stopped successfully")
 			}
 		case <-time.After(shutdownTimeout):
-			s.logger.Printf("Warning: Goroutine shutdown timeout after 30 seconds")
+			s.slogger.Warn("Goroutine shutdown timeout after 30 seconds")
 			if shutdownErr == nil {
 				shutdownErr = fmt.Errorf("shutdown timeout")
 			}
@@ -836,7 +845,7 @@ func (s *Server) Close() error {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := s.metricsManager.Shutdown(ctx); err != nil {
-				s.logger.Printf("Error shutting down metrics server: %v", err)
+				s.slogger.Error("Error shutting down metrics server", "error", err)
 				if shutdownErr == nil {
 					shutdownErr = err
 				}
@@ -846,7 +855,7 @@ func (s *Server) Close() error {
 		// Close plugin manager
 		if s.pluginManager != nil {
 			if err := s.pluginManager.Close(); err != nil {
-				s.logger.Printf("Error closing plugin manager: %v", err)
+				s.slogger.Error("Error closing plugin manager", "error", err)
 				if shutdownErr == nil {
 					shutdownErr = err
 				}
@@ -857,7 +866,7 @@ func (s *Server) Close() error {
 		if s.authenticator != nil {
 			if auth, ok := s.authenticator.(*SMTPAuthenticator); ok {
 				if err := auth.Close(); err != nil {
-					s.logger.Printf("Error closing authenticator: %v", err)
+					s.slogger.Error("Error closing authenticator", "error", err)
 					if shutdownErr == nil {
 						shutdownErr = err
 					}
@@ -868,7 +877,7 @@ func (s *Server) Close() error {
 		// Stop TLS manager if it was initialized
 		if s.tlsManager != nil {
 			if err := s.tlsManager.Stop(); err != nil {
-				s.logger.Printf("Error stopping TLS manager: %v", err)
+				s.slogger.Error("Error stopping TLS manager", "error", err)
 				if shutdownErr == nil {
 					shutdownErr = err
 				}
@@ -877,34 +886,34 @@ func (s *Server) Close() error {
 
 		// Stop queue processor
 		if s.queueProcessor != nil {
-			s.logger.Printf("Stopping queue processor")
+			s.slogger.Info("Stopping queue processor")
 			if err := s.queueProcessor.Stop(); err != nil {
-				s.logger.Printf("Error stopping queue processor: %v", err)
+				s.slogger.Error("Error stopping queue processor", "error", err)
 				if shutdownErr == nil {
 					shutdownErr = err
 				}
 			} else {
-				s.logger.Printf("Queue processor stopped successfully")
+				s.slogger.Info("Queue processor stopped successfully")
 			}
 		}
 
 		// Stop queue manager
 		if s.queueManager != nil {
-			s.logger.Printf("Stopping queue manager")
+			s.slogger.Info("Stopping queue manager")
 			s.queueManager.Stop()
 		}
 
 		// Stop API server if running
 		if s.apiServer != nil {
 			if err := s.apiServer.Stop(); err != nil {
-				s.logger.Printf("Error stopping API server: %v", err)
+				s.slogger.Error("Error stopping API server", "error", err)
 				if shutdownErr == nil {
 					shutdownErr = err
 				}
 			}
 		}
 
-		s.logger.Printf("Graceful server shutdown completed")
+		s.slogger.Info("Graceful server shutdown completed")
 	})
 
 	return shutdownErr

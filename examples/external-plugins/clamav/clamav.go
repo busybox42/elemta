@@ -168,3 +168,5 @@ func (p *ClamAVPlugin) GetInfo() plugin.PluginInfo {
 
 // Plugin is the exported plugin instance
 var Plugin ClamAVPlugin
+
+func main() {}
