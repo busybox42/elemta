@@ -875,7 +875,7 @@ async function refreshLogs() {
                     ${logs.map(log => {
             const time = log.time ? new Date(log.time).toLocaleString() : 'Unknown';
             const level = (log.level || 'INFO').toUpperCase();
-            const eventType = log.event_type || log.component || '-';
+            const eventType = log.event_type || 'system';
             const eventTypeClass = getEventTypeClass(log.event_type);
 
             return `

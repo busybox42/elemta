@@ -927,8 +927,24 @@ func (s *Server) handleGetMessageLogs(w http.ResponseWriter, r *http.Request) {
 		component, _ := logEntry["component"].(string)
 
 		// Apply filters
-		if eventTypeFilter != "" && eventType != eventTypeFilter {
-			continue
+		if eventTypeFilter != "" {
+			if eventTypeFilter == "system" {
+				// System filter matches explicit "system" events or events with no type
+				// It excludes known lifecycle events
+				isKnownCategory := false
+				knownCategories := []string{"reception", "delivery", "rejection", "deferral", "bounce", "tempfail", "authentication"}
+				for _, t := range knownCategories {
+					if eventType == t {
+						isKnownCategory = true
+						break
+					}
+				}
+				if isKnownCategory {
+					continue
+				}
+			} else if eventType != eventTypeFilter {
+				continue
+			}
 		}
 		if levelFilter != "" && !strings.EqualFold(level, levelFilter) {
 			continue
@@ -955,6 +971,11 @@ func (s *Server) handleGetMessageLogs(w http.ResponseWriter, r *http.Request) {
 
 		// Include if no event_type filter is specified (show all)
 		if eventTypeFilter == "" && eventType == "" && (component != "" || msg != "") {
+			includeLog = true
+		}
+
+		// Always include if explicitly filtered
+		if eventTypeFilter != "" {
 			includeLog = true
 		}
 
