@@ -1232,9 +1232,14 @@ async function checkAuthStatus() {
         if (response.ok) {
             const data = await response.json();
             console.log('Auth check successful, user data:', data);
+            console.log('Data.user:', data.user);
+            console.log('Data.user.username:', data.user?.username);
+            console.log('Data.username:', data.username);
+            
             authState.isLoggedIn = true;
-            // Username is nested in user object
-            authState.username = data.user?.username || data.username;
+            // Username is nested in user object with capital U
+            authState.username = data.user?.Username || data.user?.username || data.username;
+            console.log('Set authState.username to:', authState.username);
             authState.permissions = data.permissions || [];
             updateUserUI();
         } else {
@@ -1300,11 +1305,14 @@ async function handleLogin(event) {
 
 async function handleLogout() {
     try {
-        await fetch('/auth/logout', { method: 'POST' });
+        console.log('Attempting logout...');
+        const response = await fetch('/auth/logout', { method: 'POST' });
+        console.log('Logout response status:', response.status);
     } catch (error) {
         console.error('Logout error:', error);
     }
 
+    console.log('Clearing auth state and redirecting...');
     authState.isLoggedIn = false;
     authState.username = null;
     authState.permissions = [];
@@ -1312,10 +1320,8 @@ async function handleLogout() {
     document.getElementById('user-dropdown').classList.remove('active');
     showToast('Logged out successfully', 'info');
     
-    // Redirect to login page after logout
-    setTimeout(() => {
-        window.location.href = '/login';
-    }, 1000);
+    // Immediate redirect to login page
+    window.location.href = '/login';
 }
 
 function updateUserUI() {
@@ -1326,7 +1332,10 @@ function updateUserUI() {
     const btnLogout = document.getElementById('btn-logout');
     const btnApikeys = document.getElementById('btn-apikeys');
 
+    console.log('updateUserUI called - isLoggedIn:', authState.isLoggedIn, 'username:', authState.username);
+
     if (authState.isLoggedIn) {
+        console.log('Setting userDisplay to:', authState.username);
         userDisplay.textContent = authState.username;
         userName.textContent = authState.username;
         userInfoPanel.style.display = 'block';
@@ -1334,6 +1343,7 @@ function updateUserUI() {
         btnLogout.style.display = 'flex';
         btnApikeys.style.display = 'flex';
     } else {
+        console.log('Setting userDisplay to Guest');
         userDisplay.textContent = 'Guest';
         userInfoPanel.style.display = 'none';
         btnLogin.style.display = 'flex';
