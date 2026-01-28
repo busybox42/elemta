@@ -58,16 +58,18 @@
         }
 
         .logo {
-            width: 64px;
-            height: 64px;
+            width: 120px;
+            height: 120px;
             margin: 0 auto 1rem;
-            background: var(--accent-primary);
-            border-radius: var(--radius-md);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
-            font-size: 1.5rem;
+        }
+        
+        .logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
         }
 
         h1 {
@@ -201,7 +203,9 @@
     <div class="login-container">
         <div class="login-card">
             <div class="logo-section">
-                <div class="logo">E</div>
+                <div class="logo">
+                    <img src="/static/images/elemta.png" alt="Elemta Logo">
+                </div>
                 <h1>Elemta MTA</h1>
                 <p class="subtitle">High-Performance SMTP Server</p>
             </div>
