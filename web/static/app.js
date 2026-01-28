@@ -1233,7 +1233,8 @@ async function checkAuthStatus() {
             const data = await response.json();
             console.log('Auth check successful, user data:', data);
             authState.isLoggedIn = true;
-            authState.username = data.username;
+            // Username is nested in user object
+            authState.username = data.user?.username || data.username;
             authState.permissions = data.permissions || [];
             updateUserUI();
         } else {
@@ -1310,6 +1311,11 @@ async function handleLogout() {
     updateUserUI();
     document.getElementById('user-dropdown').classList.remove('active');
     showToast('Logged out successfully', 'info');
+    
+    // Redirect to login page after logout
+    setTimeout(() => {
+        window.location.href = '/login';
+    }, 1000);
 }
 
 function updateUserUI() {
