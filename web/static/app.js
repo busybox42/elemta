@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeTheme();
     initializeNavigation();
     initializeEventListeners();
+    checkAuthStatus(); // Check authentication status on page load
     loadFromURL();
     refreshAllData();
     startAutoRefresh();
@@ -1221,6 +1222,31 @@ const authState = {
     username: null,
     permissions: []
 };
+
+async function checkAuthStatus() {
+    try {
+        const response = await fetch('/auth/me');
+        if (response.ok) {
+            const data = await response.json();
+            authState.isLoggedIn = true;
+            authState.username = data.username;
+            authState.permissions = data.permissions || [];
+            updateUserUI();
+        } else {
+            // Not authenticated, keep default state
+            authState.isLoggedIn = false;
+            authState.username = null;
+            authState.permissions = [];
+            updateUserUI();
+        }
+    } catch (error) {
+        // Error checking auth status, assume not authenticated
+        authState.isLoggedIn = false;
+        authState.username = null;
+        authState.permissions = [];
+        updateUserUI();
+    }
+}
 
 function showLoginModal() {
     document.getElementById('login-modal').classList.add('active');
