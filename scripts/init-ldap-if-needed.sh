@@ -27,7 +27,7 @@ fi
 echo "📝 LDAP users not found, adding them now..."
 
 # Add users using ldapadd
-docker exec elemta-ldap ldapadd -x -D "cn=admin,dc=example,dc=com" -w admin -f /docker-entrypoint-initdb.d/bootstrap.ldif 2>&1
+docker exec elemta-ldap ldapadd -x -D "cn=admin,dc=example,dc=com" -w admin -f /docker-entrypoint-initdb.d/99-stress-users.ldif 2>&1
 
 # Wait a moment for LDAP to process the additions
 sleep 2

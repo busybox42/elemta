@@ -73,6 +73,9 @@ tests/python/e2e/debug_auth.py
 *.coverage
 htmlcov/
 
+# Email corpus files (large test datasets)
+tests/corpus/
+
 # IDE and editor files
 .idea/
 .vscode/
@@ -129,6 +132,7 @@ working-config.sh
 
 # LDIF files (user data)
 *.ldif
+!docker/ldap/99-stress-users.ldif
 local-user*.ldif
 change-password.ldif
 

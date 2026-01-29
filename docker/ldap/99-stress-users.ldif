@@ -1,0 +1,445 @@
+# Create organizational units
+dn: ou=people,dc=example,dc=com
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=example,dc=com
+objectClass: organizationalUnit
+ou: groups
+
+# Create users group
+dn: cn=users,ou=groups,dc=example,dc=com
+objectClass: groupOfNames
+cn: users
+member: uid=sender,ou=people,dc=example,dc=com
+member: uid=recipient,ou=people,dc=example,dc=com
+member: uid=demo,ou=people,dc=example,dc=com
+member: uid=user,ou=people,dc=example,dc=com
+member: uid=stressuser01,ou=people,dc=example,dc=com
+member: uid=stressuser02,ou=people,dc=example,dc=com
+member: uid=stressuser03,ou=people,dc=example,dc=com
+member: uid=stressuser04,ou=people,dc=example,dc=com
+member: uid=stressuser05,ou=people,dc=example,dc=com
+member: uid=stressuser06,ou=people,dc=example,dc=com
+member: uid=stressuser07,ou=people,dc=example,dc=com
+member: uid=stressuser08,ou=people,dc=example,dc=com
+member: uid=stressuser09,ou=people,dc=example,dc=com
+member: uid=stressuser10,ou=people,dc=example,dc=com
+member: uid=stressuser11,ou=people,dc=example,dc=com
+member: uid=stressuser12,ou=people,dc=example,dc=com
+member: uid=stressuser13,ou=people,dc=example,dc=com
+member: uid=stressuser14,ou=people,dc=example,dc=com
+member: uid=stressuser15,ou=people,dc=example,dc=com
+member: uid=stressuser16,ou=people,dc=example,dc=com
+member: uid=stressuser17,ou=people,dc=example,dc=com
+member: uid=stressuser18,ou=people,dc=example,dc=com
+member: uid=stressuser19,ou=people,dc=example,dc=com
+member: uid=stressuser20,ou=people,dc=example,dc=com
+
+# Test user: sender@example.com
+dn: uid=sender,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: sender
+cn: Test Sender
+sn: Sender
+givenName: Test
+displayName: Test Sender
+mail: sender@example.com
+userPassword: password
+uidNumber: 5001
+gidNumber: 5000
+homeDirectory: /var/mail/sender@example.com
+loginShell: /bin/false
+
+# Test user: recipient@example.com
+dn: uid=recipient,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: recipient
+cn: Test Recipient
+sn: Recipient
+givenName: Test
+displayName: Test Recipient
+mail: recipient@example.com
+userPassword: password
+uidNumber: 5002
+gidNumber: 5000
+homeDirectory: /var/mail/recipient@example.com
+loginShell: /bin/false
+
+# Test user: user@example.com (main test account)
+dn: uid=user,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: user
+cn: Test User
+sn: User
+givenName: Test
+displayName: Test User
+mail: user@example.com
+userPassword: password
+uidNumber: 5003
+gidNumber: 5000
+homeDirectory: /var/mail/user@example.com
+loginShell: /bin/false
+
+# Demo user: demo@example.com (for auth tests)
+dn: uid=demo,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: demo
+cn: Demo User
+sn: User
+givenName: Demo
+displayName: Demo User
+mail: demo@example.com
+userPassword: demo123
+uidNumber: 5004
+gidNumber: 5000
+homeDirectory: /var/mail/demo@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser01@example.com
+dn: uid=stressuser01,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser01
+cn: Stress User 01
+sn: User
+givenName: Stress
+displayName: Stress User 01
+mail: stressuser01@example.com
+userPassword: testpass123
+uidNumber: 5011
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser01@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser02@example.com
+dn: uid=stressuser02,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser02
+cn: Stress User 02
+sn: User
+givenName: Stress
+displayName: Stress User 02
+mail: stressuser02@example.com
+userPassword: testpass123
+uidNumber: 5012
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser02@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser03@example.com
+dn: uid=stressuser03,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser03
+cn: Stress User 03
+sn: User
+givenName: Stress
+displayName: Stress User 03
+mail: stressuser03@example.com
+userPassword: testpass123
+uidNumber: 5013
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser03@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser04@example.com
+dn: uid=stressuser04,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser04
+cn: Stress User 04
+sn: User
+givenName: Stress
+displayName: Stress User 04
+mail: stressuser04@example.com
+userPassword: testpass123
+uidNumber: 5014
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser04@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser05@example.com
+dn: uid=stressuser05,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser05
+cn: Stress User 05
+sn: User
+givenName: Stress
+displayName: Stress User 05
+mail: stressuser05@example.com
+userPassword: testpass123
+uidNumber: 5015
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser05@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser06@example.com
+dn: uid=stressuser06,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser06
+cn: Stress User 06
+sn: User
+givenName: Stress
+displayName: Stress User 06
+mail: stressuser06@example.com
+userPassword: testpass123
+uidNumber: 5016
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser06@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser07@example.com
+dn: uid=stressuser07,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser07
+cn: Stress User 07
+sn: User
+givenName: Stress
+displayName: Stress User 07
+mail: stressuser07@example.com
+userPassword: testpass123
+uidNumber: 5017
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser07@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser08@example.com
+dn: uid=stressuser08,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser08
+cn: Stress User 08
+sn: User
+givenName: Stress
+displayName: Stress User 08
+mail: stressuser08@example.com
+userPassword: testpass123
+uidNumber: 5018
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser08@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser09@example.com
+dn: uid=stressuser09,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser09
+cn: Stress User 09
+sn: User
+givenName: Stress
+displayName: Stress User 09
+mail: stressuser09@example.com
+userPassword: testpass123
+uidNumber: 5019
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser09@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser10@example.com
+dn: uid=stressuser10,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser10
+cn: Stress User 10
+sn: User
+givenName: Stress
+displayName: Stress User 10
+mail: stressuser10@example.com
+userPassword: testpass123
+uidNumber: 5020
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser10@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser11@example.com
+dn: uid=stressuser11,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser11
+cn: Stress User 11
+sn: User
+givenName: Stress
+displayName: Stress User 11
+mail: stressuser11@example.com
+userPassword: testpass123
+uidNumber: 5021
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser11@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser12@example.com
+dn: uid=stressuser12,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser12
+cn: Stress User 12
+sn: User
+givenName: Stress
+displayName: Stress User 12
+mail: stressuser12@example.com
+userPassword: testpass123
+uidNumber: 5022
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser12@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser13@example.com
+dn: uid=stressuser13,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser13
+cn: Stress User 13
+sn: User
+givenName: Stress
+displayName: Stress User 13
+mail: stressuser13@example.com
+userPassword: testpass123
+uidNumber: 5023
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser13@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser14@example.com
+dn: uid=stressuser14,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser14
+cn: Stress User 14
+sn: User
+givenName: Stress
+displayName: Stress User 14
+mail: stressuser14@example.com
+userPassword: testpass123
+uidNumber: 5024
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser14@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser15@example.com
+dn: uid=stressuser15,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser15
+cn: Stress User 15
+sn: User
+givenName: Stress
+displayName: Stress User 15
+mail: stressuser15@example.com
+userPassword: testpass123
+uidNumber: 5025
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser15@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser16@example.com
+dn: uid=stressuser16,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser16
+cn: Stress User 16
+sn: User
+givenName: Stress
+displayName: Stress User 16
+mail: stressuser16@example.com
+userPassword: testpass123
+uidNumber: 5026
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser16@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser17@example.com
+dn: uid=stressuser17,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser17
+cn: Stress User 17
+sn: User
+givenName: Stress
+displayName: Stress User 17
+mail: stressuser17@example.com
+userPassword: testpass123
+uidNumber: 5027
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser17@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser18@example.com
+dn: uid=stressuser18,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser18
+cn: Stress User 18
+sn: User
+givenName: Stress
+displayName: Stress User 18
+mail: stressuser18@example.com
+userPassword: testpass123
+uidNumber: 5028
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser18@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser19@example.com
+dn: uid=stressuser19,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser19
+cn: Stress User 19
+sn: User
+givenName: Stress
+displayName: Stress User 19
+mail: stressuser19@example.com
+userPassword: testpass123
+uidNumber: 5029
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser19@example.com
+loginShell: /bin/false
+
+# Stress test user: stressuser20@example.com
+dn: uid=stressuser20,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stressuser20
+cn: Stress User 20
+sn: User
+givenName: Stress
+displayName: Stress User 20
+mail: stressuser20@example.com
+userPassword: testpass123
+uidNumber: 5030
+gidNumber: 5000
+homeDirectory: /var/mail/stressuser20@example.com
+loginShell: /bin/false
