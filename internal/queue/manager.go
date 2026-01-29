@@ -13,13 +13,14 @@ import (
 
 // Manager handles queue operations and implements the QueueManager interface
 type Manager struct {
-	queueDir       string
-	mutex          sync.RWMutex
-	logger         *slog.Logger
-	queueStats     QueueStats
-	statsLock      sync.RWMutex
-	stopCh         chan struct{}
-	storageBackend StorageBackend
+	queueDir                  string
+	failedQueueRetentionHours int
+	mutex                     sync.RWMutex
+	logger                    *slog.Logger
+	queueStats                QueueStats
+	statsLock                 sync.RWMutex
+	stopCh                    chan struct{}
+	storageBackend            StorageBackend
 }
 
 // Ensure Manager implements QueueManager interface
@@ -93,19 +94,20 @@ type Attempt struct {
 }
 
 // NewManager creates a new queue manager using file storage
-func NewManager(queueDir string) *Manager {
+func NewManager(queueDir string, failedQueueRetentionHours int) *Manager {
 	storage := NewFileStorageBackend(queueDir)
-	return NewManagerWithStorage(storage)
+	return NewManagerWithStorage(storage, failedQueueRetentionHours)
 }
 
 // NewManagerWithStorage creates a new queue manager with a custom storage backend
-func NewManagerWithStorage(storage StorageBackend) *Manager {
+func NewManagerWithStorage(storage StorageBackend, failedQueueRetentionHours int) *Manager {
 	m := &Manager{
-		queueDir:       extractQueueDir(storage),
-		logger:         slog.Default().With("component", "queue"),
-		queueStats:     QueueStats{LastUpdated: time.Now()},
-		stopCh:         make(chan struct{}),
-		storageBackend: storage,
+		queueDir:                  extractQueueDir(storage),
+		failedQueueRetentionHours: failedQueueRetentionHours,
+		logger:                    slog.Default().With("component", "queue"),
+		queueStats:                QueueStats{LastUpdated: time.Now()},
+		stopCh:                    make(chan struct{}),
+		storageBackend:            storage,
 	}
 
 	// Ensure directories exist if using file storage
@@ -595,8 +597,7 @@ func calculateNextRetry(retryCount int) time.Time {
 
 // GetFailedQueueRetentionHours returns the failed queue retention setting
 func (m *Manager) GetFailedQueueRetentionHours() int {
-	// Default to 0 (immediate deletion) if not configured
-	return 0
+	return m.failedQueueRetentionHours
 }
 
 // Stop stops the queue manager and cleans up resources

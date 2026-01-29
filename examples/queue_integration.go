@@ -18,7 +18,7 @@ func main() {
 	defer func() { _ = os.RemoveAll(queueDir) }()
 
 	// Initialize queue manager
-	manager := queue.NewManager(queueDir)
+	manager := queue.NewManager(queueDir, 0) // Example uses immediate deletion
 	defer manager.Stop()
 
 	// Create delivery handler (use mock for example)

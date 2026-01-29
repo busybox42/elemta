@@ -8,8 +8,50 @@ import (
 	"syscall"
 
 	"github.com/busybox42/elemta/internal/api"
+	"github.com/busybox42/elemta/internal/config"
 	"github.com/spf13/cobra"
 )
+
+// convertToAPIMainConfig converts config.Config to api.MainConfig
+func convertToAPIMainConfig(cfg *config.Config) *api.MainConfig {
+	// Use Server struct fields for primary config, fallback to top-level fields
+	hostname := cfg.Server.Hostname
+	if hostname == "" {
+		hostname = cfg.Hostname // fallback
+	}
+
+	listenAddr := cfg.Server.Listen
+	if listenAddr == "" {
+		listenAddr = cfg.ListenAddr // fallback
+	}
+
+	maxSize := cfg.Server.MaxSize
+	if maxSize == 0 {
+		maxSize = cfg.MaxSize // fallback
+	}
+
+	localDomains := cfg.Server.LocalDomains
+	if len(localDomains) == 0 {
+		localDomains = cfg.LocalDomains // fallback
+	}
+
+	return &api.MainConfig{
+		Hostname:                  hostname,
+		ListenAddr:                listenAddr,
+		QueueDir:                  cfg.QueueDir,
+		MaxSize:                   maxSize,
+		MaxWorkers:                cfg.MaxWorkers,
+		MaxRetries:                cfg.MaxRetries,
+		MaxQueueTime:              cfg.MaxQueueTime,
+		RetrySchedule:             cfg.RetrySchedule,
+		SessionTimeout:            cfg.SessionTimeout,
+		LocalDomains:              localDomains,
+		FailedQueueRetentionHours: cfg.FailedQueueRetentionHours,
+		RateLimiterPluginConfig:   cfg.RateLimiter,
+		TLS:                       cfg.TLS,
+		API:                       nil, // API config not available in main config
+	}
+}
 
 var (
 	webListenAddr string
@@ -39,6 +81,13 @@ func init() {
 }
 
 func runWeb(cmd *cobra.Command, args []string) {
+	// Load main config to get failed queue retention setting
+	cfg, err := config.LoadConfig("")
+	if err != nil {
+		log.Printf("Warning: failed to load config, using defaults: %v", err)
+		cfg = config.DefaultConfig()
+	}
+
 	// Create API config
 	apiConfig := &api.Config{
 		Enabled:     true,
@@ -49,7 +98,7 @@ func runWeb(cmd *cobra.Command, args []string) {
 	}
 
 	// Create and start API server
-	server, err := api.NewServer(apiConfig, webQueueDir)
+	server, err := api.NewServer(apiConfig, convertToAPIMainConfig(cfg), webQueueDir, cfg.FailedQueueRetentionHours)
 	if err != nil {
 		log.Fatalf("Failed to create API server: %v", err)
 	}

@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/busybox42/elemta/internal/api"
 	deliverymetrics "github.com/busybox42/elemta/internal/metrics"
 	"github.com/busybox42/elemta/internal/plugin"
 	"github.com/busybox42/elemta/internal/queue"
@@ -28,8 +27,7 @@ type Server struct {
 	pluginManager   *plugin.Manager
 	builtinPlugins  *plugin.BuiltinPlugins // Built-in plugins for spam/antivirus scanning
 	authenticator   Authenticator
-	metricsManager  *MetricsManager // Extracted metrics management
-	apiServer       *api.Server
+	metricsManager  *MetricsManager    // Extracted metrics management
 	queueManager    queue.QueueManager // Unified queue system
 	queueProcessor  *queue.Processor   // Queue processor for message delivery
 	tlsManager      TLSHandler
@@ -206,7 +204,7 @@ func NewServer(config *Config) (*Server, error) {
 
 	// Initialize unified queue system
 	slogger.Info("Initializing unified queue system", "directory", config.QueueDir)
-	queueManager := queue.NewManager(config.QueueDir)
+	queueManager := queue.NewManager(config.QueueDir, config.FailedQueueRetentionHours)
 	slogger.Info("Unified queue system initialized")
 
 	// Initialize queue processor if enabled
@@ -485,27 +483,6 @@ func (s *Server) Start() error {
 
 	// Start periodic queue size updates
 	go s.updateQueueMetricsWithRetry()
-
-	// Start API server if enabled
-	if s.config.API != nil && s.config.API.Enabled {
-		s.slogger.Info("Starting API server", "address", s.config.API.ListenAddr)
-		apiSrv, err := api.NewServer(&api.Config{
-			Enabled:    s.config.API.Enabled,
-			ListenAddr: s.config.API.ListenAddr,
-		}, s.config.QueueDir)
-
-		if err != nil {
-			s.slogger.Warn("Failed to create API server", "error", err)
-		} else {
-			s.apiServer = apiSrv
-			go func() {
-				if err := s.apiServer.Start(); err != nil {
-					s.slogger.Warn("Failed to start API server", "error", err)
-				}
-			}()
-			s.slogger.Info("API server started successfully")
-		}
-	}
 
 	// Start worker pool for connection handling
 	s.slogger.Info("Starting worker pool", "workers", s.workerPool.size)
@@ -902,16 +879,6 @@ func (s *Server) Close() error {
 		if s.queueManager != nil {
 			s.slogger.Info("Stopping queue manager")
 			s.queueManager.Stop()
-		}
-
-		// Stop API server if running
-		if s.apiServer != nil {
-			if err := s.apiServer.Stop(); err != nil {
-				s.slogger.Error("Error stopping API server", "error", err)
-				if shutdownErr == nil {
-					shutdownErr = err
-				}
-			}
 		}
 
 		s.slogger.Info("Graceful server shutdown completed")

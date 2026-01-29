@@ -214,7 +214,7 @@ func NewUnifiedQueueSystem(config QueueConfiguration) *UnifiedQueueSystem {
 	}
 
 	// Create queue manager using storage backend
-	queueManager := NewManagerWithStorage(storage)
+	queueManager := NewManagerWithStorage(storage, 0) // Test uses immediate deletion
 
 	// Create delivery manager
 	deliveryManager := NewDeliveryManager(queueManager, config)

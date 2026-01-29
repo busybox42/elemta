@@ -24,7 +24,7 @@ func init() {
 		Short: "List all messages in the queue",
 		Run: func(cmd *cobra.Command, args []string) {
 			queueDir := getQueueDir()
-			manager := queue.NewManager(queueDir)
+			manager := queue.NewManager(queueDir, 0) // CLI tools use immediate deletion
 			defer manager.Stop()
 
 			// Get messages from all queues
@@ -68,7 +68,7 @@ func init() {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			queueDir := getQueueDir()
-			manager := queue.NewManager(queueDir)
+			manager := queue.NewManager(queueDir, 0) // CLI tools use immediate deletion
 			defer manager.Stop()
 
 			id := args[0]
@@ -89,7 +89,7 @@ func init() {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			queueDir := getQueueDir()
-			manager := queue.NewManager(queueDir)
+			manager := queue.NewManager(queueDir, 0) // CLI tools use immediate deletion
 			defer manager.Stop()
 
 			id := args[0]
@@ -108,7 +108,7 @@ func init() {
 		Short: "Delete all messages from the queue",
 		Run: func(cmd *cobra.Command, args []string) {
 			queueDir := getQueueDir()
-			manager := queue.NewManager(queueDir)
+			manager := queue.NewManager(queueDir, 0) // CLI tools use immediate deletion
 			defer manager.Stop()
 
 			if err := manager.FlushAllQueues(); err != nil {
@@ -126,7 +126,7 @@ func init() {
 		Short: "Show queue statistics",
 		Run: func(cmd *cobra.Command, args []string) {
 			queueDir := getQueueDir()
-			manager := queue.NewManager(queueDir)
+			manager := queue.NewManager(queueDir, 0) // CLI tools use immediate deletion
 			defer manager.Stop()
 
 			stats := manager.GetStats()

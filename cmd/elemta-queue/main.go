@@ -29,7 +29,7 @@ func main() {
 	}
 
 	// Create queue manager
-	queueManager := queue.NewManager(cfg.Queue.Dir)
+	queueManager := queue.NewManager(cfg.Queue.Dir, cfg.FailedQueueRetentionHours)
 
 	// Show queue stats
 	logger.Info("Queue directory", "path", cfg.Queue.Dir)

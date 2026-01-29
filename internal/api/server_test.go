@@ -22,7 +22,7 @@ func TestNewServer(t *testing.T) {
 			AuthEnabled: false,
 		}
 
-		server, err := NewServer(config, queueDir)
+		server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 		require.NoError(t, err)
 		assert.NotNil(t, server)
 		assert.Equal(t, "127.0.0.1:8025", server.listenAddr)
@@ -37,7 +37,7 @@ func TestNewServer(t *testing.T) {
 			WebRoot:    "./web",
 		}
 
-		server, err := NewServer(config, queueDir)
+		server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 		require.NoError(t, err)
 		assert.Equal(t, "127.0.0.1:8025", server.listenAddr, "Should use default listen address")
 	})
@@ -49,7 +49,7 @@ func TestNewServer(t *testing.T) {
 			WebRoot:    "", // Empty, should use default
 		}
 
-		server, err := NewServer(config, queueDir)
+		server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 		require.NoError(t, err)
 		assert.Equal(t, "./web/static", server.webRoot, "Should use default web root")
 	})
@@ -59,7 +59,7 @@ func TestNewServer(t *testing.T) {
 			Enabled: false,
 		}
 
-		server, err := NewServer(config, queueDir)
+		server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 		assert.Error(t, err, "Should error when API server is disabled")
 		assert.Nil(t, server)
 		assert.Contains(t, err.Error(), "disabled")
@@ -73,7 +73,7 @@ func TestNewServer(t *testing.T) {
 		}
 
 		// This will fail to initialize auth, but that's expected in tests
-		server, err := NewServer(config, queueDir)
+		server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 		// Either fails or succeeds depending on environment
 		if err != nil {
 			assert.Contains(t, err.Error(), "authentication")
@@ -97,7 +97,7 @@ func TestServerQueueEndpoints(t *testing.T) {
 		AuthEnabled: false,
 	}
 
-	server, err := NewServer(config, queueDir)
+	server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 	require.NoError(t, err)
 
 	// Create test router
@@ -176,7 +176,7 @@ func TestServerStart(t *testing.T) {
 			AuthEnabled: false,
 		}
 
-		server, err := NewServer(config, queueDir)
+		server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 		require.NoError(t, err)
 
 		// Start server in goroutine
@@ -270,7 +270,7 @@ func TestServerEdgeCases(t *testing.T) {
 				ListenAddr: addr,
 			}
 
-			server, err := NewServer(config, queueDir)
+			server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 			require.NoError(t, err, "Should create server with address: %s", addr)
 			assert.Equal(t, addr, server.listenAddr)
 		}
@@ -292,7 +292,7 @@ func TestServerEdgeCases(t *testing.T) {
 				WebRoot: root,
 			}
 
-			server, err := NewServer(config, queueDir)
+			server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 			require.NoError(t, err, "Should create server with web root: %s", root)
 			assert.Equal(t, root, server.webRoot)
 		}
@@ -325,7 +325,7 @@ func TestQueueManagerIntegration(t *testing.T) {
 		ListenAddr: "127.0.0.1:8025",
 	}
 
-	server, err := NewServer(config, queueDir)
+	server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 	require.NoError(t, err)
 
 	t.Run("Queue manager is initialized", func(t *testing.T) {
@@ -363,7 +363,7 @@ func TestConfigValidation(t *testing.T) {
 			ListenAddr: "127.0.0.1:8025",
 		}
 
-		server, err := NewServer(config, queueDir)
+		server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 		assert.Error(t, err)
 		assert.Nil(t, server)
 		assert.Contains(t, err.Error(), "disabled")
@@ -496,7 +496,7 @@ func TestServerStop(t *testing.T) {
 	}
 
 	t.Run("Stop server gracefully", func(t *testing.T) {
-		server, err := NewServer(config, queueDir)
+		server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 		require.NoError(t, err)
 
 		// Start server
@@ -509,7 +509,7 @@ func TestServerStop(t *testing.T) {
 	})
 
 	t.Run("Stop server that was never started", func(t *testing.T) {
-		server, err := NewServer(config, queueDir)
+		server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 		require.NoError(t, err)
 
 		// Stop without starting
@@ -523,7 +523,7 @@ func TestServerStop(t *testing.T) {
 	})
 
 	t.Run("Multiple stop calls are idempotent", func(t *testing.T) {
-		server, err := NewServer(config, queueDir)
+		server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 		require.NoError(t, err)
 
 		// Start server
@@ -552,7 +552,7 @@ func BenchmarkNewServer(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		server, err := NewServer(config, queueDir)
+		server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
 		if err != nil {
 			b.Fatal(err)
 		}

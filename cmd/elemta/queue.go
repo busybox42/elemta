@@ -23,7 +23,7 @@ type queueOperations struct {
 func newQueueOperations(config *smtp.Config) *queueOperations {
 	return &queueOperations{
 		config:       config,
-		queueManager: queue.NewManager(config.QueueDir),
+		queueManager: queue.NewManager(config.QueueDir, config.FailedQueueRetentionHours),
 		out:          os.Stdout,
 	}
 }
