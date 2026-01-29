@@ -84,6 +84,16 @@ function initializeNavigation() {
         });
     });
 
+    // Settings tabs navigation - use event delegation
+    document.addEventListener('click', (e) => {
+        const settingsTab = e.target.closest('.settings-tab[data-tab]');
+        if (settingsTab) {
+            e.preventDefault();
+            console.log('Settings tab clicked:', settingsTab.dataset.tab);
+            switchSettingsTab(settingsTab.dataset.tab);
+        }
+    });
+
     // Sidebar toggle
     document.getElementById('sidebar-toggle')?.addEventListener('click', () => {
         document.getElementById('sidebar').classList.toggle('collapsed');
@@ -157,7 +167,47 @@ function switchView(viewName) {
         loadQueue(state.currentQueue);
     } else if (viewName === 'logs') {
         refreshLogs();
+    } else if (viewName === 'settings') {
+        // Apply layout fixes for settings view
+        applySettingsLayoutFixes();
     }
+}
+
+function applySettingsLayoutFixes() {
+    const mainContent = document.querySelector('.main-content');
+    const settingsView = document.getElementById('view-settings');
+    const settingsContent = document.querySelector('.settings-content');
+    const settingsPanels = document.querySelectorAll('.settings-panel');
+    const settingsGrids = document.querySelectorAll('.settings-grid');
+    
+    if (mainContent) {
+        mainContent.style.width = '100%';
+        mainContent.style.minWidth = '800px';
+    }
+    
+    if (settingsView) {
+        settingsView.style.width = '100%';
+        settingsView.style.minWidth = '800px';
+    }
+    
+    if (settingsContent) {
+        settingsContent.style.width = '100%';
+        settingsContent.style.minWidth = '700px';
+        settingsContent.style.setProperty('display', 'block', 'important');
+    }
+    
+    settingsPanels.forEach(panel => {
+        panel.style.width = '100%';
+        panel.style.minWidth = '600px';
+    });
+    
+    settingsGrids.forEach(grid => {
+        grid.style.width = '100%';
+        grid.style.minWidth = '500px';
+        grid.style.setProperty('display', 'block', 'important');
+    });
+    
+    console.log('Settings layout fixes applied');
 }
 
 // ============================================================================
@@ -1362,6 +1412,337 @@ document.addEventListener('click', (e) => {
 });
 
 // ============================================================================
+// Settings Tabs
+// ============================================================================
+function switchSettingsTab(tabName) {
+    console.log('switchSettingsTab called with:', tabName);
+    
+    // Update tab buttons
+    document.querySelectorAll('.settings-tab').forEach(tab => {
+        if (tab.dataset.tab === tabName) {
+            tab.style.color = '#3b82f6';
+            tab.style.borderBottomColor = '#3b82f6';
+        } else {
+            tab.style.color = '#888';
+            tab.style.borderBottomColor = 'transparent';
+        }
+    });
+
+    // Simple panel switching - just show/hide by ID
+    const panelIds = ['settings-ui', 'settings-server', 'settings-plugins', 'settings-rate-limiting', 'settings-system'];
+    panelIds.forEach(id => {
+        const panel = document.getElementById(id);
+        if (panel) {
+            panel.style.display = (id === `settings-${tabName}`) ? 'block' : 'none';
+        }
+    });
+
+    // Load data for specific tabs
+    if (tabName === 'server') refreshServerConfig();
+    else if (tabName === 'plugins') refreshPlugins();
+    else if (tabName === 'rate-limiting') refreshRateLimiting();
+}
+
+// ============================================================================
+// Configuration Management API
+// ============================================================================
+async function refreshServerConfig() {
+    const loadingEl = document.getElementById('server-config-loading');
+    const contentEl = document.getElementById('server-config-content');
+    
+    try {
+        loadingEl.style.display = 'block';
+        contentEl.style.display = 'none';
+        
+        const response = await fetch('/api/config');
+        if (!response.ok) throw new Error('Failed to load configuration');
+        
+        const config = await response.json();
+        
+        // Populate form fields
+        document.getElementById('config-hostname').value = config.hostname || '';
+        document.getElementById('config-listen-addr').value = config.listen_addr || '';
+        document.getElementById('config-queue-dir').value = config.queue_dir || '';
+        document.getElementById('config-max-size').value = config.max_size || '';
+        document.getElementById('config-max-workers').value = config.max_workers || '';
+        document.getElementById('config-failed-retention').value = config.failed_queue_retention_hours || '';
+        
+        loadingEl.style.display = 'none';
+        contentEl.style.display = 'block';
+    } catch (error) {
+        console.error('Error loading server config:', error);
+        loadingEl.innerHTML = `<div style="color: #ef4444; padding: 1rem;">Failed to load configuration: ${error.message}</div>`;
+    }
+}
+
+async function saveServerConfig() {
+    const statusEl = document.getElementById('server-config-status');
+    
+    try {
+        statusEl.textContent = 'Saving...';
+        statusEl.className = 'config-status';
+        
+        const config = {
+            hostname: document.getElementById('config-hostname').value,
+            listen_addr: document.getElementById('config-listen-addr').value,
+            queue_dir: document.getElementById('config-queue-dir').value,
+            max_size: document.getElementById('config-max-size').value,
+            max_workers: parseInt(document.getElementById('config-max-workers').value),
+            failed_queue_retention_hours: parseInt(document.getElementById('config-failed-retention').value)
+        };
+        
+        const response = await fetch('/api/config', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(config)
+        });
+        
+        if (!response.ok) throw new Error('Failed to save configuration');
+        
+        const result = await response.json();
+        statusEl.textContent = result.message || 'Configuration saved successfully';
+        statusEl.className = 'config-status success';
+        
+        if (result.requires_restart) {
+            statusEl.textContent += ' (restart required)';
+        }
+    } catch (error) {
+        console.error('Error saving server config:', error);
+        statusEl.textContent = `Error: ${error.message}`;
+        statusEl.className = 'config-status error';
+    }
+}
+
+async function refreshPlugins() {
+    const loadingEl = document.getElementById('plugins-loading');
+    const contentEl = document.getElementById('plugins-content');
+    const listEl = document.getElementById('plugins-list');
+    
+    try {
+        loadingEl.style.display = 'block';
+        contentEl.style.display = 'none';
+        
+        // Try different endpoints to see which one works
+        let response, data;
+        try {
+            response = await fetch('/api/plugins');
+            if (response.ok) {
+                data = await response.json();
+                }
+        }
+        
+        if (!data) {
+            response = await fetch('/api/config/plugins');
+            if (!response.ok) throw new Error('Failed to load plugins');
+            data = await response.json();
+        }
+        
+        const plugins = data.plugins || data;
+        
+        if (!plugins || plugins.length === 0) {
+            listEl.innerHTML = '<div style="padding: 2rem; color: #888;">No plugins found</div>';
+        } else {
+            // Ensure container can scroll
+            listEl.style.maxHeight = '600px';
+            listEl.style.overflowY = 'auto';
+            
+            // Render plugin cards
+            listEl.innerHTML = plugins.map(plugin => {
+                const isInternalPlugin = plugin.name === 'rate_limiter';
+                const canToggle = isInternalPlugin;
+                
+                return `
+                    <div style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <div style="font-weight: bold; color: #fff;">${plugin.name || 'Unknown'}</div>
+                            ${canToggle ? `
+                                <label style="position: relative; display: inline-block; width: 50px; height: 24px;">
+                                    <input type="checkbox" ${plugin.enabled ? 'checked' : ''} 
+                                           onchange="togglePlugin('${plugin.name}', this.checked)"
+                                           style="opacity: 0; width: 0; height: 0;">
+                                    <span style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: ${plugin.enabled ? '#3b82f6' : '#666'}; transition: .4s; border-radius: 24px;">
+                                        <span style="position: absolute; content: ''; height: 18px; width: 18px; left: ${plugin.enabled ? '26px' : '3px'}; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%;"></span>
+                                    </span>
+                                </label>
+                            ` : `
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span style="color: ${plugin.enabled ? '#10b981' : '#ef4444'}; font-size: 0.875rem; font-weight: bold;">
+                                        ${plugin.enabled ? 'Active' : 'Inactive'}
+                                    </span>
+                                    <span style="color: #666; font-size: 0.75rem;">External Service</span>
+                                </div>
+                            `}
+                        </div>
+                        <div style="color: ${plugin.enabled ? '#10b981' : '#ef4444'}; font-size: 0.875rem; margin-bottom: 0.5rem;">
+                            ${plugin.enabled ? 'Enabled' : 'Disabled'}
+                            ${!canToggle ? ' (managed via docker-compose)' : ''}
+                        </div>
+                        <div style="color: #ccc; font-size: 0.875rem;">${plugin.description || 'No description available'}</div>
+                        ${!canToggle && plugin.config && plugin.config.host ? `
+                            <div style="color: #888; font-size: 0.75rem; margin-top: 0.5rem;">
+                                Host: ${plugin.config.host}:${plugin.config.port}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        loadingEl.style.display = 'none';
+        contentEl.style.display = 'block';
+    } catch (error) {
+        console.error('Error loading plugins:', error);
+        loadingEl.innerHTML = `<div style="color: #ef4444; padding: 1rem;">Failed to load plugins: ${error.message}</div>`;
+    }
+}
+
+async function togglePlugin(pluginName, enabled) {
+    try {
+        const response = await fetch(`/api/config/plugins/${pluginName}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ enabled })
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to update plugin: ${errorText}`);
+        }
+        
+        const result = await response.json();
+        
+        // Show success message
+        if (result.message) {
+            console.log(result.message);
+        }
+        
+        // Refresh plugins to show updated status
+        refreshPlugins();
+    } catch (error) {
+        console.error('Error toggling plugin:', error);
+        // Revert checkbox on error
+        if (event && event.target) {
+            event.target.checked = !enabled;
+        }
+    }
+}
+
+async function refreshRateLimiting() {
+    const loadingEl = document.getElementById('rate-limiting-loading');
+    const contentEl = document.getElementById('rate-limiting-content');
+    
+    try {
+        loadingEl.style.display = 'block';
+        contentEl.style.display = 'none';
+        
+        const response = await fetch('/api/config');
+        if (!response.ok) throw new Error('Failed to load configuration');
+        
+        const config = await response.json();
+        const rateLimiter = config.rate_limiter;
+        
+        if (rateLimiter) {
+            // Populate connection limits
+            document.getElementById('rate-max-connections-ip').value = rateLimiter.max_connections_per_ip || '';
+            document.getElementById('rate-connections-per-minute').value = rateLimiter.connection_rate_per_minute || '';
+            document.getElementById('rate-connection-burst').value = rateLimiter.connection_burst_size || '';
+            document.getElementById('rate-connection-timeout').value = rateLimiter.connection_timeout || '';
+            
+            // Populate message limits
+            document.getElementById('rate-messages-per-minute').value = rateLimiter.max_messages_per_minute || '';
+            document.getElementById('rate-messages-per-hour').value = rateLimiter.max_messages_per_hour || '';
+            document.getElementById('rate-recipients-per-message').value = rateLimiter.max_recipients_per_message || '';
+            document.getElementById('rate-max-message-size').value = rateLimiter.max_message_size || '';
+        }
+        
+        loadingEl.style.display = 'none';
+        contentEl.style.display = 'block';
+    } catch (error) {
+        console.error('Error loading rate limiting config:', error);
+        loadingEl.innerHTML = `<div class="error-message">Failed to load rate limiting configuration: ${error.message}</div>`;
+    }
+}
+
+async function saveRateLimiting() {
+    const statusEl = document.getElementById('rate-limiting-status');
+    
+    try {
+        statusEl.textContent = 'Saving...';
+        statusEl.className = 'config-status';
+        
+        const rateLimiterConfig = {
+            max_connections_per_ip: parseInt(document.getElementById('rate-max-connections-ip').value),
+            connection_rate_per_minute: parseInt(document.getElementById('rate-connections-per-minute').value),
+            connection_burst_size: parseInt(document.getElementById('rate-connection-burst').value),
+            connection_timeout: document.getElementById('rate-connection-timeout').value,
+            max_messages_per_minute: parseInt(document.getElementById('rate-messages-per-minute').value),
+            max_messages_per_hour: parseInt(document.getElementById('rate-messages-per-hour').value),
+            max_recipients_per_message: parseInt(document.getElementById('rate-recipients-per-message').value),
+            max_message_size: document.getElementById('rate-max-message-size').value
+        };
+        
+        const response = await fetch('/api/config', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ rate_limiter: rateLimiterConfig })
+        });
+        
+        if (!response.ok) throw new Error('Failed to save rate limiting configuration');
+        
+        const result = await response.json();
+        statusEl.textContent = result.message || 'Rate limiting configuration saved successfully';
+        statusEl.className = 'config-status success';
+        
+        if (result.requires_restart) {
+            statusEl.textContent += ' (restart required)';
+        }
+    } catch (error) {
+        console.error('Error saving rate limiting config:', error);
+        statusEl.textContent = `Error: ${error.message}`;
+        statusEl.className = 'config-status error';
+    }
+}
+
+async function restartServer() {
+    const statusEl = document.getElementById('system-status');
+    
+    if (!confirm('Are you sure you want to restart the server? This will terminate all active connections.')) {
+        return;
+    }
+    
+    try {
+        statusEl.textContent = 'Restarting server...';
+        statusEl.className = 'system-status warning';
+        
+        const response = await fetch('/api/config/restart', {
+            method: 'POST'
+        });
+        
+        if (!response.ok) throw new Error('Failed to restart server');
+        
+        const result = await response.json();
+        statusEl.textContent = result.message || 'Server restart initiated';
+        statusEl.className = 'system-status success';
+        
+        // Show warning about disconnection
+        setTimeout(() => {
+            statusEl.textContent = 'Server is restarting. You may be disconnected momentarily.';
+            statusEl.className = 'system-status warning';
+        }, 2000);
+    } catch (error) {
+        console.error('Error restarting server:', error);
+        statusEl.textContent = `Error: ${error.message}`;
+        statusEl.className = 'system-status error';
+    }
+}
+
+// ============================================================================
 // API Keys
 // ============================================================================
 function showAPIKeysModal() {
@@ -1965,49 +2346,3 @@ async function setLogLevel(level) {
 // ============================================================================
 // View-specific data loading
 // ============================================================================
-// Override switchView to load view-specific data
-const originalSwitchView = switchView;
-switchView = function (viewName) {
-    // Call original
-    const titles = {
-        dashboard: 'Dashboard',
-        health: 'Server Health',
-        queues: 'Mail Queues',
-        compose: 'Send Test Email',
-        reports: 'Delivery Reports',
-        logs: 'Logs',
-        settings: 'Settings'
-    };
-
-    // Update nav items
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.toggle('active', item.dataset.view === viewName);
-    });
-
-    // Update views
-    document.querySelectorAll('.view').forEach(view => {
-        view.classList.toggle('active', view.id === `view-${viewName}`);
-    });
-
-    // Update page title
-    document.getElementById('page-title').textContent = titles[viewName] || viewName;
-
-    // Close mobile sidebar
-    document.getElementById('sidebar').classList.remove('open');
-
-    // Load view-specific data
-    switch (viewName) {
-        case 'health':
-            refreshHealth();
-            break;
-        case 'queues':
-            loadQueue(state.currentQueue);
-            break;
-        case 'reports':
-            refreshReports();
-            break;
-        case 'logs':
-            refreshLogs();
-            break;
-    }
-};

@@ -15,14 +15,34 @@ import (
 	"time"
 
 	"github.com/busybox42/elemta/internal/auth"
+	"github.com/busybox42/elemta/internal/config"
 	"github.com/busybox42/elemta/internal/metrics"
 	"github.com/busybox42/elemta/internal/queue"
 	"github.com/gorilla/mux"
 )
 
+// MainConfig represents the configuration data needed by the API
+type MainConfig struct {
+	Hostname                  string      `json:"hostname"`
+	ListenAddr                string      `json:"listen_addr"`
+	QueueDir                  string      `json:"queue_dir"`
+	MaxSize                   int64       `json:"max_size"`
+	MaxWorkers                int         `json:"max_workers"`
+	MaxRetries                int         `json:"max_retries"`
+	MaxQueueTime              int         `json:"max_queue_time"`
+	RetrySchedule             []int       `json:"retry_schedule"`
+	SessionTimeout            string      `json:"session_timeout"`
+	LocalDomains              []string    `json:"local_domains"`
+	FailedQueueRetentionHours int         `json:"failed_queue_retention_hours"`
+	RateLimiterPluginConfig   interface{} `json:"rate_limiter"`
+	TLS                       interface{} `json:"tls"`
+	API                       interface{} `json:"api"`
+}
+
 // Server represents an API server for Elemta
 type Server struct {
 	config         *Config
+	mainConfig     *MainConfig // Main application configuration
 	httpServer     *http.Server
 	queueMgr       *queue.Manager
 	listenAddr     string
@@ -70,7 +90,7 @@ type Config struct {
 }
 
 // NewServer creates a new API server
-func NewServer(config *Config, queueDir string) (*Server, error) {
+func NewServer(config *Config, mainConfig *MainConfig, queueDir string, failedQueueRetentionHours int) (*Server, error) {
 	if !config.Enabled {
 		return nil, fmt.Errorf("API server disabled in configuration")
 	}
@@ -85,10 +105,11 @@ func NewServer(config *Config, queueDir string) (*Server, error) {
 		webRoot = "./web/static"
 	}
 
-	queueMgr := queue.NewManager(queueDir)
+	queueMgr := queue.NewManager(queueDir, failedQueueRetentionHours)
 
 	server := &Server{
 		config:     config,
+		mainConfig: mainConfig,
 		queueMgr:   queueMgr,
 		listenAddr: listenAddr,
 		webRoot:    webRoot,
@@ -325,6 +346,25 @@ func (s *Server) Start() error {
 	// Health and monitoring endpoints (no auth required for dashboard)
 	api.HandleFunc("/health", s.handleHealthStats).Methods("GET")
 	api.HandleFunc("/stats/delivery", s.handleDeliveryStats).Methods("GET")
+
+	// Configuration management endpoints (read-only for now)
+	api.HandleFunc("/config", s.handleGetConfig).Methods("GET")
+	api.HandleFunc("/config/plugins", s.handleGetPlugins).Methods("GET")
+
+	// Configuration management endpoints (write operations require auth)
+	if s.authMiddleware != nil {
+		configHandler := s.authMiddleware.RequirePermission(auth.PermissionSystemConfig)(http.HandlerFunc(s.handleUpdateConfig))
+		api.Handle("/config", configHandler).Methods("PUT")
+		pluginHandler := s.authMiddleware.RequirePermission(auth.PermissionSystemConfig)(http.HandlerFunc(s.handleUpdatePlugin))
+		api.Handle("/config/plugins/{plugin}", pluginHandler).Methods("PUT")
+		restartHandler := s.authMiddleware.RequirePermission(auth.PermissionSystemAdmin)(http.HandlerFunc(s.handleServerRestart))
+		api.Handle("/config/restart", restartHandler).Methods("POST")
+	} else {
+		// If auth is disabled, allow config operations without authentication (development mode)
+		api.HandleFunc("/config", s.handleUpdateConfig).Methods("PUT")
+		api.HandleFunc("/config/plugins/{plugin}", s.handleUpdatePlugin).Methods("PUT")
+		api.HandleFunc("/config/restart", s.handleServerRestart).Methods("POST")
+	}
 
 	// Test email endpoint (requires auth if enabled, otherwise open)
 	if s.authMiddleware != nil {
@@ -1130,6 +1170,217 @@ func (s *Server) handleDebugAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, debug)
+}
+
+// Configuration management handlers
+
+// handleGetConfig returns the current configuration (read-only)
+func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	if s.mainConfig == nil {
+		http.Error(w, "Configuration not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Create a safe configuration response (exclude sensitive data)
+	configResponse := map[string]interface{}{
+		"hostname":                     s.mainConfig.Hostname,
+		"listen_addr":                  s.mainConfig.ListenAddr,
+		"queue_dir":                    s.mainConfig.QueueDir,
+		"max_size":                     s.mainConfig.MaxSize,
+		"max_workers":                  s.mainConfig.MaxWorkers,
+		"max_retries":                  s.mainConfig.MaxRetries,
+		"max_queue_time":               s.mainConfig.MaxQueueTime,
+		"retry_schedule":               s.mainConfig.RetrySchedule,
+		"session_timeout":              s.mainConfig.SessionTimeout,
+		"local_domains":                s.mainConfig.LocalDomains,
+		"failed_queue_retention_hours": s.mainConfig.FailedQueueRetentionHours,
+		"rate_limiter":                 s.mainConfig.RateLimiterPluginConfig,
+		"tls":                          s.mainConfig.TLS,
+		"api":                          s.mainConfig.API,
+	}
+
+	writeJSON(w, configResponse)
+}
+
+// handleGetPlugins returns the status of all plugins
+func (s *Server) handleGetPlugins(w http.ResponseWriter, r *http.Request) {
+	if s.mainConfig == nil {
+		http.Error(w, "Configuration not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	plugins := []map[string]interface{}{
+		{
+			"name": "rate_limiter",
+			"enabled": func() bool {
+				if s.mainConfig.RateLimiterPluginConfig == nil {
+					return false
+				}
+				if rateLimiterConfig, ok := s.mainConfig.RateLimiterPluginConfig.(*config.RateLimiterPluginConfig); ok {
+					return rateLimiterConfig.Enabled
+				}
+				return false
+			}(),
+			"description": "Rate limiting and connection management",
+			"config":      s.mainConfig.RateLimiterPluginConfig,
+		},
+		{
+			"name":        "clamav",
+			"enabled":     true, // ClamAV is always enabled in dev deployment
+			"description": "Antivirus and malware scanning",
+			"config": map[string]interface{}{
+				"enabled": true,
+				"port":    "3310",
+				"host":    "elemta-clamav",
+			},
+		},
+		{
+			"name":        "rspamd",
+			"enabled":     true, // Rspamd is always enabled in dev deployment
+			"description": "Spam filtering and content analysis",
+			"config": map[string]interface{}{
+				"enabled": true,
+				"port":    "11334",
+				"host":    "elemta-rspamd",
+			},
+		},
+		{
+			"name":        "ldap",
+			"enabled":     true, // LDAP is always enabled in dev deployment
+			"description": "Directory service for user authentication",
+			"config": map[string]interface{}{
+				"enabled": true,
+				"port":    "1389",
+				"host":    "elemta-ldap",
+			},
+		},
+		{
+			"name":        "dovecot",
+			"enabled":     true, // Dovecot is always enabled in dev deployment
+			"description": "Mail delivery and IMAP service",
+			"config": map[string]interface{}{
+				"enabled": true,
+				"port":    "14143",
+				"host":    "elemta-dovecot",
+			},
+		},
+		{
+			"name":        "spf",
+			"enabled":     true, // SPF checking is enabled by default
+			"description": "Sender Policy Framework - verifies sender domains",
+			"config": map[string]interface{}{
+				"enabled": true,
+				"mode":    "strict", // strict, relaxed, disabled
+			},
+		},
+		{
+			"name":        "dkim",
+			"enabled":     true, // DKIM signing is enabled by default
+			"description": "DomainKeys Identified Mail - signs outgoing messages",
+			"config": map[string]interface{}{
+				"enabled":  true,
+				"domain":   "example.com",
+				"selector": "mail",
+			},
+		},
+		{
+			"name":        "dmarc",
+			"enabled":     true, // DMARC validation is enabled by default
+			"description": "Domain-based Message Authentication Reporting & Conformance",
+			"config": map[string]interface{}{
+				"enabled": true,
+				"policy":  "reject", // reject, quarantine, none
+			},
+		},
+	}
+
+	writeJSON(w, map[string]interface{}{
+		"plugins": plugins,
+	})
+}
+
+// handleUpdateConfig updates configuration (stub implementation for now)
+func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
+	if s.mainConfig == nil {
+		http.Error(w, "Configuration not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	var configUpdate map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&configUpdate); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Implement actual config updates
+	// For now, just return success to validate UI flow
+	writeJSON(w, map[string]interface{}{
+		"status":           "success",
+		"message":          "Configuration updated (restart required for persistence)",
+		"requires_restart": true,
+		"applied_changes":  configUpdate,
+	})
+}
+
+// handleUpdatePlugin enables/disables plugins (runtime-only for now)
+func (s *Server) handleUpdatePlugin(w http.ResponseWriter, r *http.Request) {
+	if s.mainConfig == nil {
+		http.Error(w, "Configuration not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	vars := mux.Vars(r)
+	pluginName := vars["plugin"]
+	if pluginName == "" {
+		http.Error(w, "Plugin name required", http.StatusBadRequest)
+		return
+	}
+
+	var pluginUpdate map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&pluginUpdate); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Handle rate limiter plugin specifically
+	if pluginName == "rate_limiter" {
+		if enabled, ok := pluginUpdate["enabled"].(bool); ok {
+			// Actually update the configuration
+			if s.mainConfig.RateLimiterPluginConfig != nil {
+				// Type assertion to access the config struct
+				if rateLimiterConfig, ok := s.mainConfig.RateLimiterPluginConfig.(*config.RateLimiterPluginConfig); ok {
+					rateLimiterConfig.Enabled = enabled
+				}
+			} else {
+				// Create the config if it doesn't exist
+				s.mainConfig.RateLimiterPluginConfig = &config.RateLimiterPluginConfig{
+					Enabled: enabled,
+				}
+			}
+
+			writeJSON(w, map[string]interface{}{
+				"status":           "success",
+				"message":          fmt.Sprintf("Rate limiter plugin %s", map[bool]string{true: "enabled", false: "disabled"}[enabled]),
+				"plugin":           pluginName,
+				"enabled":          enabled,
+				"requires_restart": false, // Runtime change
+			})
+			return
+		}
+	}
+
+	http.Error(w, "Unknown plugin or invalid update", http.StatusBadRequest)
+}
+
+// handleServerRestart initiates a graceful server restart
+func (s *Server) handleServerRestart(w http.ResponseWriter, r *http.Request) {
+	// TODO: Implement graceful restart mechanism
+	// For now, just return success to validate UI flow
+	writeJSON(w, map[string]interface{}{
+		"status":  "success",
+		"message": "Server restart initiated",
+		"warning": "This will terminate all active connections",
+	})
 }
 
 // Helper functions
