@@ -1530,7 +1530,9 @@ async function refreshPlugins() {
             response = await fetch('/api/plugins');
             if (response.ok) {
                 data = await response.json();
-                }
+            }
+        } catch (e) {
+            // Try fallback endpoint
         }
         
         if (!data) {
