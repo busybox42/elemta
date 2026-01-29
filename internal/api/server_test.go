@@ -309,7 +309,7 @@ func TestServerEdgeCases(t *testing.T) {
 		}()
 
 		// Trying to create with nil config might panic
-		server, err := NewServer(nil, queueDir)
+		server, err := NewServer(nil, nil, queueDir, 24)
 		if err != nil {
 			t.Logf("✓ Returned error on nil config: %v", err)
 		} else if server == nil {
@@ -375,7 +375,7 @@ func TestConfigValidation(t *testing.T) {
 			ListenAddr: "127.0.0.1:8025",
 		}
 
-		server, err := NewServer(config, "") // Empty queue dir
+		server, err := NewServer(config, nil, "", 24) // Empty queue dir
 		require.NoError(t, err, "Should handle empty queue dir")
 		assert.NotNil(t, server)
 	})

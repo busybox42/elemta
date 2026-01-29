@@ -14,7 +14,7 @@ func setupQueueManager(t *testing.T) (*Manager, string) {
 	queueDir := t.TempDir()
 
 	// Create queue manager
-	qm := NewManager(queueDir)
+	qm := NewManager(queueDir, 24) // 24 hours retention
 
 	return qm, queueDir
 }

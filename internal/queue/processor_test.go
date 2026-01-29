@@ -10,7 +10,7 @@ func TestProcessor(t *testing.T) {
 	queueDir := t.TempDir()
 
 	// Create queue manager
-	manager := NewManager(queueDir)
+	manager := NewManager(queueDir, 24) // 24 hours retention
 	defer manager.Stop()
 
 	// Create processor config

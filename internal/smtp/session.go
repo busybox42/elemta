@@ -407,7 +407,7 @@ func (s *Session) writeError(ctx context.Context, err error) {
 			"service", "elemta-mta",
 			"session_id", s.sessionID,
 		)
-		s.write(errorMsg)
+		_ = s.write(errorMsg) // Intentionally ignore error in error handling
 	} else {
 		s.writeWithLog("451 4.3.0 Internal server error")
 	}

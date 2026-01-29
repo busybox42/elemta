@@ -135,8 +135,9 @@ var (
 	serverStartTime   = time.Now()
 	totalConnections  atomic.Int64
 	activeConnections atomic.Int32
-	messagesProcessed atomic.Int64
-	bytesProcessed    atomic.Int64
+	// TODO: Implement metrics tracking for these counters
+	// messagesProcessed atomic.Int64
+	// bytesProcessed    atomic.Int64
 )
 
 // handleHealthStats returns server health statistics
