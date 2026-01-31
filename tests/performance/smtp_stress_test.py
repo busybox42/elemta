@@ -20,6 +20,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.parser import Parser
 from email.message import Message
+from email import policy
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass, asdict
@@ -254,6 +255,13 @@ class SMTPStressTester:
                     
                     if not content or not content.strip():
                         continue
+                    
+                    # Check for non-ASCII characters that cause encoding issues
+                    try:
+                        content.encode('ascii')
+                    except UnicodeEncodeError:
+                        print(f"⚠️  Skipping {file_path.name}: contains non-ASCII characters that cause SMTP encoding errors")
+                        continue
                         
                     # Categorize email based on filename
                     filename_lower = file_path.name.lower()
@@ -435,11 +443,11 @@ class SMTPStressTester:
                     from_email = auth_user['email'] if auth_user else f"stress{thread_id}@example.com"
                     
                     try:
-                        # Parse email using proper RFC 5322 parser
-                        parser = Parser()
+                        # Parse email using proper RFC 5322 parser with SMTP policy
+                        parser = Parser(policy=policy.SMTP)
                         msg = parser.parsestr(content)
                         
-                        # Update headers properly
+                        # Update headers properly and ensure UTF-8 charset
                         msg.replace_header('From' if 'From' in msg else 'From', from_email)
                         msg.replace_header('To' if 'To' in msg else 'To', 
                                          self._get_recipient_email(thread_id))
@@ -449,6 +457,14 @@ class SMTPStressTester:
                                          f"<stress-{thread_id}-{email_id}-{int(time.time())}@example.com>")
                         msg.replace_header('Date' if 'Date' in msg else 'Date',
                                          time.ctime())
+                        
+                        # Ensure proper UTF-8 charset in Content-Type header
+                        if 'Content-Type' in msg:
+                            content_type = msg.get('Content-Type')
+                            if 'charset=' not in content_type.lower():
+                                msg.replace_header('Content-Type', content_type + '; charset=utf-8')
+                        else:
+                            msg.add_header('Content-Type', 'text/plain; charset=utf-8')
                         
                         # Return properly formatted email and type
                         return msg.as_string(), email_type
@@ -561,9 +577,15 @@ class SMTPStressTester:
             if self.config.use_authentication:
                 server.login(auth_user['username'], auth_user['password'])
             
-            server.sendmail(auth_user['email'], 
-                          [self._get_recipient_email(thread_id)], 
-                          email_content.encode('utf-8'))
+            try:
+                server.sendmail(auth_user['email'], 
+                              [self._get_recipient_email(thread_id)], 
+                              email_content)
+            except UnicodeEncodeError as e:
+                server.quit()
+                duration = time.time() - start_time
+                return (duration, False, f"Unicode encoding error: {str(e)} (skipping email)")
+            
             server.quit()
             
             duration = time.time() - start_time
@@ -615,9 +637,14 @@ class SMTPStressTester:
             
             # Slow send
             time.sleep(self.config.slow_read_delay)
-            server.sendmail(auth_user['email'], 
-                          [self._get_recipient_email(thread_id)], 
-                          email_content.encode('utf-8'))
+            try:
+                server.sendmail(auth_user['email'], 
+                              [self._get_recipient_email(thread_id)], 
+                              email_content)
+            except UnicodeEncodeError as e:
+                server.quit()
+                duration = time.time() - start_time
+                return (duration, False, f"Unicode encoding error: {str(e)} (skipping email)")
             
             time.sleep(self.config.slow_read_delay)
             server.quit()
@@ -705,9 +732,13 @@ class SMTPStressTester:
             
             # Send all messages rapidly (pipelining simulation)
             for msg_content in messages:
-                server.sendmail(auth_user['email'], 
-                              [self._get_recipient_email(thread_id)], 
-                              msg_content.encode('utf-8'))
+                try:
+                    server.sendmail(auth_user['email'], 
+                                  [self._get_recipient_email(thread_id)], 
+                                  msg_content)
+                except UnicodeEncodeError as e:
+                    # Skip problematic message but continue with others
+                    continue
             
             server.quit()
             
