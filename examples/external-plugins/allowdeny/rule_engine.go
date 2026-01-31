@@ -408,7 +408,7 @@ func (re *RuleEngine) ClearExpiredRules() int {
 
 	// Rebuild matchers if rules were removed
 	if removedCount > 0 {
-		re.rebuildMatchers()
+		_ = re.rebuildMatchers() // Ignore error on rebuild
 	}
 
 	return removedCount

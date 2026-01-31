@@ -355,23 +355,23 @@ func (fs *FileStorageBackend) writeFileAtomic(filePath string, data []byte, perm
 	if err != nil {
 		return fmt.Errorf("failed to create temporary file: %w", err)
 	}
-	defer os.Remove(tmpFile.Name()) // Clean up temp file on error
+	defer func() { _ = os.Remove(tmpFile.Name()) }() // Clean up temp file on error
 
 	// Write data to temporary file
 	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close() // Ignore error on cleanup in error path
 		return fmt.Errorf("failed to write to temporary file: %w", err)
 	}
 
 	// Set secure permissions on temporary file
 	if err := tmpFile.Chmod(perm); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close() // Ignore error on cleanup in error path
 		return fmt.Errorf("failed to set permissions on temporary file: %w", err)
 	}
 
 	// Sync to ensure data is written to disk
 	if err := tmpFile.Sync(); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close() // Ignore error on cleanup in error path
 		return fmt.Errorf("failed to sync temporary file: %w", err)
 	}
 

@@ -161,3 +161,4 @@ bin/test-*
 examples/**/*.so
 .env
 bin/
+CLAUDE.md

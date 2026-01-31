@@ -69,7 +69,7 @@ func (c *Client) GetMessageRaw(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // Ignore error in defer cleanup
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -111,7 +111,7 @@ func (c *Client) get(path string, result interface{}) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // Ignore error in defer cleanup
 
 	return json.NewDecoder(resp.Body).Decode(result)
 }
@@ -144,7 +144,7 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 	}
 
 	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }() // Ignore error in defer cleanup
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API error: %s (status code %d)", string(body), resp.StatusCode)
 	}

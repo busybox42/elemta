@@ -81,7 +81,7 @@ func (l *LDAP) Connect() error {
 	// Bind with service account if credentials are provided
 	if l.config.Username != "" && l.config.Password != "" {
 		if err := conn.Bind(l.config.Username, l.config.Password); err != nil {
-			conn.Close()
+			_ = conn.Close() // Ignore error on cleanup in error path
 			return fmt.Errorf("failed to bind to LDAP server: %w", err)
 		}
 	}
@@ -97,8 +97,10 @@ func (l *LDAP) Close() error {
 		return nil
 	}
 
-	l.conn.Close()
 	l.connected = false
+	if err := l.conn.Close(); err != nil {
+		return fmt.Errorf("failed to close LDAP connection: %w", err)
+	}
 	return nil
 }
 
@@ -141,7 +143,7 @@ func (l *LDAP) ensureConnection() error {
 			return nil
 		}
 		// Connection is dead, close it
-		l.conn.Close()
+		_ = l.conn.Close() // Ignore error on cleanup
 		l.connected = false
 	}
 
@@ -200,7 +202,7 @@ func (l *LDAP) Authenticate(ctx context.Context, username, password string) (boo
 	}
 	defer func() {
 		if conn != nil {
-			conn.Close()
+			_ = conn.Close() // Ignore error in defer cleanup
 		}
 	}()
 

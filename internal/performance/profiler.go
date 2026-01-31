@@ -136,7 +136,7 @@ func (p *Profiler) StartCPUProfile() error {
 	}
 
 	if err := pprof.StartCPUProfile(f); err != nil {
-		f.Close()
+		_ = f.Close() // Ignore error on cleanup in error path
 		return fmt.Errorf("failed to start CPU profile: %w", err)
 	}
 
@@ -311,7 +311,7 @@ func (p *Profiler) StartTrace() error {
 	}
 
 	if err := trace.Start(f); err != nil {
-		f.Close()
+		_ = f.Close() // Ignore error on cleanup in error path
 		return fmt.Errorf("failed to start trace: %w", err)
 	}
 

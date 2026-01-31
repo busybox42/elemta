@@ -117,7 +117,7 @@ func (r *Rspamd) Connect() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to Rspamd: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // Ignore error in defer cleanup
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("Rspamd returned non-OK status: %d", resp.StatusCode)

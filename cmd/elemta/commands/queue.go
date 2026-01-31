@@ -41,15 +41,15 @@ func init() {
 
 			// Print messages in a nice table
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "ID\tFrom\tTo\tSubject\tQueue\tSize")
-			fmt.Fprintln(w, "------\t------\t------\t------\t------\t------")
+			_, _ = fmt.Fprintln(w, "ID\tFrom\tTo\tSubject\tQueue\tSize")
+			_, _ = fmt.Fprintln(w, "------\t------\t------\t------\t------\t------")
 
 			for _, msg := range messages {
 				to := ""
 				if len(msg.To) > 0 {
 					to = msg.To[0]
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\n",
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\n",
 					msg.ID,
 					msg.From,
 					to,
@@ -57,7 +57,7 @@ func init() {
 					msg.QueueType,
 					msg.Size)
 			}
-			w.Flush()
+			_ = w.Flush()
 		},
 	}
 
@@ -133,19 +133,19 @@ func init() {
 
 			// Print stats in a nice table
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "Queue\tCount")
-			fmt.Fprintln(w, "------\t------")
+			_, _ = fmt.Fprintln(w, "Queue\tCount")
+			_, _ = fmt.Fprintln(w, "------\t------")
 
-			fmt.Fprintf(w, "Active\t%d\n", stats.ActiveCount)
-			fmt.Fprintf(w, "Deferred\t%d\n", stats.DeferredCount)
-			fmt.Fprintf(w, "Hold\t%d\n", stats.HoldCount)
-			fmt.Fprintf(w, "Failed\t%d\n", stats.FailedCount)
+			_, _ = fmt.Fprintf(w, "Active\t%d\n", stats.ActiveCount)
+			_, _ = fmt.Fprintf(w, "Deferred\t%d\n", stats.DeferredCount)
+			_, _ = fmt.Fprintf(w, "Hold\t%d\n", stats.HoldCount)
+			_, _ = fmt.Fprintf(w, "Failed\t%d\n", stats.FailedCount)
 
-			fmt.Fprintf(w, "------\t------\n")
+			_, _ = fmt.Fprintf(w, "------\t------\n")
 			total := stats.ActiveCount + stats.DeferredCount + stats.HoldCount + stats.FailedCount
-			fmt.Fprintf(w, "Total\t%d\n", total)
-			fmt.Fprintf(w, "Total Size\t%d bytes\n", stats.TotalSize)
-			w.Flush()
+			_, _ = fmt.Fprintf(w, "Total\t%d\n", total)
+			_, _ = fmt.Fprintf(w, "Total Size\t%d bytes\n", stats.TotalSize)
+			_ = w.Flush()
 		},
 	}
 

@@ -590,7 +590,7 @@ func (s *Server) acceptConnections() error {
 		s.slogger.Debug("Checking if connection can be accepted", "client_addr", clientAddr)
 		if !s.resourceManager.CanAcceptConnection(clientAddr) {
 			s.slogger.Warn("Connection rejected due to resource limits", "client_ip", clientAddr)
-			conn.Close()
+			_ = conn.Close() // Ignore error when rejecting connection
 			continue
 		}
 		s.slogger.Debug("Connection accepted by resource manager")
@@ -652,7 +652,7 @@ func (s *Server) handleConnectionWithContext(ctx context.Context, conn interface
 	// Ensure connection is closed when done
 	defer func() {
 		s.slogger.Debug("Closing connection")
-		netConn.Close()
+		_ = netConn.Close() // Ignore error in defer cleanup
 	}()
 
 	// Handle the session with context - pass ctx to the session handler

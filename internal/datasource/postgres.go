@@ -114,7 +114,7 @@ func (p *Postgres) Connect() error {
 
 	// Test the connection
 	if err := p.db.Ping(); err != nil {
-		p.db.Close()
+		_ = p.db.Close() // Ignore error on cleanup in error path
 		return fmt.Errorf("failed to ping PostgreSQL server: %w", err)
 	}
 

@@ -125,13 +125,13 @@ func (s *SQLite) Connect() error {
 
 	// Test the connection
 	if err := s.db.Ping(); err != nil {
-		s.db.Close()
+		_ = s.db.Close() // Ignore error on cleanup in error path
 		return fmt.Errorf("failed to ping SQLite database: %w", err)
 	}
 
 	// Initialize the database schema if it doesn't exist
 	if err := s.initSchema(); err != nil {
-		s.db.Close()
+		_ = s.db.Close() // Ignore error on cleanup in error path
 		return fmt.Errorf("failed to initialize database schema: %w", err)
 	}
 
