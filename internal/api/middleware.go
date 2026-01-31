@@ -224,10 +224,11 @@ func (am *AuthMiddleware) writeError(w http.ResponseWriter, statusCode int, mess
 		"status":  statusCode,
 	}
 
+	// Only try to encode if we haven't already written the body
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		// If JSON encoding fails, fall back to plain text
-		w.Header().Set("Content-Type", "text/plain")
-		fmt.Fprintf(w, "Error: %s", message)
+		// If JSON encoding fails, we can't recover since headers are already sent
+		// Log the error instead of trying to write again
+		fmt.Printf("Error encoding JSON response: %v\n", err)
 	}
 }
 

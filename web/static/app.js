@@ -885,7 +885,7 @@ async function refreshLogs() {
     try {
         // Build query parameters
         const params = new URLSearchParams();
-        params.set('limit', '200');
+        params.set('limit', '50'); // Reduced from 200 to 50 to match server default
         if (typeFilter) params.set('event_type', typeFilter);
         if (levelFilter) params.set('level', levelFilter);
 

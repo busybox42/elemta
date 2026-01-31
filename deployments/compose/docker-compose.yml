@@ -85,7 +85,7 @@ services:
       - "8025:8025" # Web UI port
     volumes:
       - elemta_queue:/app/queue:rw
-      - elemta_logs:/app/logs:ro
+      - elemta_logs:/app/logs:rw
       - ../../config/users.txt:/app/config/users.txt:ro
       # Web files are now included in the Docker image
     command: [ "/app/elemta", "web", "--listen", "0.0.0.0:8025", "--queue-dir", "/app/queue", "--web-root", "/app/web/static", "--auth-enabled", "--auth-file", "/app/config/users.txt" ]

@@ -7,6 +7,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -298,6 +299,18 @@ func (s *Server) Start() error {
 
 	// Debug routes (no auth required for debugging)
 	r.HandleFunc("/debug/auth", s.handleDebugAuth).Methods("GET")
+
+	// pprof debugging routes (no auth required for debugging)
+	r.HandleFunc("/debug/pprof/", pprof.Index)
+	r.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	r.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	r.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	r.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	r.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
+	r.Handle("/debug/pprof/heap", pprof.Handler("heap"))
+	r.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+	r.Handle("/debug/pprof/block", pprof.Handler("block"))
+	r.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
 
 	// Authentication routes (if auth is enabled)
 	if s.authMiddleware != nil {
@@ -982,160 +995,184 @@ func (s *Server) handleGetMessageLogs(w http.ResponseWriter, r *http.Request) {
 	// Get query parameters
 	limitStr := r.URL.Query().Get("limit")
 	if limitStr == "" {
-		limitStr = "100"
+		limitStr = "50" // Reduced default from 100 to 50
 	}
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit < 1 {
-		limit = 100
+		limit = 50
 	}
-	if limit > 1000 {
-		limit = 1000 // Cap at 1000 entries
+	if limit > 500 {
+		limit = 500 // Reduced max from 1000 to 500
 	}
 
 	eventTypeFilter := r.URL.Query().Get("event_type")
 	levelFilter := r.URL.Query().Get("level")
 
-	// Read log file
+	// Read log file using tail approach for better performance
 	logFile := "/app/logs/elemta.log"
-	data, err := os.ReadFile(logFile)
+	messageLogs, err := s.tailLogFile(logFile, limit, eventTypeFilter, levelFilter)
 	if err != nil {
 		// Try alternate location
 		logFile = "./logs/elemta.log"
-		data, err = os.ReadFile(logFile)
+		messageLogs, err = s.tailLogFile(logFile, limit, eventTypeFilter, levelFilter)
 		if err != nil {
 			writeJSON(w, map[string]interface{}{
 				"logs":    []MessageLog{},
 				"count":   0,
 				"message": "No log file found",
+				"source":  logFile,
 			})
 			return
 		}
 	}
 
-	// Parse log lines
-	lines := strings.Split(string(data), "\n")
+	writeJSON(w, map[string]interface{}{
+		"logs":   messageLogs,
+		"count":  len(messageLogs),
+		"source": logFile,
+		"limit":  limit,
+	})
+}
+
+// tailLogFile reads log file from the end and returns matching entries
+func (s *Server) tailLogFile(filename string, limit int, eventTypeFilter, levelFilter string) ([]MessageLog, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	// Get file size
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
 	var messageLogs []MessageLog
+	const maxLineSize = 8192 // Maximum line size to prevent infinite reads
+	buffer := make([]byte, maxLineSize)
+	lines := make([]string, 0, limit*2) // Collect more lines than needed for filtering
 
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	// Read from end of file backwards
+	offset := stat.Size()
+	linesFound := 0
+	maxLinesToRead := limit * 3 // Read more lines to account for filtering
+
+	for offset > 0 && linesFound < maxLinesToRead {
+		// Calculate chunk size to read
+		chunkSize := int64(len(buffer))
+		if offset < chunkSize {
+			chunkSize = offset
+		}
+		offset -= chunkSize
+
+		// Read chunk
+		_, err := file.ReadAt(buffer[:chunkSize], offset)
+		if err != nil {
+			break
 		}
 
-		// Try to parse as JSON
-		var logEntry map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &logEntry); err != nil {
-			// Skip non-JSON lines
-			continue
+		// Split chunk into lines
+		chunk := string(buffer[:chunkSize])
+		chunkLines := strings.Split(chunk, "\n")
+
+		// If we're not at the start of file, the first line might be partial
+		if offset > 0 && len(chunkLines) > 1 {
+			// Skip the first (partial) line and process the rest
+			chunkLines = chunkLines[1:]
 		}
 
-		// Extract common fields
-		timeStr, _ := logEntry["time"].(string)
-		level, _ := logEntry["level"].(string)
-		msg, _ := logEntry["msg"].(string)
-		eventType, _ := logEntry["event_type"].(string)
-		component, _ := logEntry["component"].(string)
-
-		// Enforce strict categorization for 4xx/5xx errors if event_type is missing or system
-		if eventType == "" || eventType == "system" {
-			eventType = categorizeLogEntry(logEntry, msg)
-		}
-
-		// Apply filters
-		if eventTypeFilter != "" {
-			if eventTypeFilter == "system" {
-				// System filter matches explicit "system" events or events with no type
-				// It excludes known lifecycle events
-				isKnownCategory := false
-				knownCategories := []string{"reception", "delivery", "rejection", "deferral", "bounce", "tempfail", "authentication"}
-				for _, t := range knownCategories {
-					if eventType == t {
-						isKnownCategory = true
-						break
-					}
-				}
-				if isKnownCategory {
-					continue
-				}
-			} else if eventType != eventTypeFilter {
+		// Process lines in reverse order (since we're reading backwards)
+		for i := len(chunkLines) - 1; i >= 0 && linesFound < maxLinesToRead; i-- {
+			line := strings.TrimSpace(chunkLines[i])
+			if line == "" {
 				continue
 			}
-		}
-		if levelFilter != "" && !strings.EqualFold(level, levelFilter) {
-			continue
-		}
 
-		// Only include message lifecycle events or interesting logs
-		includeLog := false
-		messageLifecycleTypes := []string{
-			"reception", "delivery", "rejection", "deferral", "bounce", "tempfail", "authentication",
-		}
+			// Try to parse as JSON
+			var logEntry map[string]interface{}
+			if err := json.Unmarshal([]byte(line), &logEntry); err != nil {
+				// Skip non-JSON lines
+				continue
+			}
 
-		// Include if it's a message lifecycle event
-		for _, t := range messageLifecycleTypes {
-			if eventType == t {
+			// Extract common fields
+			timeStr, _ := logEntry["time"].(string)
+			level, _ := logEntry["level"].(string)
+			msg, _ := logEntry["msg"].(string)
+			eventType, _ := logEntry["event_type"].(string)
+			component, _ := logEntry["component"].(string)
+
+			// Enforce strict categorization for 4xx/5xx errors if event_type is missing or system
+			if eventType == "" || eventType == "system" {
+				eventType = categorizeLogEntry(logEntry, msg)
+			}
+
+			// Apply filters
+			if eventTypeFilter != "" {
+				if eventTypeFilter == "system" {
+					// System filter matches explicit "system" events or events with no type
+					// It excludes known lifecycle events
+					isKnownCategory := false
+					knownCategories := []string{"reception", "delivery", "rejection", "deferral", "bounce", "tempfail", "authentication"}
+					for _, t := range knownCategories {
+						if eventType == t {
+							isKnownCategory = true
+							break
+						}
+					}
+					if isKnownCategory {
+						continue
+					}
+				} else if eventType != eventTypeFilter {
+					continue
+				}
+			}
+			if levelFilter != "" && !strings.EqualFold(level, levelFilter) {
+				continue
+			}
+
+			// Only include message lifecycle events or interesting logs
+			includeLog := false
+			messageLifecycleTypes := []string{
+				"reception", "delivery", "rejection", "deferral", "bounce", "tempfail", "authentication",
+			}
+
+			// Include if it's a message lifecycle event
+			for _, t := range messageLifecycleTypes {
+				if eventType == t {
+					includeLog = true
+					break
+				}
+			}
+
+			// Always include system events, errors, and warnings
+			if !includeLog && (eventType == "system" || strings.EqualFold(level, "error") || strings.EqualFold(level, "warn")) {
 				includeLog = true
-				break
+			}
+
+			if includeLog {
+				messageLog := MessageLog{
+					Time:      timeStr,
+					Level:     level,
+					Message:   msg,
+					EventType: eventType,
+					Component: component,
+					Fields:    logEntry,
+				}
+				lines = append([]string{line}, lines...)                       // Prepend to maintain chronological order
+				messageLogs = append([]MessageLog{messageLog}, messageLogs...) // Prepend to maintain order
+				linesFound++
 			}
 		}
-
-		// Also include queue-related logs
-		if component == "queue" || component == "smtp-session" || component == "message-lifecycle" {
-			includeLog = true
-		}
-
-		// Include if no event_type filter is specified (show all)
-		if eventTypeFilter == "" && eventType == "" && (component != "" || msg != "") {
-			includeLog = true
-		}
-
-		// Always include if explicitly filtered
-		if eventTypeFilter != "" {
-			includeLog = true
-		}
-
-		if !includeLog {
-			continue
-		}
-
-		// Extract remaining fields
-		fields := make(map[string]interface{})
-		standardFields := map[string]bool{
-			"time": true, "level": true, "msg": true, "event_type": true, "component": true,
-		}
-		for k, v := range logEntry {
-			if !standardFields[k] {
-				fields[k] = v
-			}
-		}
-
-		messageLog := MessageLog{
-			Time:      timeStr,
-			Level:     level,
-			Message:   msg,
-			EventType: eventType,
-			Component: component,
-			Fields:    fields,
-		}
-
-		messageLogs = append(messageLogs, messageLog)
 	}
 
-	// Sort by time (newest first) and limit
+	// Trim to requested limit if we have more
 	if len(messageLogs) > limit {
-		messageLogs = messageLogs[len(messageLogs)-limit:]
+		messageLogs = messageLogs[:limit]
 	}
 
-	// Reverse to show newest first
-	for i, j := 0, len(messageLogs)-1; i < j; i, j = i+1, j-1 {
-		messageLogs[i], messageLogs[j] = messageLogs[j], messageLogs[i]
-	}
-
-	writeJSON(w, map[string]interface{}{
-		"logs":     messageLogs,
-		"count":    len(messageLogs),
-		"has_more": false,
-	})
+	return messageLogs, nil
 }
 
 // handleDebugAuth provides authentication debugging information
