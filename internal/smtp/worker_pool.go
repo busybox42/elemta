@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -291,10 +290,12 @@ func (wp *WorkerPool) worker(workerID int) error {
 	workerLogger := wp.logger.With("worker_id", workerID)
 	workerLogger.Debug("Worker started")
 
-	// Update active worker count
+	// Update active worker count and goroutine count
 	atomic.AddInt32(&wp.stats.ActiveWorkers, 1)
+	atomic.AddInt32(&wp.stats.GoroutineCount, 1)
 	defer func() {
 		atomic.AddInt32(&wp.stats.ActiveWorkers, -1)
+		atomic.AddInt32(&wp.stats.GoroutineCount, -1)
 		workerLogger.Debug("Worker stopped")
 	}()
 
@@ -364,8 +365,8 @@ func (wp *WorkerPool) processJobWithTimeout(job Job, logger *slog.Logger) Result
 		"priority", job.Priority(),
 	)
 
-	// Create context with timeout for job execution monitoring (not used for job.Process)
-	_, cancel := context.WithTimeout(wp.ctx, wp.config.JobTimeout)
+	// Create context with timeout for job execution
+	timeoutCtx, cancel := context.WithTimeout(wp.ctx, wp.config.JobTimeout)
 	defer cancel()
 
 	// Execute job with circuit breaker and timeout
@@ -385,11 +386,9 @@ func (wp *WorkerPool) processJobWithTimeout(job Job, logger *slog.Logger) Result
 			}
 		}()
 
-		// Execute job with original server context (no timeout) for proper session lifecycle
-		// Note: wp.ctx is used instead of timeoutCtx because sessions need the server's
-		// lifecycle context for proper cancellation propagation, not a deadline that expires
+		// Execute job with timeout context
 		data, err = wp.circuitBreaker.Execute(func() (interface{}, error) {
-			return job.Process(wp.ctx) // Use original server context
+			return job.Process(timeoutCtx)
 		})
 	}()
 
@@ -438,6 +437,9 @@ func (wp *WorkerPool) processJob(job Job, logger *slog.Logger) Result {
 
 // resultProcessor handles results from workers
 func (wp *WorkerPool) resultProcessor() error {
+	atomic.AddInt32(&wp.stats.GoroutineCount, 1)
+	defer atomic.AddInt32(&wp.stats.GoroutineCount, -1)
+
 	wp.logger.Debug("Result processor started")
 	defer wp.logger.Debug("Result processor stopped")
 
@@ -480,7 +482,7 @@ func (wp *WorkerPool) GetStats() WorkerPoolStats {
 		FailedJobs:     wp.stats.FailedJobs,
 		ActiveWorkers:  wp.stats.ActiveWorkers,
 		QueuedJobs:     wp.stats.QueuedJobs,
-		GoroutineCount: int32(runtime.NumGoroutine()),
+		GoroutineCount: wp.stats.GoroutineCount,
 		PanicCount:     wp.stats.PanicCount,
 		OrphanedJobs:   wp.stats.OrphanedJobs,
 		CircuitBreaker: struct {
@@ -526,6 +528,9 @@ func (wp *WorkerPool) IsHealthy() bool {
 // MonitorGoroutines starts a goroutine monitoring routine
 func (wp *WorkerPool) MonitorGoroutines() {
 	go func() {
+		atomic.AddInt32(&wp.stats.GoroutineCount, 1)
+		defer atomic.AddInt32(&wp.stats.GoroutineCount, -1)
+
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 
