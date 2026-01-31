@@ -1114,7 +1114,7 @@ func (rm *ResourceManager) Close() {
 
 	// Close Valkey client
 	if rm.valkeyClient != nil {
-		rm.valkeyClient.Close()
+		_ = rm.valkeyClient.Close() // Ignore error on shutdown
 	}
 
 	rm.logger.Info("Resource manager shut down")

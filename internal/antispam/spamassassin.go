@@ -64,7 +64,7 @@ func (s *SpamAssassin) Connect() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to SpamAssassin: %w", err)
 	}
-	conn.Close()
+	_ = conn.Close() // Ignore error on test connection cleanup
 
 	s.connected = true
 	return nil

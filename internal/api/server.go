@@ -1040,7 +1040,7 @@ func (s *Server) tailLogFile(filename string, limit int, eventTypeFilter, levelF
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }() // Ignore error in defer cleanup
 
 	// Get file size
 	stat, err := file.Stat()

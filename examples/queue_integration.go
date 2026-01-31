@@ -39,7 +39,7 @@ func main() {
 	if err := processor.Start(); err != nil {
 		log.Fatalf("Failed to start processor: %v", err)
 	}
-	defer processor.Stop()
+	defer func() { _ = processor.Stop() }() // Ignore error in defer cleanup
 
 	log.Println("Queue system started successfully")
 

@@ -118,7 +118,7 @@ func (m *MySQL) Connect() error {
 
 	// Test the connection
 	if err := m.db.Ping(); err != nil {
-		m.db.Close()
+		_ = m.db.Close() // Ignore error on cleanup in error path
 		return fmt.Errorf("failed to ping MySQL server: %w", err)
 	}
 

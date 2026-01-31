@@ -93,7 +93,7 @@ func startServer() {
 				listener, err := net.Listen("tcp", port)
 				if err == nil {
 					// Close the listener, we'll reopen it in the server
-					listener.Close()
+					_ = listener.Close() // Ignore error on test listener cleanup
 					cfg.Server.Listen = port
 					slog.Info("DEV MODE: Changed listen port (non-privileged)", "original_port", originalPort, "new_port", port)
 					break
@@ -283,7 +283,7 @@ func startServer() {
 
 	// Perform graceful shutdown
 	slog.Info("Shutting down server")
-	server.Close()
+	_ = server.Close() // Ignore error on graceful shutdown
 }
 
 // initializeCertificateMonitoring starts monitoring TLS certificates

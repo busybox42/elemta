@@ -136,7 +136,7 @@ func (cp *ConnectionPool) getPooledConnection(pool *HostPool) *PooledConnection 
 					"age", now.Sub(conn.lastUsed))
 
 				// Close expired connection
-				conn.conn.Close()
+				_ = conn.conn.Close() // Ignore error on cleanup
 
 				// Remove from pool
 				pool.connections = append(pool.connections[:i], pool.connections[i+1:]...)
@@ -246,7 +246,7 @@ func (cp *ConnectionPool) ReturnConnection(host string, port int, conn net.Conn)
 
 	if !exists {
 		// Pool doesn't exist, just close the connection
-		conn.Close()
+		_ = conn.Close() // Ignore error on cleanup
 		cp.metrics.mu.Lock()
 		cp.metrics.ClosedConnections++
 		cp.metrics.ActiveConnections--
@@ -279,7 +279,7 @@ func (cp *ConnectionPool) ReturnConnection(host string, port int, conn net.Conn)
 			"host", host,
 			"port", port)
 
-		conn.Close()
+		_ = conn.Close() // Ignore error on cleanup
 		cp.removePooledConnection(pool, pooledConn)
 
 		cp.metrics.mu.Lock()
@@ -300,7 +300,7 @@ func (cp *ConnectionPool) ReturnConnection(host string, port int, conn net.Conn)
 	// Check if pool is full
 	if len(pool.connections) >= pool.maxConns {
 		// Pool is full, close this connection
-		conn.Close()
+		_ = conn.Close() // Ignore error on cleanup
 		pool.activeConns--
 
 		cp.metrics.mu.Lock()
@@ -433,7 +433,7 @@ func (cp *ConnectionPool) performCleanup() {
 		newConnections := make([]*PooledConnection, 0, len(pool.connections))
 		for _, conn := range pool.connections {
 			if !conn.inUse && (now.Sub(conn.lastUsed) > cp.config.IdleTimeout || !conn.healthy) {
-				conn.conn.Close()
+				_ = conn.conn.Close() // Ignore error on cleanup
 				cleaned++
 
 				cp.metrics.mu.Lock()
@@ -463,7 +463,7 @@ func (cp *ConnectionPool) Close() {
 	for _, pool := range cp.pools {
 		pool.mu.Lock()
 		for _, conn := range pool.connections {
-			conn.conn.Close()
+			_ = conn.conn.Close() // Ignore error on cleanup/shutdown
 			closed++
 		}
 		pool.connections = nil

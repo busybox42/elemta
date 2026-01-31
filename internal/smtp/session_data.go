@@ -183,7 +183,7 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 				dh.logger.DebugContext(ctx, "Discarding buffered content after terminator",
 					"buffered_bytes", buffered,
 				)
-				dh.reader.Discard(buffered)
+				_, _ = dh.reader.Discard(buffered) // Ignore error on cleanup
 			}
 
 			break

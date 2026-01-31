@@ -158,18 +158,18 @@ Valid queue types: active, deferred, hold, failed, all`,
 
 			// Print stats in a nice table
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "Queue\tCount")
-			fmt.Fprintln(w, "------\t------")
+			_, _ = fmt.Fprintln(w, "Queue\tCount")
+			_, _ = fmt.Fprintln(w, "------\t------")
 
 			total := 0
 			for queue, count := range stats {
-				fmt.Fprintf(w, "%s\t%d\n", queue, count)
+				_, _ = fmt.Fprintf(w, "%s\t%d\n", queue, count)
 				total += count
 			}
 
-			fmt.Fprintf(w, "------\t------\n")
-			fmt.Fprintf(w, "Total\t%d\n", total)
-			w.Flush()
+			_, _ = fmt.Fprintf(w, "------\t------\n")
+			_, _ = fmt.Fprintf(w, "Total\t%d\n", total)
+			_ = w.Flush()
 		},
 	}
 

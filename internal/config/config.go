@@ -1204,8 +1204,8 @@ func isWritableDir(path string) bool {
 	if err != nil {
 		return false
 	}
-	file.Close()
-	os.Remove(testFile)
+	_ = file.Close()        // Ignore error on test file cleanup
+	_ = os.Remove(testFile) // Ignore error on test file cleanup
 	return true
 }
 

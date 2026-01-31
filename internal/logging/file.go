@@ -94,7 +94,7 @@ func NewFileLogger(config Config) (*FileLogger, error) {
 	// Get file info for size
 	fileInfo, err := file.Stat()
 	if err != nil {
-		file.Close()
+		_ = file.Close() // Ignore error on cleanup in error path
 		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 
@@ -363,14 +363,14 @@ func (l *FileLogger) cleanOldLogFiles() {
 	now := time.Now()
 	for _, file := range logFiles {
 		if l.maxAge > 0 && now.Sub(file.ModTime()) > l.maxAge {
-			os.Remove(filepath.Join(dir, file.Name()))
+			_ = os.Remove(filepath.Join(dir, file.Name())) // Ignore error on old file cleanup
 		}
 	}
 
 	// Remove files based on maxFiles
 	if l.maxFiles > 0 && len(logFiles) > l.maxFiles {
 		for i := 0; i < len(logFiles)-l.maxFiles; i++ {
-			os.Remove(filepath.Join(dir, logFiles[i].Name()))
+			_ = os.Remove(filepath.Join(dir, logFiles[i].Name())) // Ignore error on old file cleanup
 		}
 	}
 }

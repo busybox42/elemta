@@ -117,15 +117,6 @@ func (h *SMTPDeliveryHandler) groupRecipientsByDomain(recipients []string) map[s
 	return groups
 }
 
-// TODO: Implement direct SMTP delivery functionality
-// deliverToDomain delivers messages to all recipients in a specific domain
-/*
-func (h *SMTPDeliveryHandler) deliverToDomain(ctx context.Context, msg Message, domain string, recipients []string, content []byte) error {
-	_, _, err := h.deliverToDomainWithMetadata(ctx, msg, domain, recipients, content)
-	return err
-}
-*/
-
 // deliverToDomainWithMetadata delivers messages to all recipients in a specific domain and returns delivery metadata
 func (h *SMTPDeliveryHandler) deliverToDomainWithMetadata(ctx context.Context, msg Message, domain string, recipients []string, content []byte) (string, string, error) {
 	// Look up MX records for the domain
@@ -186,14 +177,6 @@ func (h *SMTPDeliveryHandler) lookupMX(ctx context.Context, domain string) ([]*n
 	return mxRecords, err
 }
 
-// attemptDeliveryToHost attempts delivery to a specific SMTP host
-/*
-func (h *SMTPDeliveryHandler) attemptDeliveryToHost(ctx context.Context, host string, msg Message, recipients []string, content []byte) error {
-	_, _, err := h.attemptDeliveryToHostWithMetadata(ctx, host, msg, recipients, content)
-	return err
-}
-*/
-
 // attemptDeliveryToHostWithMetadata attempts delivery to a specific SMTP host and returns delivery metadata
 func (h *SMTPDeliveryHandler) attemptDeliveryToHostWithMetadata(ctx context.Context, host string, msg Message, recipients []string, content []byte) (string, string, error) {
 	// Create context with timeout
@@ -222,14 +205,6 @@ func (h *SMTPDeliveryHandler) attemptDeliveryToHostWithMetadata(ctx context.Cont
 
 	return "", "", fmt.Errorf("delivery failed to all ports for host %s: %w", host, lastError)
 }
-
-// deliverToAddress performs the actual SMTP delivery to a specific address
-/*
-func (h *SMTPDeliveryHandler) deliverToAddress(ctx context.Context, address string, msg Message, recipients []string, content []byte) error {
-	_, _, err := h.deliverToAddressWithMetadata(ctx, address, msg, recipients, content)
-	return err
-}
-*/
 
 // deliverToAddressWithMetadata performs the actual SMTP delivery to a specific address and returns delivery metadata
 func (h *SMTPDeliveryHandler) deliverToAddressWithMetadata(ctx context.Context, address string, msg Message, recipients []string, content []byte) (string, string, error) {
@@ -318,14 +293,6 @@ func (h *SMTPDeliveryHandler) deliverToAddressWithMetadata(ctx context.Context, 
 	return deliveryIP, deliveryHost, nil
 }
 
-// connectSMTP establishes a connection to the SMTP server
-/*
-func (h *SMTPDeliveryHandler) connectSMTP(ctx context.Context, address string) (*smtp.Client, error) {
-	client, _, err := h.connectSMTPWithMetadata(ctx, address)
-	return client, err
-}
-*/
-
 // connectSMTPWithMetadata establishes a connection to the SMTP server and returns connection metadata
 func (h *SMTPDeliveryHandler) connectSMTPWithMetadata(ctx context.Context, address string) (*smtp.Client, net.Conn, error) {
 	// Create dialer with context support
@@ -342,14 +309,14 @@ func (h *SMTPDeliveryHandler) connectSMTPWithMetadata(ctx context.Context, addre
 	// Create SMTP client
 	client, err := smtp.NewClient(conn, strings.Split(address, ":")[0])
 	if err != nil {
-		conn.Close()
+		_ = conn.Close() // Ignore error on cleanup in error path
 		return nil, nil, fmt.Errorf("failed to create SMTP client: %w", err)
 	}
 
 	// Send EHLO/HELO
 	hostname := "localhost"
 	if err := client.Hello(hostname); err != nil {
-		client.Close()
+		_ = client.Close() // Ignore error on cleanup in error path
 		return nil, nil, fmt.Errorf("HELLO command failed: %w", err)
 	}
 

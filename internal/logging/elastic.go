@@ -111,7 +111,7 @@ func (l *ElasticLogger) testConnection() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // Ignore error in defer cleanup
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("Elasticsearch returned status code %d", resp.StatusCode)
@@ -153,7 +153,7 @@ func (l *ElasticLogger) Fatal(msg string, fields ...Field) {
 	if l.level <= Fatal {
 		l.log(Fatal, msg, fields...)
 		// Ensure logs are flushed before exiting
-		l.Flush()
+		_ = l.Flush() // Ignore error before exit
 		os.Exit(1)
 	}
 }
@@ -278,7 +278,7 @@ func (l *ElasticLogger) flushLocked() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // Ignore error in defer cleanup
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
