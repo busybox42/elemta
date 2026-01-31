@@ -717,9 +717,9 @@ func (s *Server) handleAndCloseSession(ctx context.Context, conn net.Conn) {
 	}
 
 	// Create a new session with the current configuration and authentication
-	// Pass the server's worker context for proper cancellation propagation
+	// Use context.Background() to avoid inheriting the short-lived worker pool job context
 	s.slogger.Debug("Creating new SMTP session", "client_ip", clientIP)
-	session := NewSession(ctx, conn, s.config, s.authenticator)
+	session := NewSession(context.Background(), conn, s.config, s.authenticator)
 	s.slogger.Debug("SMTP session created successfully")
 
 	// Set the TLS manager from the server
