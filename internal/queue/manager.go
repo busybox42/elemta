@@ -608,5 +608,4 @@ func (m *Manager) Stop() {
 	if m.stopCh != nil {
 		close(m.stopCh)
 	}
-	m.mutex.Unlock()
 }

@@ -258,8 +258,7 @@ func (h *SMTPDeliveryHandler) deliverToAddressWithMetadata(ctx context.Context, 
 		}
 	} else {
 		// Send raw MAIL FROM command without SIZE or other extensions
-		mailCmd := fmt.Sprintf("MAIL FROM:<%s>", sender)
-		id, err := text.Cmd(mailCmd)
+		id, err := text.Cmd("MAIL FROM:<%s>", sender)
 		if err != nil {
 			return "", "", fmt.Errorf("MAIL FROM command failed: %w", err)
 		}
