@@ -176,6 +176,16 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 		// Check for end of data marker with enhanced security validation
 		if dh.isValidEndOfData(lineStr, state, &suspiciousPatterns) {
 			dh.logger.DebugContext(ctx, "Valid end-of-data marker detected")
+
+			// Fix for Go 1.24 buffering issue: discard any remaining buffered content
+			// to prevent message content from leaking into command parsing
+			if buffered := dh.reader.Buffered(); buffered > 0 {
+				dh.logger.DebugContext(ctx, "Discarding buffered content after terminator",
+					"buffered_bytes", buffered,
+				)
+				dh.reader.Discard(buffered)
+			}
+
 			break
 		}
 
