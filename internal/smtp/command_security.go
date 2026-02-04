@@ -499,8 +499,8 @@ func (csm *CommandSecurityManager) validateEmailAddress(ctx context.Context, add
 	}
 
 	// Check for valid email characters (RFC 5321 compliant)
-	// Allow both full domains with TLD and single-label domains (like localhost) for local delivery
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*(\.[a-zA-Z]{2,})?$`)
+	// Require proper domain with TLD (e.g., example.com) or special case for localhost
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}|localhost)$`)
 	if !emailRegex.MatchString(addr) {
 		csm.logger.WarnContext(ctx, "Invalid email address format",
 			"address", addr,
