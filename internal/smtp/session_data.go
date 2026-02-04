@@ -109,13 +109,27 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 		sessionMemoryLimit = dh.session.resourceManager.memoryManager.config.PerConnectionMemoryLimit
 	}
 
-	// Set read timeout
+	// Set read timeout with proper error handling
 	if deadline, ok := ctx.Deadline(); ok {
-		_ = dh.conn.SetReadDeadline(deadline) // Best effort
+		if err := dh.conn.SetReadDeadline(deadline); err != nil {
+			dh.logger.ErrorContext(ctx, "Failed to set read deadline from context - connection compromised",
+				"error", err, "deadline", deadline)
+			return nil, fmt.Errorf("connection compromised: unable to set read deadline: %w", err)
+		}
 	} else {
-		_ = dh.conn.SetReadDeadline(time.Now().Add(30 * time.Minute)) // Best effort
+		if err := dh.conn.SetReadDeadline(time.Now().Add(30 * time.Minute)); err != nil {
+			dh.logger.ErrorContext(ctx, "Failed to set default read deadline - connection compromised",
+				"error", err)
+			return nil, fmt.Errorf("connection compromised: unable to set read deadline: %w", err)
+		}
 	}
-	defer func() { _ = dh.conn.SetReadDeadline(time.Time{}) }() // Best effort cleanup
+
+	// Cleanup function to reset deadline - log error but don't fail since we're already cleaning up
+	defer func() {
+		if err := dh.conn.SetReadDeadline(time.Time{}); err != nil {
+			dh.logger.WarnContext(ctx, "Failed to reset read deadline during cleanup", "error", err)
+		}
+	}()
 
 	// Progressive memory tracking variables
 	const memoryCheckInterval = 1024 * 1024 // Check every 1MB
