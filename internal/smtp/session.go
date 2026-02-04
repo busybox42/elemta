@@ -229,6 +229,18 @@ func (s *Session) sendGreeting(ctx context.Context) error {
 }
 
 // processCommands processes SMTP commands in the main loop
+//
+// PIPELINING SUPPORT:
+// This implementation processes commands sequentially (read-process-respond loop).
+// RFC 2920 PIPELINING requires batching multiple commands before sending responses,
+// which is NOT currently implemented. Therefore, PIPELINING is not advertised in EHLO.
+//
+// To implement pipelining in the future:
+// 1. Check s.reader.Buffered() after each response
+// 2. If buffered data exists, accumulate commands and responses
+// 3. Send all responses together maintaining command order
+// 4. Handle errors mid-pipeline by sending responses up to error point
+// 5. Add tests for pipelined command sequences
 func (s *Session) processCommands(ctx context.Context) error {
 	for {
 		select {
@@ -247,7 +259,7 @@ func (s *Session) processCommands(ctx context.Context) error {
 			s.logger.WarnContext(ctx, "Failed to set read deadline", "error", err)
 		}
 
-		// Read command line
+		// Read command line (one at a time - no pipelining)
 		line, err := s.reader.ReadString('\n')
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {

@@ -785,6 +785,230 @@ func TestRelayPermissions(t *testing.T) {
 	}
 }
 
+// TestEHLONoPipelining tests that PIPELINING is not advertised
+func TestEHLONoPipelining(t *testing.T) {
+	config := createTestConfig(t)
+	server, err := NewServer(config)
+	require.NoError(t, err)
+	defer func() { _ = server.Close() }()
+
+	serverErr := make(chan error, 1)
+	go func() { serverErr <- server.Start() }()
+	time.Sleep(100 * time.Millisecond)
+
+	conn, err := net.Dial("tcp", "localhost:2525")
+	require.NoError(t, err)
+	defer conn.Close()
+
+	reader := bufio.NewReader(conn)
+
+	// Read greeting
+	_, err = reader.ReadString('\n')
+	require.NoError(t, err)
+
+	// Send EHLO
+	_, err = conn.Write([]byte("EHLO test.example.com\r\n"))
+	require.NoError(t, err)
+
+	// Read multiline EHLO response
+	var responses []string
+	for {
+		line, err := reader.ReadString('\n')
+		require.NoError(t, err)
+		responses = append(responses, line)
+
+		// Last line has space after code
+		if len(line) >= 4 && line[3] == ' ' {
+			break
+		}
+	}
+
+	// Verify PIPELINING is NOT advertised
+	allResponses := strings.Join(responses, "")
+	assert.NotContains(t, allResponses, "PIPELINING",
+		"PIPELINING should not be advertised as it's not implemented")
+
+	// Verify other extensions are present
+	assert.Contains(t, allResponses, "SIZE")
+	assert.Contains(t, allResponses, "8BITMIME")
+	assert.Contains(t, allResponses, "SMTPUTF8")
+}
+
+// TestSequentialCommandProcessing tests that commands are processed sequentially
+func TestSequentialCommandProcessing(t *testing.T) {
+	config := createTestConfig(t)
+	config.Auth = nil
+	config.LocalDomains = []string{"localhost", "example.com"}
+	server, err := NewServer(config)
+	require.NoError(t, err)
+	defer func() { _ = server.Close() }()
+
+	serverErr := make(chan error, 1)
+	go func() { serverErr <- server.Start() }()
+	time.Sleep(100 * time.Millisecond)
+
+	conn, err := net.Dial("tcp", "localhost:2525")
+	require.NoError(t, err)
+	defer conn.Close()
+
+	reader := bufio.NewReader(conn)
+
+	// Read greeting
+	greeting, err := reader.ReadString('\n')
+	require.NoError(t, err)
+	assert.Contains(t, greeting, "220")
+
+	// Send multiple commands in sequence (simulating what pipelining would do)
+	commands := []string{
+		"EHLO test.example.com\r\n",
+		"MAIL FROM:<sender@example.com>\r\n",
+		"RCPT TO:<user@example.com>\r\n",
+		"NOOP\r\n",
+	}
+
+	expectedCodes := []string{"250", "250", "250", "250"}
+
+	for i, cmd := range commands {
+		// Send command
+		_, err = conn.Write([]byte(cmd))
+		require.NoError(t, err)
+
+		// Read response immediately (sequential processing)
+		if i == 0 {
+			// EHLO returns multiline response
+			for {
+				line, err := reader.ReadString('\n')
+				require.NoError(t, err)
+				if len(line) >= 4 && line[3] == ' ' {
+					assert.Contains(t, line, expectedCodes[i])
+					break
+				}
+			}
+		} else {
+			response, err := reader.ReadString('\n')
+			require.NoError(t, err)
+			assert.Contains(t, response, expectedCodes[i],
+				"Command %d (%s) should get response %s, got: %s", i, strings.TrimSpace(cmd), expectedCodes[i], strings.TrimSpace(response))
+		}
+	}
+}
+
+// TestMultipleCommandsSinglePacket tests sending multiple commands in one packet
+// This verifies that even when commands arrive together, they are processed sequentially
+func TestMultipleCommandsSinglePacket(t *testing.T) {
+	config := createTestConfig(t)
+	config.Auth = nil
+	config.LocalDomains = []string{"localhost", "example.com"}
+	server, err := NewServer(config)
+	require.NoError(t, err)
+	defer func() { _ = server.Close() }()
+
+	serverErr := make(chan error, 1)
+	go func() { serverErr <- server.Start() }()
+	time.Sleep(100 * time.Millisecond)
+
+	conn, err := net.Dial("tcp", "localhost:2525")
+	require.NoError(t, err)
+	defer conn.Close()
+
+	reader := bufio.NewReader(conn)
+
+	// Read greeting
+	greeting, err := reader.ReadString('\n')
+	require.NoError(t, err)
+	assert.Contains(t, greeting, "220")
+
+	// Send EHLO first
+	_, err = conn.Write([]byte("EHLO test.example.com\r\n"))
+	require.NoError(t, err)
+
+	for {
+		line, err := reader.ReadString('\n')
+		require.NoError(t, err)
+		if len(line) >= 4 && line[3] == ' ' {
+			break
+		}
+	}
+
+	// Send multiple commands in a single packet (simulating pipelining attempt)
+	// Even though commands arrive together, server processes them sequentially
+	batchCommands := "MAIL FROM:<sender@example.com>\r\n" +
+		"RCPT TO:<user@example.com>\r\n" +
+		"NOOP\r\n"
+
+	_, err = conn.Write([]byte(batchCommands))
+	require.NoError(t, err)
+
+	// Read responses in order (server processes sequentially, not as a batch)
+	// This proves we DON'T have real pipelining - each response comes immediately after processing
+	expectedResponses := []string{"250", "250", "250"}
+
+	for i, expected := range expectedResponses {
+		response, err := reader.ReadString('\n')
+		require.NoError(t, err, "Failed to read response %d", i)
+		assert.Contains(t, response, expected,
+			"Response %d should contain %s, got: %s", i, expected, strings.TrimSpace(response))
+	}
+}
+
+// TestErrorHandlingInSequence tests error handling during command sequence
+func TestErrorHandlingInSequence(t *testing.T) {
+	config := createTestConfig(t)
+	config.Auth = nil
+	server, err := NewServer(config)
+	require.NoError(t, err)
+	defer func() { _ = server.Close() }()
+
+	serverErr := make(chan error, 1)
+	go func() { serverErr <- server.Start() }()
+	time.Sleep(100 * time.Millisecond)
+
+	conn, err := net.Dial("tcp", "localhost:2525")
+	require.NoError(t, err)
+	defer conn.Close()
+
+	reader := bufio.NewReader(conn)
+
+	// Read greeting
+	_, _ = reader.ReadString('\n')
+
+	// Send EHLO first
+	_, _ = conn.Write([]byte("EHLO test.example.com\r\n"))
+	for {
+		line, _ := reader.ReadString('\n')
+		if len(line) >= 4 && line[3] == ' ' {
+			break
+		}
+	}
+
+	// Send commands with an error in the middle
+	commands := []struct {
+		cmd          string
+		expectCode   string
+		expectError  bool
+	}{
+		{"MAIL FROM:<sender@example.com>\r\n", "250", false},
+		{"RCPT TO:<user@external.com>\r\n", "554", true}, // Should fail - relay denied
+		{"RSET\r\n", "250", false},                       // Should still work after error
+	}
+
+	for i, tc := range commands {
+		_, err = conn.Write([]byte(tc.cmd))
+		require.NoError(t, err)
+
+		response, err := reader.ReadString('\n')
+		require.NoError(t, err, "Failed to read response %d", i)
+
+		if tc.expectError {
+			assert.Contains(t, response, tc.expectCode,
+				"Command %d should return error code %s", i, tc.expectCode)
+		} else {
+			assert.Contains(t, response, tc.expectCode,
+				"Command %d should return success code %s", i, tc.expectCode)
+		}
+	}
+}
+
 // TestParseCommand tests command parsing
 func TestParseCommand(t *testing.T) {
 	config := createTestConfig(t)
@@ -817,7 +1041,290 @@ func TestParseCommand(t *testing.T) {
 	}
 }
 
-// TestValidateHostname tests hostname validation
+// TestMAILFROMSizeParameter tests RFC 1870 SIZE parameter handling
+func TestMAILFROMSizeParameter(t *testing.T) {
+	tests := []struct {
+		name        string
+		mailCmd     string
+		maxSize     int64
+		expectCode  string
+		wantErr     bool
+	}{
+		{
+			name:        "valid SIZE within limit",
+			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=1000000",
+			maxSize:     10 * 1024 * 1024, // 10MB
+			expectCode:  "250",
+			wantErr:     false,
+		},
+		{
+			name:        "SIZE exactly at limit",
+			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=10485760",
+			maxSize:     10 * 1024 * 1024, // 10MB
+			expectCode:  "250",
+			wantErr:     false,
+		},
+		{
+			name:        "SIZE exceeding limit",
+			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=20971520",
+			maxSize:     10 * 1024 * 1024, // 10MB
+			expectCode:  "552",
+			wantErr:     true,
+		},
+		{
+			name:        "SIZE zero (valid per RFC 1870)",
+			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=0",
+			maxSize:     10 * 1024 * 1024,
+			expectCode:  "250",
+			wantErr:     false,
+		},
+		{
+			name:        "invalid SIZE syntax (non-numeric)",
+			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=abc",
+			maxSize:     10 * 1024 * 1024,
+			expectCode:  "501",
+			wantErr:     true,
+		},
+		{
+			name:        "negative SIZE",
+			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=-1000",
+			maxSize:     10 * 1024 * 1024,
+			expectCode:  "501",
+			wantErr:     true,
+		},
+		{
+			name:        "SIZE with SMTPUTF8",
+			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=1000000 SMTPUTF8",
+			maxSize:     10 * 1024 * 1024,
+			expectCode:  "250",
+			wantErr:     false,
+		},
+		{
+			name:        "SIZE with BODY parameter",
+			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=1000000 BODY=8BITMIME",
+			maxSize:     10 * 1024 * 1024,
+			expectCode:  "250",
+			wantErr:     false,
+		},
+		{
+			name:        "no SIZE parameter",
+			mailCmd:     "MAIL FROM:<sender@example.com>",
+			maxSize:     10 * 1024 * 1024,
+			expectCode:  "250",
+			wantErr:     false,
+		},
+		{
+			name:        "unreasonably large SIZE (sanity check)",
+			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=99999999999999",
+			maxSize:     100 * 1024 * 1024 * 1024, // 100GB
+			expectCode:  "552",
+			wantErr:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := createTestConfig(t)
+			config.Auth = nil // Disable auth requirement for this test
+			config.MaxSize = tt.maxSize
+			server, err := NewServer(config)
+			require.NoError(t, err)
+			defer func() { _ = server.Close() }()
+
+			serverErr := make(chan error, 1)
+			go func() { serverErr <- server.Start() }()
+			time.Sleep(100 * time.Millisecond)
+
+			conn, err := net.Dial("tcp", "localhost:2525")
+			require.NoError(t, err)
+			defer conn.Close()
+
+			reader := bufio.NewReader(conn)
+
+			// Read greeting
+			_, err = reader.ReadString('\n')
+			require.NoError(t, err)
+
+			// Send EHLO
+			_, err = conn.Write([]byte("EHLO test.example.com\r\n"))
+			require.NoError(t, err)
+
+			// Read EHLO responses
+			for {
+				line, err := reader.ReadString('\n')
+				require.NoError(t, err)
+				if len(line) >= 4 && line[3] == ' ' {
+					break
+				}
+			}
+
+			// Send MAIL FROM with SIZE parameter
+			_, err = conn.Write([]byte(tt.mailCmd + "\r\n"))
+			require.NoError(t, err)
+
+			// Read response
+			response, err := reader.ReadString('\n')
+			require.NoError(t, err)
+
+			if tt.wantErr {
+				assert.Contains(t, response, tt.expectCode,
+					"Expected error code %s, got: %s", tt.expectCode, strings.TrimSpace(response))
+			} else {
+				assert.Contains(t, response, tt.expectCode,
+					"Expected success code %s, got: %s", tt.expectCode, strings.TrimSpace(response))
+			}
+		})
+	}
+}
+
+// TestEHLOSizeAdvertisement tests that SIZE is properly advertised in EHLO
+func TestEHLOSizeAdvertisement(t *testing.T) {
+	config := createTestConfig(t)
+	config.MaxSize = 50 * 1024 * 1024 // 50MB
+	server, err := NewServer(config)
+	require.NoError(t, err)
+	defer func() { _ = server.Close() }()
+
+	serverErr := make(chan error, 1)
+	go func() { serverErr <- server.Start() }()
+	time.Sleep(100 * time.Millisecond)
+
+	conn, err := net.Dial("tcp", "localhost:2525")
+	require.NoError(t, err)
+	defer conn.Close()
+
+	reader := bufio.NewReader(conn)
+
+	// Read greeting
+	_, err = reader.ReadString('\n')
+	require.NoError(t, err)
+
+	// Send EHLO
+	_, err = conn.Write([]byte("EHLO test.example.com\r\n"))
+	require.NoError(t, err)
+
+	// Read EHLO responses
+	var responses []string
+	for {
+		line, err := reader.ReadString('\n')
+		require.NoError(t, err)
+		responses = append(responses, line)
+		if len(line) >= 4 && line[3] == ' ' {
+			break
+		}
+	}
+
+	// Verify SIZE is advertised with correct value
+	allResponses := strings.Join(responses, "")
+	assert.Contains(t, allResponses, "SIZE",
+		"SIZE extension should be advertised")
+	assert.Contains(t, allResponses, "52428800",
+		"SIZE should advertise maximum of 52428800 bytes (50MB)")
+}
+
+// TestParseMailFromSizeParameter tests SIZE parameter parsing
+func TestParseMailFromSizeParameter(t *testing.T) {
+	ctx := context.Background()
+	config := createTestConfig(t)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	session := &Session{
+		config:     config,
+		logger:     logger,
+		sessionID:  "test-session",
+		remoteAddr: "127.0.0.1:12345",
+	}
+	state := NewSessionState(logger)
+	ch := NewCommandHandler(session, state, nil, nil, config, nil, logger)
+
+	tests := []struct {
+		name          string
+		args          string
+		expectAddr    string
+		expectSize    int64
+		wantErr       bool
+		errContains   string
+	}{
+		{
+			name:        "SIZE with brackets",
+			args:        "FROM:<user@example.com> SIZE=1000000",
+			expectAddr:  "user@example.com",
+			expectSize:  1000000,
+			wantErr:     false,
+		},
+		{
+			name:        "SIZE without brackets",
+			args:        "FROM:user@example.com SIZE=1000000",
+			expectAddr:  "user@example.com",
+			expectSize:  1000000,
+			wantErr:     false,
+		},
+		{
+			name:        "SIZE=0",
+			args:        "FROM:<user@example.com> SIZE=0",
+			expectAddr:  "user@example.com",
+			expectSize:  0,
+			wantErr:     false,
+		},
+		{
+			name:        "no SIZE parameter",
+			args:        "FROM:<user@example.com>",
+			expectAddr:  "user@example.com",
+			expectSize:  0,
+			wantErr:     false,
+		},
+		{
+			name:        "SIZE with other parameters",
+			args:        "FROM:<user@example.com> SIZE=1000000 BODY=8BITMIME SMTPUTF8",
+			expectAddr:  "user@example.com",
+			expectSize:  1000000,
+			wantErr:     false,
+		},
+		{
+			name:        "invalid SIZE (non-numeric)",
+			args:        "FROM:<user@example.com> SIZE=abc",
+			expectAddr:  "",
+			expectSize:  0,
+			wantErr:     true,
+			errContains: "501 5.5.4 Invalid SIZE parameter",
+		},
+		{
+			name:        "negative SIZE",
+			args:        "FROM:<user@example.com> SIZE=-1000",
+			expectAddr:  "",
+			expectSize:  0,
+			wantErr:     true,
+			errContains: "501 5.5.4 SIZE parameter must be non-negative",
+		},
+		{
+			name:        "SIZE too large",
+			args:        "FROM:<user@example.com> SIZE=99999999999999",
+			expectAddr:  "",
+			expectSize:  0,
+			wantErr:     true,
+			errContains: "552 5.3.4 SIZE parameter exceeds reasonable limit",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			addr, size, err := ch.parseMailFrom(ctx, tt.args)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectAddr, addr)
+				assert.Equal(t, tt.expectSize, size)
+			}
+		})
+	}
+}
+
+// TestValidateHostname tests hostname validation per RFC 5321 §4.1.3
 func TestValidateHostname(t *testing.T) {
 	ctx := context.Background()
 	config := createTestConfig(t)
@@ -831,25 +1338,70 @@ func TestValidateHostname(t *testing.T) {
 	ch := NewCommandHandler(session, state, nil, nil, config, nil, logger)
 
 	tests := []struct {
+		name     string
 		hostname string
 		wantErr  bool
+		errMsg   string
 	}{
-		{"example.com", false},
-		{"mail.example.com", false},
-		{"[127.0.0.1]", false},
-		{"[IPv6:2001:db8::1]", false},
-		{"", true},
-		{strings.Repeat("a", 256), true}, // Too long
-		{"mail-server.example.com", false},
+		// Valid domain names
+		{"valid simple domain", "example.com", false, ""},
+		{"valid subdomain", "mail.example.com", false, ""},
+		{"valid with dash", "mail-server.example.com", false, ""},
+		{"valid single label", "localhost", false, ""},
+		{"valid numeric start", "123example.com", false, ""},
+
+		// Valid IPv4 address literals
+		{"valid IPv4 literal", "[127.0.0.1]", false, ""},
+		{"valid IPv4 literal public", "[192.0.2.1]", false, ""},
+		{"valid IPv4 literal private", "[10.0.0.1]", false, ""},
+
+		// Valid IPv6 address literals
+		{"valid IPv6 literal", "[IPv6:2001:db8::1]", false, ""},
+		{"valid IPv6 literal full", "[IPv6:2001:0db8:0000:0000:0000:0000:0000:0001]", false, ""},
+		{"valid IPv6 literal loopback", "[IPv6:::1]", false, ""},
+		{"valid IPv6 literal uppercase", "[IPV6:2001:db8::1]", false, ""},
+		{"valid IPv6 literal mixed case", "[IpV6:2001:db8::1]", false, ""},
+
+		// Invalid - empty or too long
+		{"invalid empty", "", true, "empty hostname"},
+		{"invalid too long", strings.Repeat("a", 256), true, "hostname too long"},
+
+		// Invalid IPv4 address literals
+		{"invalid IPv4 empty brackets", "[]", true, "malformed address literal: empty brackets"},
+		{"invalid IPv4 malformed", "[999.999.999.999]", true, "malformed IPv4 address literal"},
+		{"invalid IPv4 incomplete", "[192.0.2]", true, "malformed IPv4 address literal"},
+		{"invalid IPv4 not IP", "[not-an-ip]", true, "malformed IPv4 address literal"},
+		{"invalid IPv4 with text", "[192.0.2.1.extra]", true, "malformed IPv4 address literal"},
+
+		// Invalid IPv6 address literals
+		{"invalid IPv6 empty after prefix", "[IPv6:]", true, "malformed IPv6 address literal: missing address"},
+		{"invalid IPv6 malformed address", "[IPv6:invalid]", true, "malformed IPv6 address literal: invalid IPv6 address"},
+		{"invalid IPv6 incomplete", "[IPv6:2001:db8]", true, "malformed IPv6 address literal: invalid IPv6 address"},
+		{"invalid IPv6 with IPv4 address", "[IPv6:192.0.2.1]", true, "malformed IPv6 address literal"},
+
+		// Invalid domain names
+		{"invalid domain dash start", "-example.com", true, "invalid domain name: malformed label"},
+		{"invalid domain dash end", "example-.com", true, "invalid domain name: malformed label"},
+		{"invalid domain empty label", "example..com", true, "invalid domain name: empty label"},
+		{"invalid domain label too long", strings.Repeat("a", 64) + ".com", true, "invalid domain name: label exceeds 63 characters"},
+		{"invalid domain special char", "exam!ple.com", true, "invalid domain name: malformed label"},
+		{"invalid domain underscore", "exam_ple.com", true, "invalid domain name: malformed label"},
+
+		// Edge cases
+		{"valid 63 char label", strings.Repeat("a", 63) + ".com", false, ""},
+		{"valid 255 char domain", strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 61), false, ""},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.hostname, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			err := ch.validateHostname(ctx, tt.hostname)
 			if tt.wantErr {
-				assert.Error(t, err)
+				assert.Error(t, err, "Expected error for hostname: %s", tt.hostname)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg, "Error message mismatch")
+				}
 			} else {
-				assert.NoError(t, err)
+				assert.NoError(t, err, "Expected no error for hostname: %s", tt.hostname)
 			}
 		})
 	}

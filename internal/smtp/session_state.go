@@ -55,6 +55,7 @@ type SessionState struct {
 	rcptTo           []string
 	dataSize         int64
 	tlsActive        bool
+	smtputf8         bool
 	authAttempts     int
 	lastAuthAttempt  time.Time
 	sessionStartTime time.Time
@@ -262,6 +263,26 @@ func (ss *SessionState) IsTLSActive() bool {
 	return ss.tlsActive
 }
 
+// SetSMTPUTF8 sets the SMTPUTF8 status (thread-safe)
+func (ss *SessionState) SetSMTPUTF8(ctx context.Context, enabled bool) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	ss.smtputf8 = enabled
+	ss.lastActivityTime = time.Now()
+
+	ss.logger.DebugContext(ctx, "SMTPUTF8 status changed",
+		"smtputf8", enabled,
+	)
+}
+
+// IsSMTPUTF8() returns whether SMTPUTF8 is enabled (thread-safe)
+func (ss *SessionState) IsSMTPUTF8() bool {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	return ss.smtputf8
+}
+
 // IncrementAuthAttempts increments the authentication attempt counter (thread-safe)
 func (ss *SessionState) IncrementAuthAttempts(ctx context.Context) int {
 	ss.mu.Lock()
@@ -393,6 +414,7 @@ func (ss *SessionState) Reset(ctx context.Context) {
 	ss.mailFrom = ""
 	ss.rcptTo = ss.rcptTo[:0] // Clear but keep capacity
 	ss.dataSize = 0
+	ss.smtputf8 = false
 	ss.lastActivityTime = time.Now()
 
 	ss.logger.DebugContext(ctx, "Session state reset for new transaction")
@@ -411,6 +433,7 @@ func (ss *SessionState) GetStateSnapshot() map[string]interface{} {
 		"rcpt_count":       len(ss.rcptTo),
 		"data_size":        ss.dataSize,
 		"tls_active":       ss.tlsActive,
+		"smtputf8":         ss.smtputf8,
 		"auth_attempts":    ss.authAttempts,
 		"session_duration": time.Since(ss.sessionStartTime).String(),
 		"idle_time":        time.Since(ss.lastActivityTime).String(),

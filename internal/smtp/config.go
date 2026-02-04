@@ -78,6 +78,9 @@ type Config struct {
 	Timeouts TimeoutConfig `toml:"timeouts" json:"timeouts"`
 
 	SessionTimeout time.Duration `yaml:"session_timeout" toml:"session_timeout"` // Deprecated: Use Timeouts.SessionTimeout
+
+	// RFC 5321 compliance settings
+	StrictLineEndings bool `toml:"strict_line_endings" json:"strict_line_endings"` // Enforce RFC 5321 CRLF requirements (default: true)
 }
 
 // TimeoutConfig contains hierarchical timeout settings for context propagation
@@ -550,5 +553,8 @@ func DefaultConfig() *Config {
 		},
 
 		SessionTimeout: 5 * time.Minute,
+
+		// RFC 5321 compliance - strict by default for security
+		StrictLineEndings: true,
 	}
 }
