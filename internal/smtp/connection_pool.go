@@ -33,8 +33,9 @@ type ConnectionPool struct {
 	// Statistics
 	stats PoolStatistics
 
-	// Factory function
-	factory ConnectionFactory
+	// Factory and validator functions
+	factory   ConnectionFactory
+	validator ConnectionValidator
 
 	// Maintenance
 	maintCtx    context.Context
@@ -117,6 +118,7 @@ func NewConnectionPool(config PoolConfig, logger *slog.Logger) (*ConnectionPool,
 		testWhileIdle: config.TestWhileIdle,
 		idleConns:     make(chan *PooledConnection, config.MaxIdle),
 		factory:       config.Factory,
+		validator:     config.Validator,
 		logger:        logger,
 		maintCtx:      ctx,
 		maintCancel:   cancel,
@@ -368,6 +370,11 @@ func (p *ConnectionPool) validateConnection(conn *PooledConnection) bool {
 		return false
 	}
 
+	// Call custom validator if provided
+	if p.validator != nil && !p.validator(conn.conn) {
+		return false
+	}
+
 	return true
 }
 
@@ -464,18 +471,7 @@ func (p *ConnectionPool) performMaintenance() {
 
 // GetStatistics returns pool statistics
 func (p *ConnectionPool) GetStatistics() PoolStatistics {
-	return PoolStatistics{
-		Created:         atomic.Int64{},
-		Reused:          atomic.Int64{},
-		Destroyed:       atomic.Int64{},
-		WaitCount:       atomic.Int64{},
-		WaitDuration:    atomic.Int64{},
-		AcquireSuccess:  atomic.Int64{},
-		AcquireFailed:   atomic.Int64{},
-		IdleTimeouts:    atomic.Int64{},
-		LifetimeExpired: atomic.Int64{},
-		HealthCheckFail: atomic.Int64{},
-	}
+	return p.stats
 }
 
 // GetPoolInfo returns current pool information
