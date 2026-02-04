@@ -247,6 +247,9 @@ func (ch *CommandHandler) HandleMAIL(ctx context.Context, args string) error {
 		return fmt.Errorf("503 5.5.1 Bad sequence of commands")
 	}
 
+	// Store declared size for buffer pre-allocation optimization
+	ch.state.SetDeclaredSize(ctx, declaredSize)
+
 	// Transition to RCPT phase to allow RCPT TO commands
 	if err := ch.state.SetPhase(ctx, PhaseRcpt); err != nil {
 		ch.logger.ErrorContext(ctx, "Failed to transition to RCPT phase",

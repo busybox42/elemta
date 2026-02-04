@@ -97,6 +97,7 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 
 	startTime := time.Now()
 	var buffer bytes.Buffer
+
 	state := &DataReaderState{
 		InHeaders: true,
 	}
@@ -107,6 +108,26 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 	sessionMemoryLimit := int64(50 * 1024 * 1024) // 50MB default
 	if dh.session.resourceManager != nil && dh.session.resourceManager.memoryManager != nil {
 		sessionMemoryLimit = dh.session.resourceManager.memoryManager.config.PerConnectionMemoryLimit
+	}
+
+	// Intelligent buffer pre-allocation based on SIZE parameter (RFC 1870)
+	declaredSize := dh.state.GetDeclaredSize()
+	if declaredSize > 0 {
+		// Pre-allocate with 1.2x safety margin, capped at 50% of session memory limit
+		preAllocSize := declaredSize * 12 / 10 // 1.2x multiplier
+		maxPreAlloc := sessionMemoryLimit / 2  // Cap at 50% of session limit
+
+		if preAllocSize > maxPreAlloc {
+			preAllocSize = maxPreAlloc
+		}
+
+		buffer.Grow(int(preAllocSize))
+
+		slog.LogAttrs(ctx, slog.LevelDebug, "Buffer pre-allocated based on SIZE parameter",
+			slog.Int64("declared_size", declaredSize),
+			slog.Int64("pre_alloc_size", preAllocSize),
+			slog.Int64("session_memory_limit", sessionMemoryLimit),
+		)
 	}
 
 	// Set read timeout with proper error handling

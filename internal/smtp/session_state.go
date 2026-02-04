@@ -80,6 +80,7 @@ type SessionState struct {
 	mailFrom         string
 	rcptTo           []string
 	dataSize         int64
+	declaredSize     int64 // SIZE parameter from MAIL FROM command (RFC 1870)
 	tlsActive        bool
 	smtputf8         bool
 	authAttempts     int
@@ -271,6 +272,26 @@ func (ss *SessionState) GetDataSize() int64 {
 	return ss.dataSize
 }
 
+// SetDeclaredSize sets the declared message size from MAIL FROM command (thread-safe)
+func (ss *SessionState) SetDeclaredSize(ctx context.Context, size int64) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	ss.declaredSize = size
+	ss.lastActivityTime = time.Now()
+
+	ss.logger.DebugContext(ctx, "Declared size set",
+		"declared_size", size,
+	)
+}
+
+// GetDeclaredSize returns the declared message size (thread-safe)
+func (ss *SessionState) GetDeclaredSize() int64 {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	return ss.declaredSize
+}
+
 // SetTLSActive sets the TLS status (thread-safe)
 func (ss *SessionState) SetTLSActive(ctx context.Context, active bool) {
 	ss.mu.Lock()
@@ -442,6 +463,7 @@ func (ss *SessionState) Reset(ctx context.Context) {
 	ss.mailFrom = ""
 	ss.rcptTo = ss.rcptTo[:0] // Clear but keep capacity
 	ss.dataSize = 0
+	ss.declaredSize = 0 // Clear declared size for new transaction
 	ss.smtputf8 = false
 	ss.dataTransferMode = DataModeNone // Clear data transfer mode on reset
 	ss.lastActivityTime = time.Now()
