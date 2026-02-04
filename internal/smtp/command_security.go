@@ -387,8 +387,8 @@ func (csm *CommandSecurityManager) validateMailFromParameter(ctx context.Context
 	}
 
 	// Extract email address, handling SMTP extensions (SIZE, BODY, etc.)
-	addr := strings.TrimPrefix(args, "FROM:")
-	addr = strings.TrimPrefix(addr, "from:")
+	// Case-insensitive removal of "FROM:" (already validated above)
+	addr := args[5:] // Skip "FROM:" or any case variation
 	addr = strings.TrimSpace(addr)
 
 	// Check if address is empty after FROM:
@@ -424,8 +424,8 @@ func (csm *CommandSecurityManager) validateRcptToParameter(ctx context.Context, 
 	}
 
 	// Extract and validate email address safely
-	addr := strings.TrimPrefix(args, "TO:")
-	addr = strings.TrimPrefix(addr, "to:")
+	// Case-insensitive removal of "TO:" (already validated above)
+	addr := args[3:] // Skip "TO:" or any case variation
 	addr = strings.TrimSpace(addr)
 
 	// Check if address is empty after TO:

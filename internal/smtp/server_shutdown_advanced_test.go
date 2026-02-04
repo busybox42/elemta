@@ -44,7 +44,7 @@ func TestServer_GracefulShutdown_InFlightConnections(t *testing.T) {
 		go func(index int) {
 			defer wg.Done()
 
-			conn, err := net.Dial("tcp", "localhost:2525")
+			conn, err := net.Dial("tcp", server.Addr().String())
 			if err != nil {
 				connectionResults[index] = err
 				return
@@ -184,7 +184,7 @@ func TestServer_GracefulShutdown_ResourceCleanupOrder(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create a connection and start sending a message
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -223,7 +223,15 @@ func TestServer_GracefulShutdown_ResourceCleanupOrder(t *testing.T) {
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		conn.Write([]byte("Test message content\r\n.\r\n"))
+		// Read the response
+		reader.ReadString('\n')
+		// Send QUIT to properly close the session
+		conn.Write([]byte("QUIT\r\n"))
+		reader.ReadString('\n')
 	}()
+
+	// Wait a bit for the message to be sent
+	time.Sleep(100 * time.Millisecond)
 
 	// Initiate shutdown while message is being processed
 	shutdownStart := time.Now()
@@ -274,7 +282,7 @@ func TestServer_GracefulShutdown_ContextCancellation(t *testing.T) {
 	assert.Greater(t, goroutinesIncrease, 0, "Server should have created additional goroutines")
 
 	// Create a connection to ensure session goroutines are running
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 
 	// Read greeting to establish session
@@ -337,7 +345,7 @@ func TestServer_GracefulShutdown_TimeoutBehavior(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create a connection that will take a long time to complete
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 

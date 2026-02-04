@@ -705,9 +705,8 @@ func (ch *CommandHandler) parseMailFrom(ctx context.Context, args string) (strin
 		return "", 0, fmt.Errorf("501 5.5.4 Syntax: MAIL FROM:<address>")
 	}
 
-	// Extract address part
-	addr := strings.TrimPrefix(args, "FROM:")
-	addr = strings.TrimPrefix(addr, "from:")
+	// Extract address part (case-insensitive removal of "FROM:")
+	addr := args[5:] // Skip "FROM:" or "from:" or any case variation (already validated above)
 	addr = strings.TrimSpace(addr)
 
 	// Store the full parameter string for parsing ESMTP parameters
@@ -820,9 +819,8 @@ func (ch *CommandHandler) parseRcptTo(ctx context.Context, args string) (string,
 		return "", fmt.Errorf("501 5.5.4 Syntax: RCPT TO:<address>")
 	}
 
-	// Extract address
-	addr := strings.TrimPrefix(args, "TO:")
-	addr = strings.TrimPrefix(addr, "to:")
+	// Extract address (case-insensitive removal of "TO:")
+	addr := args[3:] // Skip "TO:" or "to:" or any case variation (already validated above)
 	addr = strings.TrimSpace(addr)
 
 	// Remove angle brackets if present
