@@ -29,7 +29,7 @@ func TestReadMessageDataSimple(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -85,7 +85,7 @@ func TestReadMessageDataLarge(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -138,7 +138,7 @@ func TestReadMessageDataSizeExceeded(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -189,7 +189,7 @@ func TestReadMessageDataDotStuffing(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -242,7 +242,7 @@ func TestReadMessageDataLineEndings(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -294,7 +294,7 @@ func TestProcessMessageDataEmpty(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -339,7 +339,7 @@ func TestProcessMessageHeaderParsing(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -395,7 +395,7 @@ func TestMessageStats(t *testing.T) {
 
 	// Send multiple messages
 	for i := 0; i < 3; i++ {
-		conn, err := net.Dial("tcp", "localhost:2525")
+		conn, err := net.Dial("tcp", server.Addr().String())
 		require.NoError(t, err)
 
 		reader := bufio.NewReader(conn)

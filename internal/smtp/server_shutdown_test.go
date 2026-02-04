@@ -514,7 +514,7 @@ func createTestConfig(t *testing.T) *Config {
 
 	return &Config{
 		Hostname:          "test.example.com",
-		ListenAddr:        ":2525", // Use non-privileged port
+		ListenAddr:        ":0", // Use random available port
 		QueueDir:          queueDir,
 		MaxSize:           10 * 1024 * 1024, // 10MB
 		LocalDomains:      []string{"test.example.com", "example.com"},
