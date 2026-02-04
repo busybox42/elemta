@@ -243,7 +243,7 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 				state.InHeaders = false
 				state.HeadersComplete = true
 				slog.LogAttrs(ctx, slog.LevelDebug, "Headers section completed",
-					slog.Int("line_count", state.LineCount),
+					slog.Int64("line_count", state.LineCount),
 				)
 			}
 		}
@@ -256,8 +256,8 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 		// Periodic logging for large messages with memory tracking
 		if state.LineCount%1000 == 0 {
 			slog.LogAttrs(ctx, slog.LevelDebug, "Message reading progress with memory tracking",
-				slog.Int("lines_read", state.LineCount),
-				slog.Int("bytes_read", state.BytesRead),
+				slog.Int64("lines_read", state.LineCount),
+				slog.Int64("bytes_read", state.BytesRead),
 				slog.Int64("session_memory_limit", sessionMemoryLimit),
 				slog.Float64("memory_utilization_pct", float64(state.BytesRead)/float64(sessionMemoryLimit)*100),
 				slog.Duration("duration", time.Since(startTime)),
