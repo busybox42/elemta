@@ -225,6 +225,10 @@ func (c *SMTPClient) Close() error {
 
 // TestIntegration_BasicSMTPFlow tests the complete SMTP flow
 func TestIntegration_BasicSMTPFlow(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	config := createIntegrationTestConfig(t, false, false)
 	server, addr := setupIntegrationServer(t, config)
 	defer server.Close()
@@ -251,6 +255,10 @@ func TestIntegration_BasicSMTPFlow(t *testing.T) {
 
 // TestIntegration_ConcurrentConnections tests multiple concurrent connections
 func TestIntegration_ConcurrentConnections(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	config := createIntegrationTestConfig(t, false, false)
 	server, addr := setupIntegrationServer(t, config)
 	defer server.Close()
@@ -307,6 +315,10 @@ func TestIntegration_ConcurrentConnections(t *testing.T) {
 
 // TestIntegration_AuthenticationFlow tests SMTP authentication
 func TestIntegration_AuthenticationFlow(t *testing.T) {
+    if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	config := createIntegrationTestConfig(t, false, true)
 	server, addr := setupIntegrationServer(t, config)
 	defer server.Close()
@@ -350,6 +362,10 @@ func TestIntegration_AuthenticationFlow(t *testing.T) {
 
 // TestIntegration_TLSFlow tests TLS negotiation and encrypted communication
 func TestIntegration_TLSFlow(t *testing.T) {
+    if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	// Note: This test requires TLS certificates
 	// For now, we'll test the structure and skip if certs not available
 
@@ -383,6 +399,10 @@ func TestIntegration_TLSFlow(t *testing.T) {
 
 // TestIntegration_ErrorRecovery tests error handling and recovery
 func TestIntegration_ErrorRecovery(t *testing.T) {
+    if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	config := createIntegrationTestConfig(t, false, false)
 	server, addr := setupIntegrationServer(t, config)
 	defer server.Close()
@@ -434,6 +454,10 @@ func TestIntegration_ErrorRecovery(t *testing.T) {
 
 // TestIntegration_LargeMessages tests handling of large messages
 func TestIntegration_LargeMessages(t *testing.T) {
+    if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	config := createIntegrationTestConfig(t, false, false)
 	server, addr := setupIntegrationServer(t, config)
 	defer server.Close()
@@ -478,6 +502,10 @@ func TestIntegration_LargeMessages(t *testing.T) {
 
 // TestIntegration_PersistentConnection tests connection persistence
 func TestIntegration_PersistentConnection(t *testing.T) {
+    if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	config := createIntegrationTestConfig(t, false, false)
 	server, addr := setupIntegrationServer(t, config)
 	defer server.Close()
@@ -511,6 +539,10 @@ func TestIntegration_PersistentConnection(t *testing.T) {
 
 // TestIntegration_TimeoutHandling tests timeout scenarios
 func TestIntegration_TimeoutHandling(t *testing.T) {
+    if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	config := createIntegrationTestConfig(t, false, false)
 	server, addr := setupIntegrationServer(t, config)
 	defer server.Close()
