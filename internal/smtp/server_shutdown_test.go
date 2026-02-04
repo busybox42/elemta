@@ -530,5 +530,8 @@ func createTestConfig(t *testing.T) *Config {
 			MaxConcurrent:     50,
 			ConnectionTimeout: 30,
 		},
+		Plugins: &PluginConfig{
+			Enabled: false, // Disable plugins for testing
+		},
 	}
 }
