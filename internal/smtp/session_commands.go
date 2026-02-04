@@ -120,6 +120,8 @@ func (ch *CommandHandler) ProcessCommand(ctx context.Context, line string) error
 }
 
 // HandleHELO processes the HELO command
+// RFC 5321 §4.1.1.1 - HELO command: Client identifies itself with domain name
+// RFC 5321 §4.1.3 - Hostname validation requirements
 func (ch *CommandHandler) HandleHELO(ctx context.Context, args string) error {
 	ch.logger.DebugContext(ctx, "Processing HELO command", "args", args)
 
@@ -141,6 +143,8 @@ func (ch *CommandHandler) HandleHELO(ctx context.Context, args string) error {
 }
 
 // HandleEHLO processes the EHLO command
+// RFC 5321 §4.1.1.1 - EHLO command: Extended HELO for ESMTP capabilities
+// RFC 5321 §4.1.1.1 - Server responds with multi-line 250 response listing capabilities
 func (ch *CommandHandler) HandleEHLO(ctx context.Context, args string) error {
 	ch.logger.DebugContext(ctx, "Processing EHLO command", "args", args)
 

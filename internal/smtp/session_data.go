@@ -92,6 +92,8 @@ func NewDataHandler(session *Session, state *SessionState, conn net.Conn, reader
 }
 
 // ReadData reads message data from the client with streaming and progressive memory tracking
+// RFC 5321 §3.3 - Mail transactions: DATA command processing
+// RFC 5321 §4.1.1.4 - DATA command: After client sends DATA, server responds with 354 and accepts text
 func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 	slog.LogAttrs(ctx, slog.LevelDebug, "Starting streaming message data reading with memory tracking")
 
