@@ -3,7 +3,7 @@ package smtp
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/busybox42/elemta/internal/antispam"
 	"github.com/busybox42/elemta/internal/antivirus"
@@ -16,16 +16,19 @@ type ScannerManager struct {
 	antispamManager  *antispam.Manager
 	scanners         map[string]interface{} // Generic map to store all scanner types
 	server           *Server
+	logger           *slog.Logger
 }
 
 // NewScannerManager creates a new scanner manager
 func NewScannerManager(config *Config, server *Server) *ScannerManager {
+	logger := slog.Default().With("component", "scanner-manager")
 	return &ScannerManager{
 		config:           config,
 		antivirusManager: antivirus.NewManager(),
 		antispamManager:  antispam.NewManager(),
 		scanners:         make(map[string]interface{}),
 		server:           server,
+		logger:           logger,
 	}
 }
 
@@ -33,18 +36,18 @@ func NewScannerManager(config *Config, server *Server) *ScannerManager {
 func (m *ScannerManager) Initialize(ctx context.Context) error {
 	// Initialize antivirus scanners
 	if err := m.initializeAntivirusScanners(ctx); err != nil {
-		log.Printf("Warning: Error initializing antivirus scanners: %v", err)
+		m.logger.WarnContext(ctx, "Error initializing antivirus scanners", "error", err)
 	}
 
 	// Initialize antispam scanners
 	if err := m.initializeAntispamScanners(ctx); err != nil {
-		log.Printf("Warning: Error initializing antispam scanners: %v", err)
+		m.logger.WarnContext(ctx, "Error initializing antispam scanners", "error", err)
 	}
 
 	// Initialize plugin scanners if plugin manager is available
 	if m.config.Plugins != nil && m.config.Plugins.Enabled && m.server != nil && m.server.pluginManager != nil {
 		if err := m.initializePluginScanners(ctx); err != nil {
-			log.Printf("Warning: Error initializing plugin scanners: %v", err)
+			m.logger.WarnContext(ctx, "Error initializing plugin scanners", "error", err)
 		}
 	}
 
@@ -68,23 +71,23 @@ func (m *ScannerManager) initializeAntivirusScanners(ctx context.Context) error 
 
 		scanner, err := antivirus.Factory(clamavConfig)
 		if err != nil {
-			log.Printf("Warning: Failed to create ClamAV scanner: %v", err)
+			m.logger.WarnContext(ctx, "Failed to create ClamAV scanner", "error", err, "address", m.config.Antivirus.ClamAV.Address)
 			return err
 		}
 
 		if err := scanner.Connect(); err != nil {
-			log.Printf("Warning: Failed to connect to ClamAV: %v", err)
+			m.logger.WarnContext(ctx, "Failed to connect to ClamAV", "error", err, "address", m.config.Antivirus.ClamAV.Address)
 			return err
 		}
 
 		if err := m.antivirusManager.Register(scanner); err != nil {
-			log.Printf("Warning: Failed to register ClamAV: %v", err)
+			m.logger.WarnContext(ctx, "Failed to register ClamAV", "error", err, "address", m.config.Antivirus.ClamAV.Address)
 			return err
 		}
 
 		// Store in generic scanners map
 		m.scanners["antivirus:"+scanner.Name()] = scanner
-		log.Printf("ClamAV scanner registered and connected to %s", clamavConfig.Address)
+		m.logger.InfoContext(ctx, "ClamAV scanner registered and connected", "address", clamavConfig.Address, "scanner", scanner.Name())
 	}
 
 	return nil
@@ -107,23 +110,23 @@ func (m *ScannerManager) initializeAntispamScanners(ctx context.Context) error {
 
 		scanner, err := antispam.Factory(spamassassinConfig)
 		if err != nil {
-			log.Printf("Warning: Failed to create SpamAssassin scanner: %v", err)
+			m.logger.WarnContext(ctx, "Failed to create SpamAssassin scanner", "error", err, "address", m.config.Antispam.SpamAssassin.Address)
 			return err
 		}
 
 		if err := scanner.Connect(); err != nil {
-			log.Printf("Warning: Failed to connect to SpamAssassin: %v", err)
+			m.logger.WarnContext(ctx, "Failed to connect to SpamAssassin", "error", err, "address", m.config.Antispam.SpamAssassin.Address)
 			return err
 		}
 
 		if err := m.antispamManager.Register(scanner); err != nil {
-			log.Printf("Warning: Failed to register SpamAssassin: %v", err)
+			m.logger.WarnContext(ctx, "Failed to register SpamAssassin", "error", err, "address", m.config.Antispam.SpamAssassin.Address)
 			return err
 		}
 
 		// Store in generic scanners map
 		m.scanners["antispam:"+scanner.Name()] = scanner
-		log.Printf("SpamAssassin scanner registered and connected to %s", spamassassinConfig.Address)
+		m.logger.InfoContext(ctx, "SpamAssassin scanner registered and connected", "address", spamassassinConfig.Address, "scanner", scanner.Name())
 	}
 
 	// Initialize Rspamd if enabled
@@ -142,23 +145,23 @@ func (m *ScannerManager) initializeAntispamScanners(ctx context.Context) error {
 
 		scanner, err := antispam.Factory(rspamdConfig)
 		if err != nil {
-			log.Printf("Warning: Failed to create Rspamd scanner: %v", err)
+			m.logger.WarnContext(ctx, "Failed to create Rspamd scanner", "error", err, "address", m.config.Antispam.Rspamd.Address)
 			return err
 		}
 
 		if err := scanner.Connect(); err != nil {
-			log.Printf("Warning: Failed to connect to Rspamd: %v", err)
+			m.logger.WarnContext(ctx, "Failed to connect to Rspamd", "error", err, "address", m.config.Antispam.Rspamd.Address)
 			return err
 		}
 
 		if err := m.antispamManager.Register(scanner); err != nil {
-			log.Printf("Warning: Failed to register Rspamd: %v", err)
+			m.logger.WarnContext(ctx, "Failed to register Rspamd", "error", err, "address", m.config.Antispam.Rspamd.Address)
 			return err
 		}
 
 		// Store in generic scanners map
 		m.scanners["antispam:"+scanner.Name()] = scanner
-		log.Printf("Rspamd scanner registered and connected to %s", rspamdConfig.Address)
+		m.logger.InfoContext(ctx, "Rspamd scanner registered and connected", "address", rspamdConfig.Address, "scanner", scanner.Name())
 	}
 
 	return nil
@@ -170,56 +173,56 @@ func (m *ScannerManager) initializePluginScanners(ctx context.Context) error {
 	for _, pluginName := range m.server.pluginManager.ListAntivirusPlugins() {
 		plugin, err := m.server.pluginManager.GetAntivirusPlugin(pluginName)
 		if err != nil {
-			log.Printf("Warning: Failed to get antivirus plugin %s: %v", pluginName, err)
+			m.logger.WarnContext(ctx, "Failed to get antivirus plugin", "plugin", pluginName, "error", err)
 			continue
 		}
 
 		scanner := plugin.GetScanner()
 		info := plugin.GetInfo()
 
-		log.Printf("Initializing antivirus plugin scanner: %s (%s)", info.Name, info.Description)
+		m.logger.InfoContext(ctx, "Initializing antivirus plugin scanner", "plugin", info.Name, "description", info.Description)
 
 		if err := scanner.Connect(); err != nil {
-			log.Printf("Warning: Failed to connect to antivirus plugin scanner %s: %v", info.Name, err)
+			m.logger.WarnContext(ctx, "Failed to connect to antivirus plugin scanner", "plugin", info.Name, "error", err)
 			continue
 		}
 
 		if err := m.antivirusManager.Register(scanner); err != nil {
-			log.Printf("Warning: Failed to register antivirus plugin scanner %s: %v", info.Name, err)
+			m.logger.WarnContext(ctx, "Failed to register antivirus plugin scanner", "plugin", info.Name, "error", err)
 			continue
 		}
 
 		// Store in generic scanners map
 		m.scanners["antivirus:plugin:"+scanner.Name()] = scanner
-		log.Printf("Antivirus plugin scanner %s registered and connected", info.Name)
+		m.logger.InfoContext(ctx, "Antivirus plugin scanner registered and connected", "plugin", info.Name)
 	}
 
 	// Initialize antispam plugins
 	for _, pluginName := range m.server.pluginManager.ListAntispamPlugins() {
 		plugin, err := m.server.pluginManager.GetAntispamPlugin(pluginName)
 		if err != nil {
-			log.Printf("Warning: Failed to get antispam plugin %s: %v", pluginName, err)
+			m.logger.WarnContext(ctx, "Failed to get antispam plugin", "plugin", pluginName, "error", err)
 			continue
 		}
 
 		scanner := plugin.GetScanner()
 		info := plugin.GetInfo()
 
-		log.Printf("Initializing antispam plugin scanner: %s (%s)", info.Name, info.Description)
+		m.logger.InfoContext(ctx, "Initializing antispam plugin scanner", "plugin", info.Name, "description", info.Description)
 
 		if err := scanner.Connect(); err != nil {
-			log.Printf("Warning: Failed to connect to antispam plugin scanner %s: %v", info.Name, err)
+			m.logger.WarnContext(ctx, "Failed to connect to antispam plugin scanner", "plugin", info.Name, "error", err)
 			continue
 		}
 
 		if err := m.antispamManager.Register(scanner); err != nil {
-			log.Printf("Warning: Failed to register antispam plugin scanner %s: %v", info.Name, err)
+			m.logger.WarnContext(ctx, "Failed to register antispam plugin scanner", "plugin", info.Name, "error", err)
 			continue
 		}
 
 		// Store in generic scanners map
 		m.scanners["antispam:plugin:"+scanner.Name()] = scanner
-		log.Printf("Antispam plugin scanner %s registered and connected", info.Name)
+		m.logger.InfoContext(ctx, "Antispam plugin scanner registered and connected", "plugin", info.Name)
 	}
 
 	return nil
@@ -253,12 +256,13 @@ func (m *ScannerManager) RegisterScanner(scannerType string, scanner interface{}
 
 // Close closes all scanners
 func (m *ScannerManager) Close() error {
+	ctx := context.Background()
 	if err := m.antivirusManager.CloseAll(); err != nil {
-		log.Printf("Warning: Error closing antivirus scanners: %v", err)
+		m.logger.WarnContext(ctx, "Error closing antivirus scanners", "error", err)
 	}
 
 	if err := m.antispamManager.CloseAll(); err != nil {
-		log.Printf("Warning: Error closing antispam scanners: %v", err)
+		m.logger.WarnContext(ctx, "Error closing antispam scanners", "error", err)
 	}
 
 	return nil
