@@ -513,11 +513,12 @@ func createTestConfig(t *testing.T) *Config {
 	queueDir := t.TempDir()
 
 	return &Config{
-		Hostname:     "test.example.com",
-		ListenAddr:   ":2525", // Use non-privileged port
-		QueueDir:     queueDir,
-		MaxSize:      10 * 1024 * 1024, // 10MB
-		LocalDomains: []string{"test.example.com", "example.com"},
+		Hostname:          "test.example.com",
+		ListenAddr:        ":2525", // Use non-privileged port
+		QueueDir:          queueDir,
+		MaxSize:           10 * 1024 * 1024, // 10MB
+		LocalDomains:      []string{"test.example.com", "example.com"},
+		StrictLineEndings: false, // Disable strict CRLF validation for testing
 		Auth: &AuthConfig{
 			Enabled: false, // Disable auth for testing
 		},
