@@ -27,8 +27,12 @@ func TestServer_ErrorHandling_DeadlineSetting(t *testing.T) {
 	// Wait for server to start
 	time.Sleep(100 * time.Millisecond)
 
+	// Get actual listen address
+	addr := server.Addr()
+	require.NotNil(t, addr, "Server address should not be nil")
+
 	// Connect to server to trigger the deadline setting code path
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", addr.String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -68,8 +72,12 @@ func TestServer_Start_BasicFunctionality(t *testing.T) {
 	// Wait for server to start
 	time.Sleep(100 * time.Millisecond)
 
+	// Get actual listen address
+	addr := server.Addr()
+	require.NotNil(t, addr, "Server address should not be nil")
+
 	// Verify server is listening
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", addr.String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -107,12 +115,16 @@ func TestServer_MultipleConnections(t *testing.T) {
 	// Wait for server to start
 	time.Sleep(100 * time.Millisecond)
 
+	// Get actual listen address
+	addr := server.Addr()
+	require.NotNil(t, addr, "Server address should not be nil")
+
 	// Create multiple concurrent connections
 	const numConnections = 5
 	connections := make([]net.Conn, numConnections)
 
 	for i := 0; i < numConnections; i++ {
-		conn, err := net.Dial("tcp", "localhost:2525")
+		conn, err := net.Dial("tcp", addr.String())
 		require.NoError(t, err)
 		connections[i] = conn
 	}
@@ -158,12 +170,16 @@ func TestServer_ResourceLimits(t *testing.T) {
 	// Wait for server to start
 	time.Sleep(100 * time.Millisecond)
 
+	// Get actual listen address
+	addr := server.Addr()
+	require.NotNil(t, addr, "Server address should not be nil")
+
 	// Create connections up to the limit
-	conn1, err := net.Dial("tcp", "localhost:2525")
+	conn1, err := net.Dial("tcp", addr.String())
 	require.NoError(t, err)
 	defer conn1.Close()
 
-	conn2, err := net.Dial("tcp", "localhost:2525")
+	conn2, err := net.Dial("tcp", addr.String())
 	require.NoError(t, err)
 	defer conn2.Close()
 
@@ -244,8 +260,12 @@ func TestServer_GracefulShutdown(t *testing.T) {
 	// Wait for server to start
 	time.Sleep(100 * time.Millisecond)
 
+	// Get actual listen address
+	addr := server.Addr()
+	require.NotNil(t, addr, "Server address should not be nil")
+
 	// Create a connection
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", addr.String())
 	require.NoError(t, err)
 
 	// Start graceful shutdown

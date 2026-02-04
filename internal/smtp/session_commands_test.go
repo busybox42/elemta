@@ -28,7 +28,7 @@ func TestCommandHandlerCreation(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Connect
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -69,7 +69,7 @@ func TestHandleHELO(t *testing.T) {
 			go func() { serverErr <- server.Start() }()
 			time.Sleep(100 * time.Millisecond)
 
-			conn, err := net.Dial("tcp", "localhost:2525")
+			conn, err := net.Dial("tcp", server.Addr().String())
 			require.NoError(t, err)
 			defer conn.Close()
 
@@ -111,7 +111,7 @@ func TestHandleEHLO(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -161,7 +161,7 @@ func TestHandleEHLOEmpty(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -209,7 +209,7 @@ func TestHandleMAIL(t *testing.T) {
 			go func() { serverErr <- server.Start() }()
 			time.Sleep(100 * time.Millisecond)
 
-			conn, err := net.Dial("tcp", "localhost:2525")
+			conn, err := net.Dial("tcp", server.Addr().String())
 			require.NoError(t, err)
 			defer conn.Close()
 
@@ -273,7 +273,7 @@ func TestHandleRCPT(t *testing.T) {
 			go func() { serverErr <- server.Start() }()
 			time.Sleep(100 * time.Millisecond)
 
-			conn, err := net.Dial("tcp", "localhost:2525")
+			conn, err := net.Dial("tcp", server.Addr().String())
 			require.NoError(t, err)
 			defer conn.Close()
 
@@ -319,7 +319,7 @@ func TestHandleDATA(t *testing.T) {
 		go func() { serverErr <- server.Start() }()
 		time.Sleep(100 * time.Millisecond)
 
-		conn, err := net.Dial("tcp", "localhost:2525")
+		conn, err := net.Dial("tcp", server.Addr().String())
 		require.NoError(t, err)
 		defer conn.Close()
 
@@ -359,7 +359,7 @@ func TestHandleDATA(t *testing.T) {
 		go func() { serverErr <- server.Start() }()
 		time.Sleep(100 * time.Millisecond)
 
-		conn, err := net.Dial("tcp", "localhost:2525")
+		conn, err := net.Dial("tcp", server.Addr().String())
 		require.NoError(t, err)
 		defer conn.Close()
 
@@ -399,7 +399,7 @@ func TestHandleRSET(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -436,7 +436,7 @@ func TestHandleNOOP(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -463,7 +463,7 @@ func TestHandleQUIT(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -491,7 +491,7 @@ func TestHandleHELP(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -529,7 +529,7 @@ func TestHandleVRFY(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -556,7 +556,7 @@ func TestHandleEXPN(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -583,7 +583,7 @@ func TestHandleUnknown(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -649,7 +649,7 @@ func TestCommandSequencing(t *testing.T) {
 			go func() { serverErr <- server.Start() }()
 			time.Sleep(100 * time.Millisecond)
 
-			conn, err := net.Dial("tcp", "localhost:2525")
+			conn, err := net.Dial("tcp", server.Addr().String())
 			require.NoError(t, err)
 			defer conn.Close()
 
@@ -704,7 +704,7 @@ func TestXDEBUGCommands(t *testing.T) {
 			go func() { serverErr <- server.Start() }()
 			time.Sleep(100 * time.Millisecond)
 
-			conn, err := net.Dial("tcp", "localhost:2525")
+			conn, err := net.Dial("tcp", server.Addr().String())
 			require.NoError(t, err)
 			defer conn.Close()
 
@@ -758,7 +758,7 @@ func TestRelayPermissions(t *testing.T) {
 			go func() { serverErr <- server.Start() }()
 			time.Sleep(100 * time.Millisecond)
 
-			conn, err := net.Dial("tcp", "localhost:2525")
+			conn, err := net.Dial("tcp", server.Addr().String())
 			require.NoError(t, err)
 			defer conn.Close()
 
@@ -796,7 +796,7 @@ func TestEHLONoPipelining(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -847,7 +847,7 @@ func TestSequentialCommandProcessing(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -907,7 +907,7 @@ func TestMultipleCommandsSinglePacket(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -963,7 +963,7 @@ func TestErrorHandlingInSequence(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -1135,7 +1135,7 @@ func TestMAILFROMSizeParameter(t *testing.T) {
 			go func() { serverErr <- server.Start() }()
 			time.Sleep(100 * time.Millisecond)
 
-			conn, err := net.Dial("tcp", "localhost:2525")
+			conn, err := net.Dial("tcp", server.Addr().String())
 			require.NoError(t, err)
 			defer conn.Close()
 
@@ -1189,7 +1189,7 @@ func TestEHLOSizeAdvertisement(t *testing.T) {
 	go func() { serverErr <- server.Start() }()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 

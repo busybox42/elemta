@@ -433,6 +433,14 @@ func NewServer(config *Config) (*Server, error) {
 	return server, nil
 }
 
+// Addr returns the server's listen address
+func (s *Server) Addr() net.Addr {
+	if s.listener != nil {
+		return s.listener.Addr()
+	}
+	return nil
+}
+
 // Start starts the SMTP server
 func (s *Server) Start() error {
 	if s.running {
