@@ -363,6 +363,8 @@ func NewServer(config *Config) (*Server, error) {
 		MaxRequests:        1000,
 		Interval:           time.Minute,
 		Timeout:            30 * time.Second,
+		JobTimeout:         5 * time.Minute,
+		ShutdownTimeout:    30 * time.Second,
 		MaxGoroutines:      int32(resourceLimits.MaxGoroutines),
 		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
 			slogger.Info("SMTP connection circuit breaker state changed",
@@ -788,9 +790,14 @@ func (s *Server) Close() error {
 		if s.workerPool != nil {
 			s.slogger.Info("Stopping worker pool")
 			if err := s.workerPool.Stop(); err != nil {
-				s.slogger.Error("Error stopping worker pool", "error", err)
-				if shutdownErr == nil {
-					shutdownErr = err
+				// context.Canceled is expected during graceful shutdown
+				if err != context.Canceled {
+					s.slogger.Error("Error stopping worker pool", "error", err)
+					if shutdownErr == nil {
+						shutdownErr = err
+					}
+				} else {
+					s.slogger.Info("Worker pool stopped successfully")
 				}
 			} else {
 				s.slogger.Info("Worker pool stopped successfully")
@@ -812,9 +819,14 @@ func (s *Server) Close() error {
 		select {
 		case err := <-done:
 			if err != nil {
-				s.slogger.Error("Error during goroutine shutdown", "error", err)
-				if shutdownErr == nil {
-					shutdownErr = err
+				// context.Canceled is expected during graceful shutdown
+				if err != context.Canceled {
+					s.slogger.Error("Error during goroutine shutdown", "error", err)
+					if shutdownErr == nil {
+						shutdownErr = err
+					}
+				} else {
+					s.slogger.Info("All goroutines stopped successfully")
 				}
 			} else {
 				s.slogger.Info("All goroutines stopped successfully")
