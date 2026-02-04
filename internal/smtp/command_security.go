@@ -47,11 +47,13 @@ type CommandSecurityConfig struct {
 
 // DefaultCommandSecurityConfig returns a secure default configuration
 func DefaultCommandSecurityConfig() *CommandSecurityConfig {
-	return &CommandSecurityConfig{
+	config := &CommandSecurityConfig{
 		MaxCommandLength:      512, // RFC 5321 limit
 		MaxParameterLength:    320, // RFC 5321 email address limit
 		AllowedCommandChars:   `^[A-Za-z0-9\-_]+$`,
-		AllowedParameterChars: `^[A-Za-z0-9\-_@\.:<>=\s\[\]]+$`, // Allow square brackets for IP literals (RFC 5321)
+		// RFC 5321 allows these characters in email local-part and parameters:
+		// Letters, digits, and special chars: ! # $ % & ' * + - / = ? ^ _ ` { | } ~ . @ : < > [ ]
+		AllowedParameterChars: "^[A-Za-z0-9\\-_@\\.:<>=\\s\\[\\]!#$%&'*\\+/?\\^`{|}~]+$",
 		BlockedCommandPatterns: []string{
 			// SQL injection patterns
 			`(?i)(union|select|insert|update|delete|drop|create|alter|exec|execute)`,
@@ -85,6 +87,7 @@ func DefaultCommandSecurityConfig() *CommandSecurityConfig {
 		EnableMemoryMonitoring: true,             // Enable memory monitoring
 		MaxMemoryPerCommand:    50 * 1024 * 1024, // 50MB max memory per command (increased for stress testing)
 	}
+	return config
 }
 
 // NewCommandSecurityManager creates a new command security manager
@@ -319,6 +322,7 @@ func (csm *CommandSecurityManager) validateCommandParameters(ctx context.Context
 		csm.logger.WarnContext(ctx, "Command parameters contain invalid characters",
 			"command", cmd,
 			"parameters", args,
+			"regex_pattern", csm.config.AllowedParameterChars,
 		)
 		return fmt.Errorf("500 5.5.2 Invalid parameter characters")
 	}
