@@ -83,7 +83,7 @@ func DefaultCommandSecurityConfig() *CommandSecurityConfig {
 		CommandTimeout:         30 * time.Second, // 30 second timeout for command processing
 		MaxCommandsPerSession:  1000,             // Maximum commands per session
 		EnableMemoryMonitoring: true,             // Enable memory monitoring
-		MaxMemoryPerCommand:    10 * 1024 * 1024, // 10MB max memory per command
+		MaxMemoryPerCommand:    50 * 1024 * 1024, // 50MB max memory per command (increased for stress testing)
 	}
 }
 

@@ -134,6 +134,18 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 		state.LineCount++
 		state.BytesRead += int64(len(line))
 
+		// RFC 5321 § 2.3.7: Validate line endings
+		// Lines must be terminated with CRLF (\r\n)
+		// Reject bare CR (\r) or bare LF (\n) in strict mode
+		if err := dh.validateLineEndings(ctx, line, state); err != nil {
+			dh.logger.WarnContext(ctx, "Line ending validation failed",
+				"line_number", state.LineCount,
+				"error", err,
+				"remote_addr", dh.conn.RemoteAddr().String(),
+			)
+			return nil, err
+		}
+
 		// Check message size limit
 		if state.BytesRead > maxSize {
 			dh.logger.WarnContext(ctx, "Message size limit exceeded",
@@ -335,18 +347,51 @@ func (dh *DataHandler) ProcessMessage(ctx context.Context, data []byte) error {
 	return nil
 }
 
-// isValidEndOfData checks for valid end-of-data marker with security validation
+// isValidEndOfData checks for valid end-of-data marker with strict RFC 5321 validation
 func (dh *DataHandler) isValidEndOfData(line string, state *DataReaderState, suspiciousPatterns *int) bool {
 	// RFC 5321 § 2.3.8: The sequence "\r\n.\r\n" indicates end of data
+	// RFC 5321 § 2.3.7: Lines must be terminated with CRLF (\r\n)
 	// We must be strict about this to prevent SMTP smuggling attacks
 
-	// Check for exact end-of-data sequence
-	if line == ".\r\n" || line == ".\n" {
-		dh.logger.DebugContext(context.Background(), "End-of-data marker detected",
+	// Check for strict RFC 5321 compliant end-of-data sequence: ".\r\n"
+	if line == ".\r\n" {
+		dh.logger.DebugContext(context.Background(), "Valid RFC 5321 end-of-data marker detected",
 			"line", fmt.Sprintf("%q", line),
 			"line_count", state.LineCount,
 		)
 		return true
+	}
+
+	// Check for legacy bare LF terminator: ".\n"
+	if line == ".\n" {
+		// Legacy compatibility mode check
+		if dh.config.StrictLineEndings {
+			// Strict mode: Reject bare LF terminators
+			dh.logger.WarnContext(context.Background(), "Invalid end-of-data marker with bare LF (security violation)",
+				"event_type", "smtp_smuggling_attempt",
+				"line", fmt.Sprintf("%q", line),
+				"line_count", state.LineCount,
+				"remote_addr", dh.conn.RemoteAddr().String(),
+				"pattern_type", "bare_lf_terminator",
+			)
+
+			// Log as security event
+			LogSecurityEvent(dh.logger, "bare_lf_terminator", "smtp_smuggling",
+				"End-of-data marker with bare LF instead of CRLF", line, dh.conn.RemoteAddr().String())
+
+			*suspiciousPatterns++
+			return false
+		} else {
+			// Legacy mode: Accept but warn
+			dh.logger.WarnContext(context.Background(), "Legacy end-of-data marker with bare LF (RFC 5321 violation)",
+				"event_type", "rfc_violation",
+				"line", fmt.Sprintf("%q", line),
+				"line_count", state.LineCount,
+				"remote_addr", dh.conn.RemoteAddr().String(),
+				"security_warning", "Consider enabling strict_line_endings for better security",
+			)
+			return true
+		}
 	}
 
 	// Check for suspicious patterns that could indicate SMTP smuggling
@@ -354,39 +399,150 @@ func (dh *DataHandler) isValidEndOfData(line string, state *DataReaderState, sus
 		*suspiciousPatterns++
 
 		// Log suspicious patterns for security monitoring
-		if line != ".\r\n" && line != ".\n" {
-			dh.logger.WarnContext(context.Background(), "Suspicious dot-prefixed line detected",
-				"line", fmt.Sprintf("%q", line),
-				"line_count", state.LineCount,
-				"pattern_type", "invalid_end_of_data",
-			)
+		dh.logger.WarnContext(context.Background(), "Suspicious dot-prefixed line detected",
+			"event_type", "suspicious_pattern",
+			"line", fmt.Sprintf("%q", line),
+			"line_count", state.LineCount,
+			"remote_addr", dh.conn.RemoteAddr().String(),
+			"pattern_type", "malformed_end_of_data",
+		)
+
+		// Log as security event if it looks like an attempted terminator
+		if len(line) <= 5 { // Likely an attempted terminator
+			LogSecurityEvent(dh.logger, "malformed_terminator", "smtp_smuggling",
+				"Malformed end-of-data terminator detected", line, dh.conn.RemoteAddr().String())
 		}
 	}
 
 	return false
 }
 
+// validateLineEndings validates line endings per RFC 5321 § 2.3.7
+func (dh *DataHandler) validateLineEndings(ctx context.Context, line []byte, state *DataReaderState) error {
+	// RFC 5321 § 2.3.7: Lines are terminated by CRLF (\r\n)
+	// Bare CR (\r without \n) and bare LF (\n without \r) are not allowed
+
+	if len(line) == 0 {
+		return nil // Empty line is okay (shouldn't happen with ReadBytes('\n') but be safe)
+	}
+
+	// Check what we have
+	hasCR := len(line) >= 2 && line[len(line)-2] == '\r'
+	hasLF := line[len(line)-1] == '\n'
+
+	// Case 1: Proper CRLF termination
+	if hasCR && hasLF {
+		return nil // Valid RFC 5321 line ending
+	}
+
+	// Case 2: Bare LF (no CR before LF)
+	if !hasCR && hasLF {
+		if dh.config.StrictLineEndings {
+			// Strict mode: Reject bare LF
+			dh.logger.WarnContext(ctx, "Bare LF detected in message data (RFC 5321 violation)",
+				"event_type", "rfc_violation",
+				"line_number", state.LineCount,
+				"remote_addr", dh.conn.RemoteAddr().String(),
+				"security_threat", "smtp_smuggling",
+			)
+
+			// Log as security event
+			LogSecurityEvent(dh.logger, "bare_lf_in_data", "smtp_smuggling",
+				"Bare LF (0x0A) without CR (0x0D) detected in message data",
+				fmt.Sprintf("line %d", state.LineCount), dh.conn.RemoteAddr().String())
+
+			return fmt.Errorf("500 5.5.2 Syntax error: bare LF not allowed (RFC 5321 violation)")
+		} else {
+			// Legacy mode: Accept but warn
+			if state.LineCount%100 == 1 { // Log every 100 lines to avoid spam
+				dh.logger.WarnContext(ctx, "Bare LF accepted in legacy mode (RFC 5321 violation)",
+					"event_type", "rfc_violation",
+					"line_number", state.LineCount,
+					"remote_addr", dh.conn.RemoteAddr().String(),
+					"security_warning", "Consider enabling strict_line_endings for better security",
+				)
+			}
+			return nil
+		}
+	}
+
+	// Case 3: Bare CR (CR without LF) - This shouldn't happen with ReadBytes('\n')
+	// but could occur if data is malformed
+	if hasCR && !hasLF {
+		dh.logger.WarnContext(ctx, "Bare CR detected in message data (RFC 5321 violation)",
+			"event_type", "rfc_violation",
+			"line_number", state.LineCount,
+			"remote_addr", dh.conn.RemoteAddr().String(),
+			"security_threat", "smtp_smuggling",
+		)
+
+		// Log as security event
+		LogSecurityEvent(dh.logger, "bare_cr_in_data", "smtp_smuggling",
+			"Bare CR (0x0D) without LF (0x0A) detected in message data",
+			fmt.Sprintf("line %d", state.LineCount), dh.conn.RemoteAddr().String())
+
+		return fmt.Errorf("500 5.5.2 Syntax error: bare CR not allowed (RFC 5321 violation)")
+	}
+
+	// Case 4: No line terminator at all (shouldn't happen with ReadBytes('\n'))
+	dh.logger.WarnContext(ctx, "Line without proper terminator detected",
+		"event_type", "protocol_error",
+		"line_number", state.LineCount,
+		"remote_addr", dh.conn.RemoteAddr().String(),
+	)
+
+	return fmt.Errorf("500 5.5.2 Syntax error: improper line termination")
+}
+
 // validateLineContent validates individual lines for security threats using enhanced validation
 func (dh *DataHandler) validateLineContent(ctx context.Context, line string, state *DataReaderState) error {
-	// Check if this is an internal connection - be more permissive for internal connections
+	// RFC 5321 §4.5.3.1.6: Line Length Limits
+	// The maximum total length of a text line including the <CRLF> is 1000 octets.
+	// Receivers MUST be able to accept lines of at least 1000 octets.
+	// Receivers SHOULD be able to accept longer lines.
+
+	// Count octets (bytes), not characters - important for UTF-8
+	lineBytes := len(line)
+
+	// RFC 5321 MUST requirement: Support lines up to 1000 octets
+	const maxLineLengthMust = 1000
+	// SHOULD requirement: We support longer lines up to 2000 octets
+	const maxLineLengthShould = 2000
+
+	if lineBytes > maxLineLengthShould {
+		// Hard limit exceeded - reject with 552 (message exceeds storage allocation)
+		dh.logger.WarnContext(ctx, "Line length exceeds hard limit",
+			"line_number", state.LineCount,
+			"line_bytes", lineBytes,
+			"max_allowed", maxLineLengthShould,
+			"remote_addr", dh.conn.RemoteAddr().String(),
+		)
+		return fmt.Errorf("552 5.3.4 Line too long (%d octets, maximum %d)", lineBytes, maxLineLengthShould)
+	}
+
+	if lineBytes > maxLineLengthMust {
+		// Warning: Line exceeds RFC 5321 MUST requirement but within SHOULD extension
+		dh.logger.DebugContext(ctx, "Line length exceeds RFC 5321 MUST requirement but within SHOULD extension",
+			"line_number", state.LineCount,
+			"line_bytes", lineBytes,
+			"rfc_must_limit", maxLineLengthMust,
+			"current_limit", maxLineLengthShould,
+		)
+	}
+
+	// Check if this is an internal connection - be more permissive for security validation
 	isInternal := dh.isInternalConnection()
 
-	// For internal connections, only do basic validation
 	if isInternal {
-		// Basic line length check
-		if len(line) > 1000 {
-			return fmt.Errorf("line too long")
-		}
-
-		// Only check for obvious security threats
+		// For internal connections, only check for obvious security threats
 		if strings.Contains(line, "'; DROP TABLE") ||
 			strings.Contains(line, "\"; DROP TABLE") ||
 			strings.Contains(line, "UNION SELECT") ||
 			strings.Contains(line, "<script") {
-			return fmt.Errorf("security violation detected")
+			return fmt.Errorf("500 5.5.2 Security violation detected")
 		}
 
-		dh.logger.DebugContext(ctx, "Using permissive validation for internal connection",
+		dh.logger.DebugContext(ctx, "Using permissive security validation for internal connection",
 			"remote_addr", dh.conn.RemoteAddr().String(),
 			"in_headers", state.InHeaders,
 		)
@@ -394,33 +550,57 @@ func (dh *DataHandler) validateLineContent(ctx context.Context, line string, sta
 		return nil
 	}
 
-	// For external connections, use enhanced validator for comprehensive line validation
-	validationResult := dh.enhancedValidator.ValidateSMTPParameter("DATA_LINE", line)
+	// For external connections, use enhanced validator for comprehensive security validation
+	// Note: We only apply enhanced validation for lines within the MUST limit (1000 octets)
+	// to avoid the enhanced validator's line length check from conflicting with our
+	// RFC 5321 SHOULD extension (up to 2000 octets)
+	if lineBytes <= maxLineLengthMust {
+		validationResult := dh.enhancedValidator.ValidateSMTPParameter("DATA_LINE", line)
 
-	if !validationResult.Valid {
-		// Log security event for failed validation
-		LogSecurityEvent(dh.logger, "line_validation_failed", validationResult.SecurityThreat,
-			validationResult.ErrorMessage, line, dh.conn.RemoteAddr().String())
+		if !validationResult.Valid {
+			// Check if the failure is due to line length - if so, ignore it
+			// since we handle line length validation above with proper RFC 5321 compliance
+			if !strings.Contains(validationResult.ErrorMessage, "Line exceeds") {
+				// Log security event for failed validation
+				LogSecurityEvent(dh.logger, "line_validation_failed", validationResult.SecurityThreat,
+					validationResult.ErrorMessage, line, dh.conn.RemoteAddr().String())
 
-		dh.logger.WarnContext(ctx, "Line validation failed",
-			"error_type", validationResult.ErrorType,
-			"error_message", validationResult.ErrorMessage,
-			"security_threat", validationResult.SecurityThreat,
+				dh.logger.WarnContext(ctx, "Line validation failed",
+					"error_type", validationResult.ErrorType,
+					"error_message", validationResult.ErrorMessage,
+					"security_threat", validationResult.SecurityThreat,
+					"security_score", validationResult.SecurityScore,
+					"line_number", state.LineCount,
+				)
+
+				return fmt.Errorf("500 5.5.2 Security violation: %s", validationResult.ErrorMessage)
+			}
+		}
+
+		dh.logger.DebugContext(ctx, "Using enhanced validation for external connection",
+			"remote_addr", dh.conn.RemoteAddr().String(),
+			"in_headers", state.InHeaders,
 			"security_score", validationResult.SecurityScore,
-			"line_number", state.LineCount,
+		)
+	} else {
+		// For lines exceeding MUST limit but within SHOULD limit,
+		// perform basic security checks without enhanced validator
+		dh.logger.DebugContext(ctx, "Skipping enhanced validation for long line within SHOULD limit",
+			"line_bytes", lineBytes,
+			"remote_addr", dh.conn.RemoteAddr().String(),
 		)
 
-		return fmt.Errorf("security violation: %s", validationResult.ErrorMessage)
+		// Basic security checks for long lines
+		if strings.Contains(line, "'; DROP TABLE") ||
+			strings.Contains(line, "\"; DROP TABLE") ||
+			strings.Contains(line, "UNION SELECT") ||
+			strings.Contains(line, "<script") {
+			return fmt.Errorf("500 5.5.2 Security violation detected")
+		}
 	}
 
-	// Additional header-specific validation for external connections
-	dh.logger.DebugContext(ctx, "Using enhanced validation for external connection",
-		"remote_addr", dh.conn.RemoteAddr().String(),
-		"in_headers", state.InHeaders,
-		"security_score", validationResult.SecurityScore,
-	)
-
-	if state.InHeaders {
+	// Additional header-specific validation for external connections (only for lines within MUST limit)
+	if state.InHeaders && lineBytes <= maxLineLengthMust {
 		dh.logger.DebugContext(ctx, "Applying strict header validation for external connection")
 		return dh.validateHeaderLine(ctx, line)
 	}

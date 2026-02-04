@@ -159,11 +159,15 @@ func (ch *CommandHandler) HandleEHLO(ctx context.Context, args string) error {
 	}
 
 	// Send EHLO response with extensions
+	// Note: PIPELINING is NOT advertised because the server processes commands
+	// sequentially (one at a time) rather than batching pipelined commands.
+	// Per RFC 2920, servers MUST NOT advertise PIPELINING unless they can
+	// accept multiple commands before sending any responses.
 	responses := []string{
 		fmt.Sprintf("250-%s Hello %s", ch.config.Hostname, args),
 		"250-SIZE " + strconv.FormatInt(ch.config.MaxSize, 10),
 		"250-8BITMIME",
-		"250-PIPELINING",
+		"250-SMTPUTF8",
 	}
 
 	// Add STARTTLS if available and not already using TLS
@@ -201,7 +205,7 @@ func (ch *CommandHandler) HandleEHLO(ctx context.Context, args string) error {
 	return nil
 }
 
-// HandleMAIL processes the MAIL FROM command
+// HandleMAIL processes the MAIL FROM command with RFC 1870 SIZE extension support
 func (ch *CommandHandler) HandleMAIL(ctx context.Context, args string) error {
 	ch.logger.DebugContext(ctx, "Processing MAIL command", "args", args)
 
@@ -210,8 +214,8 @@ func (ch *CommandHandler) HandleMAIL(ctx context.Context, args string) error {
 		return fmt.Errorf("530 5.7.0 Authentication required")
 	}
 
-	// Parse MAIL FROM command
-	mailFrom, err := ch.parseMailFrom(ctx, args)
+	// Parse MAIL FROM command with SIZE parameter (RFC 1870)
+	mailFrom, declaredSize, err := ch.parseMailFrom(ctx, args)
 	if err != nil {
 		return err
 	}
@@ -219,6 +223,19 @@ func (ch *CommandHandler) HandleMAIL(ctx context.Context, args string) error {
 	// Validate email address
 	if err := ch.validateEmailAddress(ctx, mailFrom); err != nil {
 		return fmt.Errorf("553 5.1.3 Invalid sender address: %s", mailFrom)
+	}
+
+	// RFC 1870: Check declared SIZE against server's maximum
+	// If client declares a size, reject if it exceeds our limit
+	if declaredSize > 0 && declaredSize > ch.config.MaxSize {
+		ch.logger.WarnContext(ctx, "Message SIZE exceeds maximum",
+			"declared_size", declaredSize,
+			"max_size", ch.config.MaxSize,
+			"mail_from", mailFrom,
+			"remote_addr", ch.session.remoteAddr,
+		)
+		return fmt.Errorf("552 5.3.4 Message size exceeds fixed maximum message size (%d bytes declared, %d bytes maximum)",
+			declaredSize, ch.config.MaxSize)
 	}
 
 	// Set mail from in state
@@ -242,6 +259,7 @@ func (ch *CommandHandler) HandleMAIL(ctx context.Context, args string) error {
 	ch.logger.InfoContext(ctx, "mail_from_accepted",
 		"event_type", "mail_from_accepted",
 		"mail_from", mailFrom,
+		"declared_size", declaredSize,
 		"authenticated", ch.state.IsAuthenticated(),
 		"username", ch.state.GetUsername(),
 		"client_ip", ch.session.remoteAddr,
@@ -526,7 +544,7 @@ func (ch *CommandHandler) parseCommand(line string) (string, string) {
 	return cmd, args
 }
 
-// validateHostname validates a hostname
+// validateHostname validates a hostname per RFC 5321 §4.1.3
 func (ch *CommandHandler) validateHostname(ctx context.Context, hostname string) error {
 	if hostname == "" {
 		return fmt.Errorf("empty hostname")
@@ -537,33 +555,128 @@ func (ch *CommandHandler) validateHostname(ctx context.Context, hostname string)
 		return fmt.Errorf("hostname too long")
 	}
 
-	// Check if it's an IP address literal [x.x.x.x] or [IPv6:...] (RFC 5321 section 4.1.3)
-	// Examples: [127.0.0.1], [IPv6:2001:db8::1]
-	if len(hostname) > 2 && hostname[0] == '[' && hostname[len(hostname)-1] == ']' {
-		// Valid IP address literal format - accept it
-		ch.logger.DebugContext(ctx, "accepting IP address literal in EHLO/HELO", "hostname", hostname)
+	// Check if it's an address literal [x.x.x.x] or [IPv6:...] (RFC 5321 section 4.1.3)
+	if len(hostname) >= 2 && hostname[0] == '[' && hostname[len(hostname)-1] == ']' {
+		return ch.validateAddressLiteral(ctx, hostname)
+	}
+
+	// Validate as domain name
+	return ch.validateDomainName(ctx, hostname)
+}
+
+// validateAddressLiteral validates IPv4 and IPv6 address literals per RFC 5321 §4.1.3
+func (ch *CommandHandler) validateAddressLiteral(ctx context.Context, literal string) error {
+	// Extract content between brackets
+	content := literal[1 : len(literal)-1]
+
+	if content == "" {
+		return fmt.Errorf("malformed address literal: empty brackets")
+	}
+
+	// Check for IPv6 literal format: [IPv6:address] (RFC 5321 §4.1.3)
+	if len(content) >= 5 && strings.ToUpper(content[:5]) == "IPV6:" {
+		ipv6Addr := content[5:] // Remove "IPv6:" or "IPV6:" prefix
+
+		if ipv6Addr == "" {
+			return fmt.Errorf("malformed IPv6 address literal: missing address after IPv6: prefix")
+		}
+
+		// Validate IPv6 address
+		ip := net.ParseIP(ipv6Addr)
+		if ip == nil {
+			return fmt.Errorf("malformed IPv6 address literal: invalid IPv6 address")
+		}
+
+		// Ensure it's actually an IPv6 address (ParseIP accepts both IPv4 and IPv6)
+		if ip.To4() != nil {
+			return fmt.Errorf("malformed IPv6 address literal: address is IPv4, not IPv6")
+		}
+
+		ch.logger.DebugContext(ctx, "accepted IPv6 address literal", "hostname", literal)
 		return nil
 	}
 
-	// Use regex for basic hostname validation
-	hostnameRegex := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`)
-	if !hostnameRegex.MatchString(hostname) {
-		ch.logger.WarnContext(ctx, "Invalid hostname format", "hostname", hostname)
-		return fmt.Errorf("invalid hostname format")
+	// Check for general tagged address literal format: [tag:address]
+	// This includes other address types defined in RFC 5321
+	if strings.Contains(content, ":") {
+		parts := strings.SplitN(content, ":", 2)
+		tag := strings.ToUpper(parts[0])
+
+		// Only IPv6 is widely supported; other tags could be added here
+		// For now, we accept any tagged format but log it
+		ch.logger.DebugContext(ctx, "accepted tagged address literal",
+			"hostname", literal,
+			"tag", tag)
+		return nil
+	}
+
+	// Assume IPv4 literal format: [192.0.2.1]
+	ip := net.ParseIP(content)
+	if ip == nil {
+		return fmt.Errorf("malformed IPv4 address literal: invalid IP address")
+	}
+
+	// Ensure it's actually IPv4 (not IPv6)
+	if ip.To4() == nil {
+		return fmt.Errorf("malformed IPv4 address literal: address is not IPv4 format")
+	}
+
+	ch.logger.DebugContext(ctx, "accepted IPv4 address literal", "hostname", literal)
+	return nil
+}
+
+// validateDomainName validates a domain name per RFC 1035 and RFC 5321
+func (ch *CommandHandler) validateDomainName(ctx context.Context, domain string) error {
+	// Domain name validation per RFC 1035
+	// - Labels separated by dots
+	// - Each label: 1-63 characters
+	// - Labels must start with alphanumeric, end with alphanumeric
+	// - Labels can contain hyphens in the middle
+	// - Total length <= 255 characters
+	if len(domain) > 255 {
+		return fmt.Errorf("invalid domain name: exceeds maximum length")
+	}
+
+	// Split into labels
+	labels := strings.Split(domain, ".")
+	if len(labels) == 0 {
+		return fmt.Errorf("invalid domain name: empty domain")
+	}
+
+	// Validate each label
+	// RFC 1035: Label must start with letter or digit, end with letter or digit,
+	// and can contain hyphens in the middle
+	labelRegex := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$`)
+
+	for _, label := range labels {
+		if label == "" {
+			return fmt.Errorf("invalid domain name: empty label")
+		}
+
+		if len(label) > 63 {
+			return fmt.Errorf("invalid domain name: label exceeds 63 characters")
+		}
+
+		if !labelRegex.MatchString(label) {
+			return fmt.Errorf("invalid domain name: malformed label")
+		}
 	}
 
 	return nil
 }
 
 // parseMailFrom parses the MAIL FROM command
-func (ch *CommandHandler) parseMailFrom(ctx context.Context, args string) (string, error) {
+// parseMailFrom parses the MAIL FROM command and extracts address and SIZE parameter
+// Returns: (address, declaredSize, error)
+// declaredSize is 0 if SIZE parameter is not specified
+func (ch *CommandHandler) parseMailFrom(ctx context.Context, args string) (string, int64, error) {
 	if args == "" {
-		return "", fmt.Errorf("501 5.5.4 Syntax: MAIL FROM:<address>")
+		return "", 0, fmt.Errorf("501 5.5.4 Syntax: MAIL FROM:<address>")
 	}
 
 	// Handle MAIL FROM:<address>
 	if !strings.HasPrefix(strings.ToUpper(args), "FROM:") {
-		return "", fmt.Errorf("501 5.5.4 Syntax: MAIL FROM:<address>")
+		return "", 0, fmt.Errorf("501 5.5.4 Syntax: MAIL FROM:<address>")
 	}
 
 	// Extract address part
@@ -571,27 +684,103 @@ func (ch *CommandHandler) parseMailFrom(ctx context.Context, args string) (strin
 	addr = strings.TrimPrefix(addr, "from:")
 	addr = strings.TrimSpace(addr)
 
+	// Store the full parameter string for parsing ESMTP parameters
+	params := addr
+
 	// Handle angle brackets and ESMTP parameters
-	// Format: <address> SIZE=xxx BODY=8BITMIME etc.
+	// Format: <address> SIZE=xxx BODY=8BITMIME SMTPUTF8 etc.
 	if strings.HasPrefix(addr, "<") {
 		// Find the closing bracket
 		endBracket := strings.Index(addr, ">")
 		if endBracket > 0 {
 			// Extract just the address inside the brackets
 			addr = addr[1:endBracket]
+			// Parameters are after the closing bracket
+			if endBracket+1 < len(params) {
+				params = strings.TrimSpace(params[endBracket+1:])
+			} else {
+				params = ""
+			}
 		} else {
 			// Malformed, try to extract what we can
 			addr = strings.TrimPrefix(addr, "<")
+			params = ""
 		}
 	} else {
 		// No angle brackets - address might have space-separated parameters
 		// Take only the first space-separated token
 		if spaceIdx := strings.Index(addr, " "); spaceIdx > 0 {
+			params = strings.TrimSpace(addr[spaceIdx+1:])
 			addr = addr[:spaceIdx]
+		} else {
+			params = ""
 		}
 	}
 
-	return addr, nil
+	// Parse ESMTP parameters (RFC 1870 SIZE, RFC 6531 SMTPUTF8, etc.)
+	var declaredSize int64 = 0
+
+	if params != "" {
+		upperParams := strings.ToUpper(params)
+
+		// Check for SMTPUTF8 parameter
+		if strings.Contains(upperParams, "SMTPUTF8") {
+			ch.state.SetSMTPUTF8(ctx, true)
+			ch.logger.DebugContext(ctx, "SMTPUTF8 requested for this message")
+		}
+
+		// Parse SIZE parameter (RFC 1870)
+		// Format: SIZE=<size-value>
+		if strings.Contains(upperParams, "SIZE=") {
+			// Extract SIZE parameter
+			sizeIdx := strings.Index(upperParams, "SIZE=")
+			if sizeIdx >= 0 {
+				sizeParam := params[sizeIdx+5:] // Skip "SIZE="
+
+				// SIZE value is terminated by space or end of string
+				var sizeStr string
+				if spaceIdx := strings.Index(sizeParam, " "); spaceIdx > 0 {
+					sizeStr = sizeParam[:spaceIdx]
+				} else {
+					sizeStr = sizeParam
+				}
+
+				// Validate and parse SIZE value
+				sizeValue, err := strconv.ParseInt(sizeStr, 10, 64)
+				if err != nil {
+					ch.logger.WarnContext(ctx, "Invalid SIZE parameter",
+						"size_param", sizeStr,
+						"error", err,
+					)
+					return "", 0, fmt.Errorf("501 5.5.4 Invalid SIZE parameter syntax")
+				}
+
+				// Validate SIZE is non-negative and reasonable
+				if sizeValue < 0 {
+					ch.logger.WarnContext(ctx, "Negative SIZE parameter",
+						"size_value", sizeValue,
+					)
+					return "", 0, fmt.Errorf("501 5.5.4 SIZE parameter must be non-negative")
+				}
+
+				// RFC 1870: SIZE=0 is valid (means size is unknown)
+				// Very large sizes (> 10GB) are suspicious
+				if sizeValue > 10*1024*1024*1024 { // 10GB sanity check
+					ch.logger.WarnContext(ctx, "Unreasonably large SIZE parameter",
+						"size_value", sizeValue,
+					)
+					return "", 0, fmt.Errorf("552 5.3.4 SIZE parameter exceeds reasonable limit")
+				}
+
+				declaredSize = sizeValue
+				ch.logger.DebugContext(ctx, "SIZE parameter parsed",
+					"declared_size", declaredSize,
+				)
+			}
+		}
+	}
+
+	return addr, declaredSize, nil
 }
 
 // parseRcptTo parses the RCPT TO command
