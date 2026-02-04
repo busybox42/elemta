@@ -93,7 +93,7 @@ func NewDataHandler(session *Session, state *SessionState, conn net.Conn, reader
 
 // ReadData reads message data from the client with streaming and progressive memory tracking
 func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
-	dh.logger.DebugContext(ctx, "Starting streaming message data reading with memory tracking")
+	slog.LogAttrs(ctx, slog.LevelDebug, "Starting streaming message data reading with memory tracking")
 
 	startTime := time.Now()
 	var buffer bytes.Buffer
@@ -242,8 +242,8 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 			if strings.TrimSpace(lineStr) == "" {
 				state.InHeaders = false
 				state.HeadersComplete = true
-				dh.logger.DebugContext(ctx, "Headers section completed",
-					"line_count", state.LineCount,
+				slog.LogAttrs(ctx, slog.LevelDebug, "Headers section completed",
+					slog.Int("line_count", state.LineCount),
 				)
 			}
 		}
@@ -255,12 +255,12 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 
 		// Periodic logging for large messages with memory tracking
 		if state.LineCount%1000 == 0 {
-			dh.logger.DebugContext(ctx, "Message reading progress with memory tracking",
-				"lines_read", state.LineCount,
-				"bytes_read", state.BytesRead,
-				"session_memory_limit", sessionMemoryLimit,
-				"memory_utilization_pct", float64(state.BytesRead)/float64(sessionMemoryLimit)*100,
-				"duration", time.Since(startTime),
+			slog.LogAttrs(ctx, slog.LevelDebug, "Message reading progress with memory tracking",
+				slog.Int("lines_read", state.LineCount),
+				slog.Int("bytes_read", state.BytesRead),
+				slog.Int64("session_memory_limit", sessionMemoryLimit),
+				slog.Float64("memory_utilization_pct", float64(state.BytesRead)/float64(sessionMemoryLimit)*100),
+				slog.Duration("duration", time.Since(startTime)),
 			)
 		}
 	}
