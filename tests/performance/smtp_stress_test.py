@@ -1207,6 +1207,10 @@ def parse_arguments():
     parser.add_argument('--no-corpus', dest='use_corpus', action='store_false', default=True,
                        help='Disable corpus file usage and use synthetic content')
     
+    # Realistic scenario option
+    parser.add_argument('--realistic', action='store_true',
+                       help='Enable realistic production scenario with optimal settings')
+    
     # Authentication options
     parser.add_argument('--auth-user-prefix', default='stressuser',
                        help='Prefix for test users (default: stressuser)')
@@ -1263,15 +1267,37 @@ def main():
         slow_read_delay=args.slow_delay,
         malformed_commands=args.malformed,
         auth_failure_rate=args.auth_failure_rate,
-        # Email content options
-        corpus_dir=args.corpus_dir,
         use_corpus=args.use_corpus,
+        corpus_dir=args.corpus_dir,
         # Authentication options
         auth_user_prefix=args.auth_user_prefix,
         auth_user_count=args.auth_user_count,
         auth_password=args.auth_password,
-        auth_domain=args.auth_domain
+        auth_domain=args.auth_domain,
     )
+    
+    # Apply realistic scenario overrides if requested
+    if args.realistic:
+        print("🎯 Enabling realistic production scenario...")
+        
+        # Only override if user didn't explicitly set these values
+        if args.message_size == 1024:  # Default value
+            config.message_size_bytes = 10240
+            print("   ✓ Message size: 10KB (realistic email size)")
+        
+        if not args.burst_mode:  # User didn't enable burst mode
+            config.burst_mode = True
+            print("   ✓ Burst mode: Enabled (realistic traffic patterns)")
+        
+        if args.messages_per_connection == 10:  # Default value
+            config.messages_per_connection = 25
+            print("   ✓ Messages per connection: 25 (typical client behavior)")
+        
+        if args.max_connections == 100:  # Default value
+            config.max_concurrent_connections = 50
+            print("   ✓ Max connections: 50 (medium mail server)")
+        
+        print("   ✓ Realistic scenario configured!")
     
     # Run stress test
     tester = SMTPStressTester(config)
