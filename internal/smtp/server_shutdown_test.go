@@ -144,6 +144,10 @@ func TestConnectionDraining(t *testing.T) {
 		go server.Start()
 		time.Sleep(100 * time.Millisecond)
 
+		// Get actual listen address
+		addr := server.Addr()
+		require.NotNil(t, addr, "Server address should not be nil")
+
 		// Create multiple active connections
 		numConnections := 5
 		connWg := sync.WaitGroup{}
@@ -154,7 +158,7 @@ func TestConnectionDraining(t *testing.T) {
 			go func(id int) {
 				defer connWg.Done()
 
-				conn, err := net.DialTimeout("tcp", server.config.ListenAddr, 2*time.Second)
+				conn, err := net.DialTimeout("tcp", addr.String(), 2*time.Second)
 				if err != nil {
 					t.Logf("Connection %d failed to dial: %v", id, err)
 					return
