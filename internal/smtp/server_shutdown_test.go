@@ -277,6 +277,10 @@ func TestQueuePersistence(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { _ = server2.Close() }()
 
+		// Force stats update to load messages from disk
+		err = server2.queueManager.UpdateStats()
+		require.NoError(t, err, "Failed to update queue stats")
+
 		// Check queue stats on second server
 		stats2 := server2.queueManager.GetStats()
 		totalAfter := stats2.ActiveCount + stats2.DeferredCount + stats2.HoldCount + stats2.FailedCount
