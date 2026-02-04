@@ -303,6 +303,7 @@ func TestRFC5321_SpecialCharacters(t *testing.T) {
 
 			// Reset for next test
 			sendCommand(conn, reader, "RSET\r\n")
+			sendCommand(conn, reader, "EHLO test.example.com\r\n")
 		})
 	}
 }
