@@ -30,7 +30,7 @@ func TestSession_ErrorHandling_TimeoutResponse(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Connect to server
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -89,7 +89,7 @@ func TestSession_ErrorHandling_MessageAcceptance(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Connect to server
-	conn, err := net.Dial("tcp", "localhost:2525")
+	conn, err := net.Dial("tcp", server.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
 
