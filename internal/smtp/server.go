@@ -105,54 +105,59 @@ func NewServer(config *Config) (*Server, error) {
 
 	// Initialize builtin plugins for basic spam/antivirus scanning
 	builtinPlugins = plugin.NewBuiltinPlugins()
-	if config.Plugins != nil && len(config.Plugins.Plugins) > 0 {
-		// Initialize builtin plugins with configuration
-		pluginConfig := make(map[string]map[string]interface{})
-		// Add default configurations for builtin plugins
-		pluginConfig["clamav"] = map[string]interface{}{
-			"host":    "elemta-clamav",
-			"port":    3310,
-			"timeout": 30,
-		}
-		pluginConfig["rspamd"] = map[string]interface{}{
-			"host":      "elemta-rspamd",
-			"port":      11334,
-			"timeout":   30,
-			"threshold": 5.0,
-		}
-
-		if err := builtinPlugins.InitBuiltinPlugins(config.Plugins.Plugins, pluginConfig); err != nil {
-			slogger.Warn("Failed to initialize builtin plugins", "error", err)
-		} else {
-			slogger.Info("Builtin plugins initialized successfully")
-		}
-	} else {
-		// Initialize with basic builtin scanning even if no plugins specified
-		basicPlugins := []string{"rspamd"}
-		if os.Getenv("ELEMTA_DISABLE_CLAMAV") != "true" {
-			basicPlugins = append(basicPlugins, "clamav")
-		}
-
-		pluginConfig := make(map[string]map[string]interface{})
-		if os.Getenv("ELEMTA_DISABLE_CLAMAV") != "true" {
+	// Only initialize plugins if explicitly enabled
+	if config.Plugins != nil && config.Plugins.Enabled {
+		if len(config.Plugins.Plugins) > 0 {
+			// Initialize builtin plugins with configuration
+			pluginConfig := make(map[string]map[string]interface{})
+			// Add default configurations for builtin plugins
 			pluginConfig["clamav"] = map[string]interface{}{
 				"host":    "elemta-clamav",
 				"port":    3310,
 				"timeout": 30,
 			}
-		}
-		pluginConfig["rspamd"] = map[string]interface{}{
-			"host":      "elemta-rspamd",
-			"port":      11334,
-			"timeout":   30,
-			"threshold": 5.0,
-		}
+			pluginConfig["rspamd"] = map[string]interface{}{
+				"host":      "elemta-rspamd",
+				"port":      11334,
+				"timeout":   30,
+				"threshold": 5.0,
+			}
 
-		if err := builtinPlugins.InitBuiltinPlugins(basicPlugins, pluginConfig); err != nil {
-			slogger.Warn("Failed to initialize basic builtin plugins", "error", err)
+			if err := builtinPlugins.InitBuiltinPlugins(config.Plugins.Plugins, pluginConfig); err != nil {
+				slogger.Warn("Failed to initialize builtin plugins", "error", err)
+			} else {
+				slogger.Info("Builtin plugins initialized successfully")
+			}
 		} else {
-			slogger.Info("Basic builtin plugins initialized successfully")
+			// Initialize with basic builtin scanning if plugins enabled but none specified
+			basicPlugins := []string{"rspamd"}
+			if os.Getenv("ELEMTA_DISABLE_CLAMAV") != "true" {
+				basicPlugins = append(basicPlugins, "clamav")
+			}
+
+			pluginConfig := make(map[string]map[string]interface{})
+			if os.Getenv("ELEMTA_DISABLE_CLAMAV") != "true" {
+				pluginConfig["clamav"] = map[string]interface{}{
+					"host":    "elemta-clamav",
+					"port":    3310,
+					"timeout": 30,
+				}
+			}
+			pluginConfig["rspamd"] = map[string]interface{}{
+				"host":      "elemta-rspamd",
+				"port":      11334,
+				"timeout":   30,
+				"threshold": 5.0,
+			}
+
+			if err := builtinPlugins.InitBuiltinPlugins(basicPlugins, pluginConfig); err != nil {
+				slogger.Warn("Failed to initialize basic builtin plugins", "error", err)
+			} else {
+				slogger.Info("Basic builtin plugins initialized successfully")
+			}
 		}
+	} else {
+		slogger.Info("Plugins disabled or not configured")
 	}
 
 	// Initialize authenticator if enabled
