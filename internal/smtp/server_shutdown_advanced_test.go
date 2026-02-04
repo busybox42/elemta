@@ -223,7 +223,15 @@ func TestServer_GracefulShutdown_ResourceCleanupOrder(t *testing.T) {
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		conn.Write([]byte("Test message content\r\n.\r\n"))
+		// Read the response
+		reader.ReadString('\n')
+		// Send QUIT to properly close the session
+		conn.Write([]byte("QUIT\r\n"))
+		reader.ReadString('\n')
 	}()
+
+	// Wait a bit for the message to be sent
+	time.Sleep(100 * time.Millisecond)
 
 	// Initiate shutdown while message is being processed
 	shutdownStart := time.Now()
