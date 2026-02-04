@@ -322,6 +322,24 @@ func (ch *CommandHandler) HandleDATA(ctx context.Context) error {
 		return fmt.Errorf("503 5.5.1 RCPT first")
 	}
 
+	// Validate data command acceptance to prevent desynchronization attacks
+	if !ch.state.CanAcceptDataCommand(ctx, "DATA") {
+		ch.logger.WarnContext(ctx, "DATA command rejected - mode conflict or invalid phase",
+			"event_type", "desynchronization_attempt",
+			"current_mode", ch.state.GetDataTransferMode().String(),
+			"current_phase", ch.state.GetPhase().String(),
+		)
+		return fmt.Errorf("503 5.5.1 Bad sequence of commands")
+	}
+
+	// Set data transfer mode to DATA
+	if err := ch.state.SetDataTransferMode(ctx, DataModeDATA); err != nil {
+		ch.logger.WarnContext(ctx, "Failed to set data transfer mode",
+			"error", err,
+		)
+		return fmt.Errorf("503 5.5.1 Bad sequence of commands")
+	}
+
 	// Set phase to data
 	if err := ch.state.SetPhase(ctx, PhaseData); err != nil {
 		ch.logger.ErrorContext(ctx, "Failed to transition to DATA phase",
@@ -340,6 +358,7 @@ func (ch *CommandHandler) HandleDATA(ctx context.Context) error {
 	ch.logger.InfoContext(ctx, "DATA command accepted, ready for message data",
 		"mail_from", ch.state.GetMailFrom(),
 		"recipients", ch.state.GetRecipientCount(),
+		"data_transfer_mode", ch.state.GetDataTransferMode().String(),
 	)
 
 	return nil
@@ -835,7 +854,7 @@ func (ch *CommandHandler) validateEmailAddress(ctx context.Context, addr string)
 func (ch *CommandHandler) checkRelayPermissions(ctx context.Context, recipient string) error {
 	// If authenticated, allow relay
 	if ch.state.IsAuthenticated() {
-		ch.logger.DebugContext(ctx, "Relay allowed for authenticated user",
+		ch.logger.InfoContext(ctx, "Relay allowed for authenticated user",
 			"recipient", recipient,
 			"username", ch.state.GetUsername(),
 		)
@@ -844,7 +863,7 @@ func (ch *CommandHandler) checkRelayPermissions(ctx context.Context, recipient s
 
 	// Check if recipient is in local domains first
 	if ch.isLocalDomain(ctx, recipient) {
-		ch.logger.DebugContext(ctx, "Local domain recipient accepted", "recipient", recipient)
+		ch.logger.InfoContext(ctx, "Local domain recipient accepted", "recipient", recipient)
 		return nil
 	}
 

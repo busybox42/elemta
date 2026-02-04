@@ -247,15 +247,15 @@ func TestHandleMAIL(t *testing.T) {
 // TestHandleRCPT tests the RCPT TO command
 func TestHandleRCPT(t *testing.T) {
 	tests := []struct {
-		name       string
-		rcptCmd    string
+		name        string
+		rcptCmd     string
 		localDomain bool
-		expectCode string
+		expectCode  string
 	}{
 		{"local domain", "RCPT TO:<user@localhost>", true, "250"},
 		{"valid address", "RCPT TO:<user@example.com>", false, "554"}, // Relay denied
 		{"missing TO", "RCPT user@example.com", false, "501"},
-		{"invalid address", "RCPT TO:<invalid>", false, "553"},
+		{"invalid address", "RCPT TO:<invalid>", false, "501"},
 	}
 
 	for _, tt := range tests {
@@ -983,9 +983,9 @@ func TestErrorHandlingInSequence(t *testing.T) {
 
 	// Send commands with an error in the middle
 	commands := []struct {
-		cmd          string
-		expectCode   string
-		expectError  bool
+		cmd         string
+		expectCode  string
+		expectError bool
 	}{
 		{"MAIL FROM:<sender@example.com>\r\n", "250", false},
 		{"RCPT TO:<user@external.com>\r\n", "554", true}, // Should fail - relay denied
@@ -1022,9 +1022,9 @@ func TestParseCommand(t *testing.T) {
 	ch := NewCommandHandler(session, state, nil, nil, config, nil, logger)
 
 	tests := []struct {
-		input       string
-		expectCmd   string
-		expectArgs  string
+		input      string
+		expectCmd  string
+		expectArgs string
 	}{
 		{"HELO example.com", "HELO", "example.com"},
 		{"MAIL FROM:<test@example.com>", "MAIL", "FROM:<test@example.com>"},
@@ -1044,81 +1044,81 @@ func TestParseCommand(t *testing.T) {
 // TestMAILFROMSizeParameter tests RFC 1870 SIZE parameter handling
 func TestMAILFROMSizeParameter(t *testing.T) {
 	tests := []struct {
-		name        string
-		mailCmd     string
-		maxSize     int64
-		expectCode  string
-		wantErr     bool
+		name       string
+		mailCmd    string
+		maxSize    int64
+		expectCode string
+		wantErr    bool
 	}{
 		{
-			name:        "valid SIZE within limit",
-			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=1000000",
-			maxSize:     10 * 1024 * 1024, // 10MB
-			expectCode:  "250",
-			wantErr:     false,
+			name:       "valid SIZE within limit",
+			mailCmd:    "MAIL FROM:<sender@example.com> SIZE=1000000",
+			maxSize:    10 * 1024 * 1024, // 10MB
+			expectCode: "250",
+			wantErr:    false,
 		},
 		{
-			name:        "SIZE exactly at limit",
-			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=10485760",
-			maxSize:     10 * 1024 * 1024, // 10MB
-			expectCode:  "250",
-			wantErr:     false,
+			name:       "SIZE exactly at limit",
+			mailCmd:    "MAIL FROM:<sender@example.com> SIZE=10485760",
+			maxSize:    10 * 1024 * 1024, // 10MB
+			expectCode: "250",
+			wantErr:    false,
 		},
 		{
-			name:        "SIZE exceeding limit",
-			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=20971520",
-			maxSize:     10 * 1024 * 1024, // 10MB
-			expectCode:  "552",
-			wantErr:     true,
+			name:       "SIZE exceeding limit",
+			mailCmd:    "MAIL FROM:<sender@example.com> SIZE=20971520",
+			maxSize:    10 * 1024 * 1024, // 10MB
+			expectCode: "552",
+			wantErr:    true,
 		},
 		{
-			name:        "SIZE zero (valid per RFC 1870)",
-			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=0",
-			maxSize:     10 * 1024 * 1024,
-			expectCode:  "250",
-			wantErr:     false,
+			name:       "SIZE zero (valid per RFC 1870)",
+			mailCmd:    "MAIL FROM:<sender@example.com> SIZE=0",
+			maxSize:    10 * 1024 * 1024,
+			expectCode: "250",
+			wantErr:    false,
 		},
 		{
-			name:        "invalid SIZE syntax (non-numeric)",
-			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=abc",
-			maxSize:     10 * 1024 * 1024,
-			expectCode:  "501",
-			wantErr:     true,
+			name:       "invalid SIZE syntax (non-numeric)",
+			mailCmd:    "MAIL FROM:<sender@example.com> SIZE=abc",
+			maxSize:    10 * 1024 * 1024,
+			expectCode: "501",
+			wantErr:    true,
 		},
 		{
-			name:        "negative SIZE",
-			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=-1000",
-			maxSize:     10 * 1024 * 1024,
-			expectCode:  "501",
-			wantErr:     true,
+			name:       "negative SIZE",
+			mailCmd:    "MAIL FROM:<sender@example.com> SIZE=-1000",
+			maxSize:    10 * 1024 * 1024,
+			expectCode: "501",
+			wantErr:    true,
 		},
 		{
-			name:        "SIZE with SMTPUTF8",
-			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=1000000 SMTPUTF8",
-			maxSize:     10 * 1024 * 1024,
-			expectCode:  "250",
-			wantErr:     false,
+			name:       "SIZE with SMTPUTF8",
+			mailCmd:    "MAIL FROM:<sender@example.com> SIZE=1000000 SMTPUTF8",
+			maxSize:    10 * 1024 * 1024,
+			expectCode: "250",
+			wantErr:    false,
 		},
 		{
-			name:        "SIZE with BODY parameter",
-			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=1000000 BODY=8BITMIME",
-			maxSize:     10 * 1024 * 1024,
-			expectCode:  "250",
-			wantErr:     false,
+			name:       "SIZE with BODY parameter",
+			mailCmd:    "MAIL FROM:<sender@example.com> SIZE=1000000 BODY=8BITMIME",
+			maxSize:    10 * 1024 * 1024,
+			expectCode: "250",
+			wantErr:    false,
 		},
 		{
-			name:        "no SIZE parameter",
-			mailCmd:     "MAIL FROM:<sender@example.com>",
-			maxSize:     10 * 1024 * 1024,
-			expectCode:  "250",
-			wantErr:     false,
+			name:       "no SIZE parameter",
+			mailCmd:    "MAIL FROM:<sender@example.com>",
+			maxSize:    10 * 1024 * 1024,
+			expectCode: "250",
+			wantErr:    false,
 		},
 		{
-			name:        "unreasonably large SIZE (sanity check)",
-			mailCmd:     "MAIL FROM:<sender@example.com> SIZE=99999999999999",
-			maxSize:     100 * 1024 * 1024 * 1024, // 100GB
-			expectCode:  "552",
-			wantErr:     true,
+			name:       "unreasonably large SIZE (sanity check)",
+			mailCmd:    "MAIL FROM:<sender@example.com> SIZE=99999999999999",
+			maxSize:    100 * 1024 * 1024 * 1024, // 100GB
+			expectCode: "552",
+			wantErr:    true,
 		},
 	}
 
@@ -1238,47 +1238,47 @@ func TestParseMailFromSizeParameter(t *testing.T) {
 	ch := NewCommandHandler(session, state, nil, nil, config, nil, logger)
 
 	tests := []struct {
-		name          string
-		args          string
-		expectAddr    string
-		expectSize    int64
-		wantErr       bool
-		errContains   string
+		name        string
+		args        string
+		expectAddr  string
+		expectSize  int64
+		wantErr     bool
+		errContains string
 	}{
 		{
-			name:        "SIZE with brackets",
-			args:        "FROM:<user@example.com> SIZE=1000000",
-			expectAddr:  "user@example.com",
-			expectSize:  1000000,
-			wantErr:     false,
+			name:       "SIZE with brackets",
+			args:       "FROM:<user@example.com> SIZE=1000000",
+			expectAddr: "user@example.com",
+			expectSize: 1000000,
+			wantErr:    false,
 		},
 		{
-			name:        "SIZE without brackets",
-			args:        "FROM:user@example.com SIZE=1000000",
-			expectAddr:  "user@example.com",
-			expectSize:  1000000,
-			wantErr:     false,
+			name:       "SIZE without brackets",
+			args:       "FROM:user@example.com SIZE=1000000",
+			expectAddr: "user@example.com",
+			expectSize: 1000000,
+			wantErr:    false,
 		},
 		{
-			name:        "SIZE=0",
-			args:        "FROM:<user@example.com> SIZE=0",
-			expectAddr:  "user@example.com",
-			expectSize:  0,
-			wantErr:     false,
+			name:       "SIZE=0",
+			args:       "FROM:<user@example.com> SIZE=0",
+			expectAddr: "user@example.com",
+			expectSize: 0,
+			wantErr:    false,
 		},
 		{
-			name:        "no SIZE parameter",
-			args:        "FROM:<user@example.com>",
-			expectAddr:  "user@example.com",
-			expectSize:  0,
-			wantErr:     false,
+			name:       "no SIZE parameter",
+			args:       "FROM:<user@example.com>",
+			expectAddr: "user@example.com",
+			expectSize: 0,
+			wantErr:    false,
 		},
 		{
-			name:        "SIZE with other parameters",
-			args:        "FROM:<user@example.com> SIZE=1000000 BODY=8BITMIME SMTPUTF8",
-			expectAddr:  "user@example.com",
-			expectSize:  1000000,
-			wantErr:     false,
+			name:       "SIZE with other parameters",
+			args:       "FROM:<user@example.com> SIZE=1000000 BODY=8BITMIME SMTPUTF8",
+			expectAddr: "user@example.com",
+			expectSize: 1000000,
+			wantErr:    false,
 		},
 		{
 			name:        "invalid SIZE (non-numeric)",

@@ -23,11 +23,12 @@ import (
 
 // DataReaderState represents the state of the data reader
 type DataReaderState struct {
-	InHeaders       bool
-	LastLineEmpty   bool
-	LineCount       int64
-	BytesRead       int64
-	HeadersComplete bool
+	InHeaders             bool
+	LastLineEmpty         bool
+	LineCount             int64
+	BytesRead             int64
+	HeadersComplete       bool
+	LastLineEndedWithCRLF bool // Track if previous line ended with CRLF for enhanced end-of-data validation
 }
 
 // MessageMetadata contains metadata about a message
@@ -143,8 +144,13 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 				"error", err,
 				"remote_addr", dh.conn.RemoteAddr().String(),
 			)
+			// Clear data transfer mode on error
+			dh.state.ClearDataTransferMode(ctx)
 			return nil, err
 		}
+
+		// Track if this line ended with CRLF for enhanced end-of-data validation
+		state.LastLineEndedWithCRLF = (len(line) >= 2 && line[len(line)-2] == '\r' && line[len(line)-1] == '\n')
 
 		// Check message size limit
 		if state.BytesRead > maxSize {
@@ -152,6 +158,8 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 				"bytes_read", state.BytesRead,
 				"max_size", maxSize,
 			)
+			// Clear data transfer mode on error
+			dh.state.ClearDataTransferMode(ctx)
 			return nil, fmt.Errorf("552 5.3.4 Message size exceeds maximum allowed")
 		}
 
@@ -167,6 +175,8 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 					"session_memory_limit", sessionMemoryLimit,
 					"session_id", dh.session.sessionID,
 				)
+				// Clear data transfer mode on error
+				dh.state.ClearDataTransferMode(ctx)
 				return nil, fmt.Errorf("552 5.3.4 Session memory limit exceeded")
 			}
 
@@ -177,6 +187,8 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 						"error", err,
 						"session_id", dh.session.sessionID,
 					)
+					// Clear data transfer mode on error
+					dh.state.ClearDataTransferMode(ctx)
 					return nil, fmt.Errorf("552 5.3.4 Server memory limit exceeded")
 				}
 			}
@@ -222,8 +234,10 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 			}
 		}
 
-		// Write line to buffer (streaming approach - could be optimized further)
-		buffer.Write(line)
+		// Write line to buffer with RFC 5321 §4.5.2 transparent dot-stuffing
+		// Lines starting with "." have the second "." removed during DATA reception
+		processedLine := dh.applyDotStuffing(ctx, line, state)
+		buffer.Write(processedLine)
 
 		// Periodic logging for large messages with memory tracking
 		if state.LineCount%1000 == 0 {
@@ -247,6 +261,8 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 			"session_memory_limit", sessionMemoryLimit,
 			"session_id", dh.session.sessionID,
 		)
+		// Clear data transfer mode on error
+		dh.state.ClearDataTransferMode(ctx)
 		return nil, fmt.Errorf("552 5.3.4 Session memory limit exceeded")
 	}
 
@@ -351,13 +367,33 @@ func (dh *DataHandler) ProcessMessage(ctx context.Context, data []byte) error {
 func (dh *DataHandler) isValidEndOfData(line string, state *DataReaderState, suspiciousPatterns *int) bool {
 	// RFC 5321 § 2.3.8: The sequence "\r\n.\r\n" indicates end of data
 	// RFC 5321 § 2.3.7: Lines must be terminated with CRLF (\r\n)
-	// We must be strict about this to prevent SMTP smuggling attacks
+	// Enhanced security: Only accept ".\r\n" when preceded by a line ending with CRLF
 
 	// Check for strict RFC 5321 compliant end-of-data sequence: ".\r\n"
 	if line == ".\r\n" {
+		// Enhanced validation: Ensure previous line ended with CRLF to prevent SMTP smuggling
+		if dh.config.StrictLineEndings && !state.LastLineEndedWithCRLF && state.LineCount > 1 {
+			dh.logger.WarnContext(context.Background(), "Invalid end-of-data marker - not preceded by CRLF (security violation)",
+				"event_type", "smtp_smuggling_attempt",
+				"line", fmt.Sprintf("%q", line),
+				"line_count", state.LineCount,
+				"prev_line_ended_with_crlf", state.LastLineEndedWithCRLF,
+				"remote_addr", dh.conn.RemoteAddr().String(),
+				"pattern_type", "malformed_end_of_data_sequence",
+			)
+
+			// Log as security event
+			LogSecurityEvent(dh.logger, "malformed_end_sequence", "smtp_smuggling",
+				"End-of-data marker not preceded by CRLF", line, dh.conn.RemoteAddr().String())
+
+			*suspiciousPatterns++
+			return false
+		}
+
 		dh.logger.DebugContext(context.Background(), "Valid RFC 5321 end-of-data marker detected",
 			"line", fmt.Sprintf("%q", line),
 			"line_count", state.LineCount,
+			"prev_line_ended_with_crlf", state.LastLineEndedWithCRLF,
 		)
 		return true
 	}
@@ -415,6 +451,27 @@ func (dh *DataHandler) isValidEndOfData(line string, state *DataReaderState, sus
 	}
 
 	return false
+}
+
+// applyDotStuffing implements RFC 5321 §4.5.2 transparent dot-stuffing
+// Lines starting with "." have the second "." removed during DATA reception
+func (dh *DataHandler) applyDotStuffing(ctx context.Context, line []byte, state *DataReaderState) []byte {
+	// RFC 5321 §4.5.2: Before sending a line of mail text, the SMTP client
+	// checks the first character of the line. If it is a period, another
+	// period is inserted at the beginning of the line. Conversely, the server
+	// removes the extra period when receiving mail data.
+
+	// Check if line starts with ".." (dot-stuffed)
+	if len(line) >= 2 && line[0] == '.' && line[1] == '.' {
+		dh.logger.DebugContext(ctx, "Applying transparent dot-stuffing",
+			"line_number", state.LineCount,
+			"original_line", fmt.Sprintf("%q", string(line)),
+			"processed_line", fmt.Sprintf("%q", string(line[1:])),
+		)
+		return line[1:] // Remove the first dot, leaving the original content
+	}
+
+	return line // No dot-stuffing needed
 }
 
 // validateLineEndings validates line endings per RFC 5321 § 2.3.7

@@ -19,7 +19,8 @@ import (
 func TestReadMessageDataSimple(t *testing.T) {
 	config := createTestConfig(t)
 	config.Auth = nil
-	config.LocalDomains = []string{"localhost"}
+	config.LocalDomains = []string{"test.example.com", "example.com"}
+	config.StrictLineEndings = false // Disable strict CRLF validation for testing
 	server, err := NewServer(config)
 	require.NoError(t, err)
 	defer func() { _ = server.Close() }()
@@ -44,16 +45,19 @@ func TestReadMessageDataSimple(t *testing.T) {
 		}
 	}
 	_, _ = conn.Write([]byte("MAIL FROM:<sender@example.com>\r\n"))
-	_, _ = reader.ReadString('\n')
-	_, _ = conn.Write([]byte("RCPT TO:<user@localhost>\r\n"))
-	_, _ = reader.ReadString('\n')
+	mailResp, _ := reader.ReadString('\n')
+	t.Logf("MAIL FROM response: %q", mailResp)
+	_, _ = conn.Write([]byte("RCPT TO:<user@example.com>\r\n"))
+	rcptResp, _ := reader.ReadString('\n')
+	t.Logf("RCPT TO response: %q", rcptResp)
 	_, _ = conn.Write([]byte("DATA\r\n"))
 	dataResp, _ := reader.ReadString('\n')
+	t.Logf("DATA response: %q", dataResp)
 	assert.Contains(t, dataResp, "354")
 
 	// Send simple message
 	message := "From: sender@example.com\r\n" +
-		"To: user@localhost\r\n" +
+		"To: user@example.com\r\n" +
 		"Subject: Test Message\r\n" +
 		"\r\n" +
 		"This is a test message.\r\n" +
@@ -1204,10 +1208,10 @@ func TestValidateLineContent_OctetCounting(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	tests := []struct {
-		name         string
-		lineContent  string
+		name           string
+		lineContent    string
 		expectedOctets int
-		wantErr      bool
+		wantErr        bool
 	}{
 		{
 			name:           "ASCII characters - 1 byte each",

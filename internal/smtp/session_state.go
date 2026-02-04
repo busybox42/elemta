@@ -45,6 +45,32 @@ func (p SMTPPhase) String() string {
 	}
 }
 
+// DataTransferMode represents the current data transfer mode for desynchronization attack prevention
+type DataTransferMode int
+
+const (
+	DataModeNone DataTransferMode = iota
+	DataModeDATA
+	DataModeBDAT
+	DataModeBURL
+)
+
+// String returns the string representation of DataTransferMode
+func (m DataTransferMode) String() string {
+	switch m {
+	case DataModeNone:
+		return "NONE"
+	case DataModeDATA:
+		return "DATA"
+	case DataModeBDAT:
+		return "BDAT"
+	case DataModeBURL:
+		return "BURL"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 // SessionState manages the state of an SMTP session with thread safety
 type SessionState struct {
 	mu               sync.RWMutex
@@ -65,6 +91,7 @@ type SessionState struct {
 	bytesReceived    int64
 	errors           []error
 	logger           *slog.Logger
+	dataTransferMode DataTransferMode // Track data transfer mode to prevent desynchronization attacks
 }
 
 // NewSessionState creates a new session state manager
@@ -77,6 +104,7 @@ func NewSessionState(logger *slog.Logger) *SessionState {
 		sessionStartTime: now,
 		lastActivityTime: now,
 		logger:           logger.With("component", "session-state"),
+		dataTransferMode: DataModeNone,
 	}
 }
 
@@ -415,6 +443,7 @@ func (ss *SessionState) Reset(ctx context.Context) {
 	ss.rcptTo = ss.rcptTo[:0] // Clear but keep capacity
 	ss.dataSize = 0
 	ss.smtputf8 = false
+	ss.dataTransferMode = DataModeNone // Clear data transfer mode on reset
 	ss.lastActivityTime = time.Now()
 
 	ss.logger.DebugContext(ctx, "Session state reset for new transaction")
@@ -500,4 +529,99 @@ func (ss *SessionState) CanAcceptCommand(ctx context.Context, command string) bo
 	}
 
 	return false
+}
+
+// SetDataTransferMode sets the data transfer mode (thread-safe)
+func (ss *SessionState) SetDataTransferMode(ctx context.Context, mode DataTransferMode) error {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	// Prevent mixing of different data transfer modes (desynchronization attack prevention)
+	if ss.dataTransferMode != DataModeNone && ss.dataTransferMode != mode {
+		err := fmt.Errorf("cannot switch from %s to %s - data transfer mode conflict", ss.dataTransferMode.String(), mode.String())
+		ss.logger.WarnContext(ctx, "Data transfer mode conflict detected",
+			"event_type", "desynchronization_attempt",
+			"current_mode", ss.dataTransferMode.String(),
+			"requested_mode", mode.String(),
+			"error", err,
+		)
+		return err
+	}
+
+	ss.dataTransferMode = mode
+	ss.lastActivityTime = time.Now()
+
+	ss.logger.DebugContext(ctx, "Data transfer mode set",
+		"mode", mode.String(),
+	)
+
+	return nil
+}
+
+// GetDataTransferMode returns the current data transfer mode (thread-safe)
+func (ss *SessionState) GetDataTransferMode() DataTransferMode {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	return ss.dataTransferMode
+}
+
+// CanAcceptDataCommand checks if a data command (DATA/BDAT/BURL) can be accepted
+func (ss *SessionState) CanAcceptDataCommand(ctx context.Context, command string) bool {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+
+	command = strings.ToUpper(strings.TrimSpace(command))
+
+	// Check if we're already in a different data transfer mode
+	switch ss.dataTransferMode {
+	case DataModeDATA:
+		if command != "DATA" {
+			ss.logger.WarnContext(ctx, "Data command rejected - mode conflict",
+				"event_type", "desynchronization_attempt",
+				"current_mode", ss.dataTransferMode.String(),
+				"command", command,
+			)
+			return false
+		}
+	case DataModeBDAT:
+		if command != "BDAT" {
+			ss.logger.WarnContext(ctx, "Data command rejected - mode conflict",
+				"event_type", "desynchronization_attempt",
+				"current_mode", ss.dataTransferMode.String(),
+				"command", command,
+			)
+			return false
+		}
+	case DataModeBURL:
+		if command != "BURL" {
+			ss.logger.WarnContext(ctx, "Data command rejected - mode conflict",
+				"event_type", "desynchronization_attempt",
+				"current_mode", ss.dataTransferMode.String(),
+				"command", command,
+			)
+			return false
+		}
+	}
+
+	// Check phase compatibility - data commands only allowed in RCPT phase
+	if ss.phase != PhaseRcpt {
+		ss.logger.WarnContext(ctx, "Data command rejected - invalid phase",
+			"current_phase", ss.phase.String(),
+			"command", command,
+		)
+		return false
+	}
+
+	return true
+}
+
+// ClearDataTransferMode clears the data transfer mode (thread-safe)
+func (ss *SessionState) ClearDataTransferMode(ctx context.Context) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	ss.dataTransferMode = DataModeNone
+	ss.lastActivityTime = time.Now()
+
+	ss.logger.DebugContext(ctx, "Data transfer mode cleared")
 }

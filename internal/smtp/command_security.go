@@ -95,7 +95,7 @@ func NewCommandSecurityManager(logger *slog.Logger) *CommandSecurityManager {
 	}
 }
 
-// ValidateCommand performs comprehensive command validation with timeout and memory protection
+// ValidateCommand performs comprehensive security validation on SMTP commands
 func (csm *CommandSecurityManager) ValidateCommand(ctx context.Context, line string) error {
 	// Create a context with timeout for command processing
 	timeoutCtx, cancel := context.WithTimeout(ctx, csm.config.CommandTimeout)
@@ -491,15 +491,16 @@ func (csm *CommandSecurityManager) validateEmailAddress(ctx context.Context, add
 
 	// Basic email validation
 	if !strings.Contains(addr, "@") || len(addr) < 3 {
-		csm.logger.WarnContext(ctx, "Invalid email address format",
+		csm.logger.WarnContext(ctx, "Email validation failed",
 			"address", addr,
+			"reason", "invalid_format",
 		)
 		return fmt.Errorf("501 5.1.3 Invalid email address format")
 	}
 
 	// Check for valid email characters (RFC 5321 compliant)
-	// Require at least one TLD (e.g., .com, .org) for proper email validation
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$`)
+	// Allow both full domains with TLD and single-label domains (like localhost) for local delivery
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*(\.[a-zA-Z]{2,})?$`)
 	if !emailRegex.MatchString(addr) {
 		csm.logger.WarnContext(ctx, "Invalid email address format",
 			"address", addr,
