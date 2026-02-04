@@ -254,32 +254,8 @@ func (s *Session) processCommands(ctx context.Context) error {
 			// Continue processing
 		}
 
-		// Set read timeout
-		if err := s.conn.SetReadDeadline(time.Now().Add(5 * time.Minute)); err != nil {
-			s.logger.WarnContext(ctx, "Failed to set read deadline", "error", err)
-		}
-
-		// Read command line (one at a time - no pipelining)
-		line, err := s.reader.ReadString('\n')
-		if err != nil {
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				s.logger.InfoContext(ctx, "Session timeout")
-				if writeErr := s.write("421 4.4.2 Timeout"); writeErr != nil {
-					s.logger.ErrorContext(ctx, "Failed to send timeout response",
-						"error", writeErr,
-						"client", s.remoteAddr)
-				}
-				return fmt.Errorf("session timeout")
-			}
-
-			s.logger.InfoContext(ctx, "Client disconnected", "error", err)
-			return nil // Normal disconnection
-		}
-
-		// Update activity tracking
-		s.state.UpdateActivity(ctx)
-
-		// Handle special case for DATA command
+		// Handle special case for DATA phase - must check BEFORE reading line
+		// to prevent consuming message data in the command reader
 		if s.state.GetPhase() == PhaseData {
 			if err := s.handleDataPhase(ctx); err != nil {
 				s.logger.ErrorContext(ctx, "Data phase handling failed", "error", err)
@@ -304,6 +280,31 @@ func (s *Session) processCommands(ctx context.Context) error {
 			}
 			continue
 		}
+
+		// Set read timeout
+		if err := s.conn.SetReadDeadline(time.Now().Add(5 * time.Minute)); err != nil {
+			s.logger.WarnContext(ctx, "Failed to set read deadline", "error", err)
+		}
+
+		// Read command line (one at a time - no pipelining)
+		line, err := s.reader.ReadString('\n')
+		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				s.logger.InfoContext(ctx, "Session timeout")
+				if writeErr := s.write("421 4.4.2 Timeout"); writeErr != nil {
+					s.logger.ErrorContext(ctx, "Failed to send timeout response",
+						"error", writeErr,
+						"client", s.remoteAddr)
+				}
+				return fmt.Errorf("session timeout")
+			}
+
+			s.logger.InfoContext(ctx, "Client disconnected", "error", err)
+			return nil // Normal disconnection
+		}
+
+		// Update activity tracking
+		s.state.UpdateActivity(ctx)
 
 		// Process regular commands
 		if err := s.commandHandler.ProcessCommand(ctx, line); err != nil {

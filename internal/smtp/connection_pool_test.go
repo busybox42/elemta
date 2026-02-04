@@ -199,7 +199,7 @@ func TestConnectionPoolReuseConnections(t *testing.T) {
 
 	connID := 0
 	config := PoolConfig{
-		MinIdle:     2,
+		MinIdle:     0,
 		MaxIdle:     5,
 		MaxActive:   10,
 		MaxLifetime: 5 * time.Minute,
@@ -288,11 +288,12 @@ func TestConnectionPoolIdleTimeout(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	config := PoolConfig{
-		MinIdle:     1,
-		MaxIdle:     2,
-		MaxActive:   5,
-		MaxLifetime: 5 * time.Minute,
-		IdleTimeout: 100 * time.Millisecond,
+		MinIdle:      1,
+		MaxIdle:      2,
+		MaxActive:    5,
+		MaxLifetime:  5 * time.Minute,
+		IdleTimeout:  100 * time.Millisecond,
+		TestOnBorrow: true,
 		Factory: func(ctx context.Context) (interface{}, error) {
 			return &mockConnection{}, nil
 		},
