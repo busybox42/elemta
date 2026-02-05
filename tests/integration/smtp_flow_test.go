@@ -315,7 +315,7 @@ func TestIntegration_ConcurrentConnections(t *testing.T) {
 
 // TestIntegration_AuthenticationFlow tests SMTP authentication
 func TestIntegration_AuthenticationFlow(t *testing.T) {
-    if testing.Short() {
+	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
@@ -362,7 +362,7 @@ func TestIntegration_AuthenticationFlow(t *testing.T) {
 
 // TestIntegration_TLSFlow tests TLS negotiation and encrypted communication
 func TestIntegration_TLSFlow(t *testing.T) {
-    if testing.Short() {
+	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
@@ -399,7 +399,7 @@ func TestIntegration_TLSFlow(t *testing.T) {
 
 // TestIntegration_ErrorRecovery tests error handling and recovery
 func TestIntegration_ErrorRecovery(t *testing.T) {
-    if testing.Short() {
+	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
@@ -454,7 +454,7 @@ func TestIntegration_ErrorRecovery(t *testing.T) {
 
 // TestIntegration_LargeMessages tests handling of large messages
 func TestIntegration_LargeMessages(t *testing.T) {
-    if testing.Short() {
+	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
@@ -502,7 +502,7 @@ func TestIntegration_LargeMessages(t *testing.T) {
 
 // TestIntegration_PersistentConnection tests connection persistence
 func TestIntegration_PersistentConnection(t *testing.T) {
-    if testing.Short() {
+	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
@@ -539,7 +539,7 @@ func TestIntegration_PersistentConnection(t *testing.T) {
 
 // TestIntegration_TimeoutHandling tests timeout scenarios
 func TestIntegration_TimeoutHandling(t *testing.T) {
-    if testing.Short() {
+	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
