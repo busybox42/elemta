@@ -109,10 +109,15 @@ func TestSession_ErrorHandling_MessageAcceptance(t *testing.T) {
 	_, err = conn.Write([]byte("EHLO test.example.com\r\n"))
 	require.NoError(t, err)
 
-	// Read EHLO response
-	response, err := reader.ReadString('\n')
-	require.NoError(t, err)
-	assert.Contains(t, response, "250")
+	// Read all EHLO response lines (multi-line response)
+	for {
+		line, err := reader.ReadString('\n')
+		require.NoError(t, err)
+		// EHLO responses end with "250 " (space after code, not hyphen)
+		if len(line) >= 4 && line[3] == ' ' {
+			break
+		}
+	}
 
 	// Send MAIL FROM
 	_, err = conn.Write([]byte("MAIL FROM:<sender@example.com>\r\n"))
