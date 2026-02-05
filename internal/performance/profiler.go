@@ -227,68 +227,54 @@ func (p *Profiler) GenerateGoroutineProfile() error {
 	return nil
 }
 
-// GenerateBlockProfile generates a blocking profile
-func (p *Profiler) GenerateBlockProfile() error {
+// generateRuntimeProfile is a helper to generate runtime profiles (block/mutex)
+func (p *Profiler) generateRuntimeProfile(profileType, profileName string, setupFn, teardownFn func()) error {
 	if !p.enabled {
 		return fmt.Errorf("profiler not enabled")
 	}
 
-	runtime.SetBlockProfileRate(1)
-	defer runtime.SetBlockProfileRate(0)
+	if setupFn != nil {
+		setupFn()
+	}
+	if teardownFn != nil {
+		defer teardownFn()
+	}
 
-	filename := fmt.Sprintf("%s/block-%s.prof", p.profileDir, time.Now().Format("20060102-150405"))
+	filename := fmt.Sprintf("%s/%s-%s.prof", p.profileDir, profileType, time.Now().Format("20060102-150405"))
 	f, err := os.Create(filename)
 	if err != nil {
-		return fmt.Errorf("failed to create block profile: %w", err)
+		return fmt.Errorf("failed to create %s profile: %w", profileType, err)
 	}
 	defer func() { _ = f.Close() }()
 
-	profile := pprof.Lookup("block")
+	profile := pprof.Lookup(profileName)
 	if profile == nil {
-		return fmt.Errorf("block profile not available")
+		return fmt.Errorf("%s profile not available", profileType)
 	}
 
 	if err := profile.WriteTo(f, 0); err != nil {
-		return fmt.Errorf("failed to write block profile: %w", err)
+		return fmt.Errorf("failed to write %s profile: %w", profileType, err)
 	}
 
 	p.metrics.ProfilesGenerated.Add(1)
 	p.metrics.LastProfileTime.Store(time.Now().UnixNano())
 
-	p.logger.Info("block profile generated", "file", filename)
+	p.logger.Info(profileType+" profile generated", "file", filename)
 	return nil
+}
+
+// GenerateBlockProfile generates a blocking profile
+func (p *Profiler) GenerateBlockProfile() error {
+	return p.generateRuntimeProfile("block", "block",
+		func() { runtime.SetBlockProfileRate(1) },
+		func() { runtime.SetBlockProfileRate(0) })
 }
 
 // GenerateMutexProfile generates a mutex contention profile
 func (p *Profiler) GenerateMutexProfile() error {
-	if !p.enabled {
-		return fmt.Errorf("profiler not enabled")
-	}
-
-	runtime.SetMutexProfileFraction(1)
-	defer runtime.SetMutexProfileFraction(0)
-
-	filename := fmt.Sprintf("%s/mutex-%s.prof", p.profileDir, time.Now().Format("20060102-150405"))
-	f, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("failed to create mutex profile: %w", err)
-	}
-	defer func() { _ = f.Close() }()
-
-	profile := pprof.Lookup("mutex")
-	if profile == nil {
-		return fmt.Errorf("mutex profile not available")
-	}
-
-	if err := profile.WriteTo(f, 0); err != nil {
-		return fmt.Errorf("failed to write mutex profile: %w", err)
-	}
-
-	p.metrics.ProfilesGenerated.Add(1)
-	p.metrics.LastProfileTime.Store(time.Now().UnixNano())
-
-	p.logger.Info("mutex profile generated", "file", filename)
-	return nil
+	return p.generateRuntimeProfile("mutex", "mutex",
+		func() { runtime.SetMutexProfileFraction(1) },
+		func() { runtime.SetMutexProfileFraction(0) })
 }
 
 // StartTrace starts execution tracing
