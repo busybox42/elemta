@@ -52,10 +52,10 @@ func (s *ValkeyStore) Close() {
 	s.client.Close()
 }
 
-// IncrDelivered increments the delivered counter
-func (s *ValkeyStore) IncrDelivered(ctx context.Context) error {
-	key := s.prefix + "delivered"
-	hourKey := s.prefix + "hourly:" + time.Now().Format("2006-01-02:15") + ":delivered"
+// incrCounter is a helper to increment a metric counter with hourly tracking
+func (s *ValkeyStore) incrCounter(ctx context.Context, counterName string) error {
+	key := s.prefix + counterName
+	hourKey := s.prefix + "hourly:" + time.Now().Format("2006-01-02:15") + ":" + counterName
 
 	cmds := []valkey.Completed{
 		s.client.B().Incr().Key(key).Build(),
@@ -72,44 +72,19 @@ func (s *ValkeyStore) IncrDelivered(ctx context.Context) error {
 	return nil
 }
 
+// IncrDelivered increments the delivered counter
+func (s *ValkeyStore) IncrDelivered(ctx context.Context) error {
+	return s.incrCounter(ctx, "delivered")
+}
+
 // IncrFailed increments the failed counter
 func (s *ValkeyStore) IncrFailed(ctx context.Context) error {
-	key := s.prefix + "failed"
-	hourKey := s.prefix + "hourly:" + time.Now().Format("2006-01-02:15") + ":failed"
-
-	cmds := []valkey.Completed{
-		s.client.B().Incr().Key(key).Build(),
-		s.client.B().Incr().Key(hourKey).Build(),
-		s.client.B().Expire().Key(hourKey).Seconds(86400).Build(),
-		s.client.B().Set().Key(s.prefix + "last_updated").Value(time.Now().Format(time.RFC3339)).Build(),
-	}
-
-	for _, cmd := range cmds {
-		if err := s.client.Do(ctx, cmd).Error(); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.incrCounter(ctx, "failed")
 }
 
 // IncrDeferred increments the deferred counter
 func (s *ValkeyStore) IncrDeferred(ctx context.Context) error {
-	key := s.prefix + "deferred"
-	hourKey := s.prefix + "hourly:" + time.Now().Format("2006-01-02:15") + ":deferred"
-
-	cmds := []valkey.Completed{
-		s.client.B().Incr().Key(key).Build(),
-		s.client.B().Incr().Key(hourKey).Build(),
-		s.client.B().Expire().Key(hourKey).Seconds(86400).Build(),
-		s.client.B().Set().Key(s.prefix + "last_updated").Value(time.Now().Format(time.RFC3339)).Build(),
-	}
-
-	for _, cmd := range cmds {
-		if err := s.client.Do(ctx, cmd).Error(); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.incrCounter(ctx, "deferred")
 }
 
 // IncrReceived increments the received counter
