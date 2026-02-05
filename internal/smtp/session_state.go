@@ -529,12 +529,12 @@ func (ss *SessionState) CanAcceptCommand(ctx context.Context, command string) bo
 
 	// Define which commands are allowed in each phase
 	allowedCommands := map[SMTPPhase][]string{
-		PhaseInit: {"HELO", "EHLO", "QUIT", "RSET", "NOOP", "HELP", "AUTH", "STARTTLS", "XDEBUG"},
-		PhaseMail: {"MAIL", "AUTH", "STARTTLS", "QUIT", "RSET", "NOOP", "HELP", "XDEBUG"}, // Allow AUTH after EHLO
-		PhaseRcpt: {"RCPT", "QUIT", "RSET", "NOOP", "HELP", "DATA", "XDEBUG"},
+		PhaseInit: {"HELO", "EHLO", "QUIT", "RSET", "NOOP", "HELP", "AUTH", "STARTTLS", "VRFY", "EXPN", "XDEBUG"},
+		PhaseMail: {"MAIL", "AUTH", "STARTTLS", "QUIT", "RSET", "NOOP", "HELP", "VRFY", "EXPN", "XDEBUG"}, // Allow AUTH after EHLO
+		PhaseRcpt: {"RCPT", "QUIT", "RSET", "NOOP", "HELP", "DATA", "VRFY", "EXPN", "XDEBUG"},
 		PhaseData: {"QUIT", "RSET", "NOOP", "HELP", "XDEBUG"},
 		PhaseAuth: {"AUTH", "QUIT", "RSET", "NOOP", "HELP", "XDEBUG"},
-		PhaseTLS:  {"HELO", "EHLO", "QUIT", "RSET", "NOOP", "HELP", "AUTH", "MAIL", "XDEBUG"},
+		PhaseTLS:  {"HELO", "EHLO", "QUIT", "RSET", "NOOP", "HELP", "AUTH", "MAIL", "VRFY", "EXPN", "XDEBUG"},
 		PhaseQuit: {}, // No commands allowed after QUIT
 	}
 

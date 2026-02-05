@@ -843,8 +843,9 @@ func (ch *CommandHandler) validateEmailAddress(ctx context.Context, addr string)
 		return fmt.Errorf("address too long")
 	}
 
-	// Basic email validation
-	if !strings.Contains(addr, "@") || len(addr) < 3 {
+	// Basic email validation - must have @ and both local-part and domain
+	atIndex := strings.Index(addr, "@")
+	if atIndex == -1 || atIndex == 0 || atIndex == len(addr)-1 {
 		ch.logger.WarnContext(ctx, "Email validation failed",
 			"address", addr,
 			"reason", "invalid_format",

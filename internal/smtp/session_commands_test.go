@@ -146,7 +146,7 @@ func TestHandleEHLO(t *testing.T) {
 	allResponses := strings.Join(responses, "")
 	assert.Contains(t, allResponses, "SIZE")
 	assert.Contains(t, allResponses, "8BITMIME")
-	assert.Contains(t, allResponses, "PIPELINING")
+	// Note: PIPELINING is intentionally NOT advertised (see session_commands.go:166)
 	assert.Contains(t, allResponses, "HELP")
 }
 
