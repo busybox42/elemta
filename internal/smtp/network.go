@@ -1,32 +1,57 @@
 package smtp
 
 import (
+	"fmt"
+	"log/slog"
 	"net"
 	"strings"
 )
 
 // Private network ranges as defined in RFC 1918 and RFC 4193
-var privateNetworks = []*net.IPNet{
-	// IPv4 private networks
-	parseNetwork("10.0.0.0/8"),     // Class A private
-	parseNetwork("172.16.0.0/12"),  // Class B private
-	parseNetwork("192.168.0.0/16"), // Class C private
-	parseNetwork("127.0.0.0/8"),    // Loopback
-	parseNetwork("169.254.0.0/16"), // Link-local
+var privateNetworks []*net.IPNet
 
-	// IPv6 private networks
-	parseNetwork("::1/128"),       // IPv6 loopback
-	parseNetwork("fc00::/7"),      // IPv6 unique local addresses
-	parseNetwork("fe80::/10"),     // IPv6 link-local
-	parseNetwork("::ffff:0:0/96"), // IPv4-mapped IPv6 addresses
+func init() {
+	networks, err := initPrivateNetworks()
+	if err != nil {
+		slog.Error("Failed to initialize private networks", "error", err)
+		privateNetworks = []*net.IPNet{}
+		return
+	}
+	privateNetworks = networks
 }
 
-func parseNetwork(cidr string) *net.IPNet {
+func initPrivateNetworks() ([]*net.IPNet, error) {
+	cidrs := []string{
+		// IPv4 private networks
+		"10.0.0.0/8",     // Class A private
+		"172.16.0.0/12",  // Class B private
+		"192.168.0.0/16", // Class C private
+		"127.0.0.0/8",    // Loopback
+		"169.254.0.0/16", // Link-local
+
+		// IPv6 private networks
+		"::1/128",   // IPv6 loopback
+		"fc00::/7",  // IPv6 unique local addresses
+		"fe80::/10", // IPv6 link-local
+	}
+
+	networks := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		network, err := parseNetwork(cidr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse %s: %w", cidr, err)
+		}
+		networks = append(networks, network)
+	}
+	return networks, nil
+}
+
+func parseNetwork(cidr string) (*net.IPNet, error) {
 	_, network, err := net.ParseCIDR(cidr)
 	if err != nil {
-		panic(err) // These are hardcoded, should never fail
+		return nil, fmt.Errorf("invalid CIDR notation %q: %w", cidr, err)
 	}
-	return network
+	return network, nil
 }
 
 // IsPrivateNetwork checks if an IP address is in a private network range
@@ -118,7 +143,8 @@ func IsAllowedRelay(ip net.IP, allowedRelays []string) bool {
 			// CIDR notation
 			_, network, err := net.ParseCIDR(relay)
 			if err != nil {
-				continue // Skip invalid CIDR
+				slog.Warn("Invalid CIDR in allowed relays", "cidr", relay, "error", err)
+				continue // Skip invalid instead of crashing
 			}
 			if network.Contains(ip) {
 				return true

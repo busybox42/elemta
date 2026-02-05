@@ -53,6 +53,8 @@ type Server struct {
 	apiKeyManager  *auth.APIKeyManager
 	sessionManager *auth.SessionManager
 	authMiddleware *AuthMiddleware
+	rateLimiter    *RateLimitMiddleware
+	corsMiddleware *CORSMiddleware
 	metricsStore   MetricsStore
 }
 
@@ -82,12 +84,14 @@ type HourlyStatsData struct {
 
 // Config represents API server configuration
 type Config struct {
-	Enabled     bool   `toml:"enabled" json:"enabled"`
-	ListenAddr  string `toml:"listen_addr" json:"listen_addr"`
-	WebRoot     string `toml:"web_root" json:"web_root"`
-	AuthEnabled bool   `toml:"auth_enabled" json:"auth_enabled"`
-	AuthFile    string `toml:"auth_file" json:"auth_file"`
-	ValkeyAddr  string `toml:"valkey_addr" json:"valkey_addr"`
+	Enabled     bool            `toml:"enabled" json:"enabled"`
+	ListenAddr  string          `toml:"listen_addr" json:"listen_addr"`
+	WebRoot     string          `toml:"web_root" json:"web_root"`
+	AuthEnabled bool            `toml:"auth_enabled" json:"auth_enabled"`
+	AuthFile    string          `toml:"auth_file" json:"auth_file"`
+	ValkeyAddr  string          `toml:"valkey_addr" json:"valkey_addr"`
+	RateLimit   RateLimitConfig `toml:"rate_limit" json:"rate_limit"`
+	CORS        CORSConfig      `toml:"cors" json:"cors"`
 }
 
 // NewServer creates a new API server
@@ -140,6 +144,12 @@ func NewServer(config *Config, mainConfig *MainConfig, queueDir string, failedQu
 			return nil, fmt.Errorf("failed to initialize authentication: %w", err)
 		}
 	}
+
+	// Initialize rate limiter
+	server.rateLimiter = NewRateLimitMiddleware(config.RateLimit)
+
+	// Initialize CORS middleware
+	server.corsMiddleware = NewCORSMiddleware(config.CORS)
 
 	return server, nil
 }
@@ -253,28 +263,19 @@ func (s *Server) Start() error {
 	r := mux.NewRouter()
 
 	// Apply CORS middleware first - before any other middleware
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Set CORS headers for all requests
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			w.Header().Set("Access-Control-Max-Age", "86400")
-
-			// Handle preflight requests
-			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-
-			next.ServeHTTP(w, r)
-		})
-	})
+	if s.corsMiddleware != nil {
+		r.Use(s.corsMiddleware.Handler)
+	}
 
 	// Apply other middleware
 	r.Use(LoggingMiddleware)
+
+	// Apply rate limiting middleware
+	if s.rateLimiter != nil {
+		r.Use(s.rateLimiter.Limit)
+	}
+
 	if s.authMiddleware != nil {
-		// Note: Don't use s.authMiddleware.CORS since we handle CORS above
 		// Only apply auth-related middleware for protected routes
 		log.Printf("API Server: Auth middleware available")
 	}
@@ -425,6 +426,11 @@ func (s *Server) Start() error {
 
 // Stop stops the API server
 func (s *Server) Stop() error {
+	// Stop rate limiter cleanup goroutine
+	if s.rateLimiter != nil {
+		s.rateLimiter.Stop()
+	}
+
 	if s.httpServer == nil {
 		return nil
 	}

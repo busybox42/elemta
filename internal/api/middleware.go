@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/busybox42/elemta/internal/auth"
+	"golang.org/x/time/rate"
 )
 
 // AuthContext represents authentication context
@@ -232,7 +236,96 @@ func (am *AuthMiddleware) writeError(w http.ResponseWriter, statusCode int, mess
 	}
 }
 
-// CORS middleware for handling Cross-Origin Resource Sharing
+// CORSConfig holds CORS configuration
+type CORSConfig struct {
+	Enabled          bool     `toml:"enabled" json:"enabled"`
+	AllowedOrigins   []string `toml:"allowed_origins" json:"allowed_origins"`
+	AllowedMethods   []string `toml:"allowed_methods" json:"allowed_methods"`
+	AllowedHeaders   []string `toml:"allowed_headers" json:"allowed_headers"`
+	AllowCredentials bool     `toml:"allow_credentials" json:"allow_credentials"`
+	MaxAge           int      `toml:"max_age" json:"max_age"`
+}
+
+// CORSMiddleware provides configurable CORS support
+type CORSMiddleware struct {
+	config CORSConfig
+}
+
+// NewCORSMiddleware creates a new CORS middleware
+func NewCORSMiddleware(config CORSConfig) *CORSMiddleware {
+	// Set defaults if not specified
+	if len(config.AllowedMethods) == 0 {
+		config.AllowedMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	}
+	if len(config.AllowedHeaders) == 0 {
+		config.AllowedHeaders = []string{"Content-Type", "Authorization"}
+	}
+	if config.MaxAge == 0 {
+		config.MaxAge = 86400 // 24 hours
+	}
+
+	return &CORSMiddleware{config: config}
+}
+
+// Handler returns the CORS middleware handler
+func (cm *CORSMiddleware) Handler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !cm.config.Enabled {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		origin := r.Header.Get("Origin")
+
+		// Validate origin against whitelist
+		allowed := false
+		allowedOrigin := ""
+		for _, allowedOrg := range cm.config.AllowedOrigins {
+			if allowedOrg == "*" || allowedOrg == origin {
+				allowed = true
+				allowedOrigin = origin
+				if allowedOrg == "*" {
+					allowedOrigin = "*"
+				}
+				break
+			}
+		}
+
+		if !allowed && origin != "" {
+			// Origin not allowed, reject preflight requests
+			if r.Method == "OPTIONS" {
+				http.Error(w, "Origin not allowed", http.StatusForbidden)
+				return
+			}
+			// For non-preflight requests, continue without CORS headers
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Set CORS headers only for allowed origins
+		if allowed && allowedOrigin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+
+			if cm.config.AllowCredentials {
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+
+			w.Header().Set("Access-Control-Allow-Methods", strings.Join(cm.config.AllowedMethods, ", "))
+			w.Header().Set("Access-Control-Allow-Headers", strings.Join(cm.config.AllowedHeaders, ", "))
+			w.Header().Set("Access-Control-Max-Age", fmt.Sprintf("%d", cm.config.MaxAge))
+		}
+
+		// Handle preflight requests
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// CORS middleware for handling Cross-Origin Resource Sharing (deprecated, use NewCORSMiddleware)
 func (am *AuthMiddleware) CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Set CORS headers
@@ -252,21 +345,147 @@ func (am *AuthMiddleware) CORS(next http.Handler) http.Handler {
 }
 
 // RateLimitMiddleware provides basic rate limiting (simplified implementation)
+// RateLimitConfig holds rate limiting configuration
+type RateLimitConfig struct {
+	Enabled           bool    `toml:"enabled" json:"enabled"`
+	RequestsPerSecond float64 `toml:"requests_per_second" json:"requests_per_second"`
+	Burst             int     `toml:"burst" json:"burst"`
+}
+
+// RateLimitMiddleware provides per-IP rate limiting
 type RateLimitMiddleware struct {
-	// In a production system, you'd use a more sophisticated rate limiter
-	// like golang.org/x/time/rate or a Redis-based solution
+	limiters        map[string]*rate.Limiter
+	mu              sync.RWMutex
+	rate            rate.Limit
+	burst           int
+	cleanupInterval time.Duration
+	enabled         bool
+	stopCleanup     chan struct{}
 }
 
 // NewRateLimitMiddleware creates a new rate limit middleware
-func NewRateLimitMiddleware() *RateLimitMiddleware {
-	return &RateLimitMiddleware{}
+func NewRateLimitMiddleware(config RateLimitConfig) *RateLimitMiddleware {
+	if !config.Enabled {
+		return &RateLimitMiddleware{enabled: false}
+	}
+
+	requestsPerSecond := config.RequestsPerSecond
+	if requestsPerSecond <= 0 {
+		requestsPerSecond = 10.0
+	}
+
+	burst := config.Burst
+	if burst <= 0 {
+		burst = 20
+	}
+
+	rl := &RateLimitMiddleware{
+		limiters:        make(map[string]*rate.Limiter),
+		rate:            rate.Limit(requestsPerSecond),
+		burst:           burst,
+		cleanupInterval: 5 * time.Minute,
+		enabled:         true,
+		stopCleanup:     make(chan struct{}),
+	}
+
+	go rl.cleanupLoop()
+	return rl
 }
 
-// Limit applies rate limiting (placeholder implementation)
+// Stop stops the rate limiter cleanup goroutine
+func (rl *RateLimitMiddleware) Stop() {
+	if rl.enabled && rl.stopCleanup != nil {
+		close(rl.stopCleanup)
+	}
+}
+
+// cleanupLoop periodically removes idle limiters to prevent memory leaks
+func (rl *RateLimitMiddleware) cleanupLoop() {
+	ticker := time.NewTicker(rl.cleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			rl.mu.Lock()
+			// Remove limiters that haven't been used recently
+			// This is a simple implementation; production might track last access time
+			if len(rl.limiters) > 1000 {
+				rl.limiters = make(map[string]*rate.Limiter)
+			}
+			rl.mu.Unlock()
+		case <-rl.stopCleanup:
+			return
+		}
+	}
+}
+
+// getLimiter returns the rate limiter for a given IP
+func (rl *RateLimitMiddleware) getLimiter(ip string) *rate.Limiter {
+	rl.mu.RLock()
+	limiter, exists := rl.limiters[ip]
+	rl.mu.RUnlock()
+
+	if exists {
+		return limiter
+	}
+
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	limiter, exists = rl.limiters[ip]
+	if exists {
+		return limiter
+	}
+
+	limiter = rate.NewLimiter(rl.rate, rl.burst)
+	rl.limiters[ip] = limiter
+	return limiter
+}
+
+// extractIP extracts the client IP from the request
+func extractIP(r *http.Request) string {
+	// Check X-Forwarded-For header first (for proxies)
+	forwarded := r.Header.Get("X-Forwarded-For")
+	if forwarded != "" {
+		// Take the first IP in the list
+		ips := strings.Split(forwarded, ",")
+		if len(ips) > 0 {
+			return strings.TrimSpace(ips[0])
+		}
+	}
+
+	// Check X-Real-IP header
+	realIP := r.Header.Get("X-Real-IP")
+	if realIP != "" {
+		return realIP
+	}
+
+	// Fall back to RemoteAddr
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return ip
+}
+
+// Limit applies rate limiting
 func (rl *RateLimitMiddleware) Limit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Implement actual rate limiting
-		// For now, just pass through
+		if !rl.enabled {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		ip := extractIP(r)
+		limiter := rl.getLimiter(ip)
+
+		if !limiter.Allow() {
+			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }
