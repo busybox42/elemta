@@ -36,7 +36,7 @@ func NewElasticLogger(config Config) (*ElasticLogger, error) {
 
 	// Ensure output URL is specified
 	if config.Output == "" {
-		return nil, fmt.Errorf("Elasticsearch URL must be specified")
+		return nil, fmt.Errorf("Elasticsearch URL must be specified") //nolint:staticcheck // Product name should be capitalized
 	}
 
 	// Get index name from options
@@ -114,7 +114,7 @@ func (l *ElasticLogger) testConnection() error {
 	defer func() { _ = resp.Body.Close() }() // Ignore error in defer cleanup
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("Elasticsearch returned status code %d", resp.StatusCode)
+		return fmt.Errorf("Elasticsearch returned status code %d", resp.StatusCode) //nolint:staticcheck // Product name should be capitalized
 	}
 
 	return nil
@@ -282,7 +282,7 @@ func (l *ElasticLogger) flushLocked() error {
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("Elasticsearch returned status code %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("Elasticsearch returned status code %d: %s", resp.StatusCode, string(body)) //nolint:staticcheck // Product name should be capitalized
 	}
 
 	// Clear buffer

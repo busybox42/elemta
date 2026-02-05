@@ -216,7 +216,7 @@ func (spm *SecurePluginManager) LoadSecurePlugin(pluginName string) error {
 	}
 
 	// 3. Load plugin using base manager
-	if err := spm.Manager.LoadPlugin(pluginName); err != nil {
+	if err := spm.LoadPlugin(pluginName); err != nil {
 		spm.auditLogger.LogEvent("plugin_load_failed", map[string]interface{}{
 			"plugin_name": pluginName,
 			"error":       err.Error(),

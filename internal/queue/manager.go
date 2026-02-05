@@ -374,11 +374,12 @@ func (m *Manager) MoveMessage(id string, targetQueue QueueType, reason string) e
 	msg.UpdatedAt = time.Now()
 
 	if reason != "" {
-		if targetQueue == Failed {
+		switch targetQueue {
+		case Failed:
 			msg.LastError = reason
-		} else if targetQueue == Hold {
+		case Hold:
 			msg.HoldReason = reason
-		} else if targetQueue == Deferred {
+		case Deferred:
 			msg.LastError = reason
 			msg.RetryCount++ // Increment retry count when moving to deferred queue
 			msg.NextRetry = calculateNextRetry(msg.RetryCount)
@@ -573,16 +574,16 @@ func calculateNextRetry(retryCount int) time.Time {
 	// 1: 60s, 2: 5m, 3: 15m, 4: 1h, 5: 3h, 6+: 6h
 	var delaySeconds int
 
-	switch {
-	case retryCount == 1:
+	switch retryCount {
+	case 1:
 		delaySeconds = 60
-	case retryCount == 2:
+	case 2:
 		delaySeconds = 300
-	case retryCount == 3:
+	case 3:
 		delaySeconds = 900
-	case retryCount == 4:
+	case 4:
 		delaySeconds = 3600
-	case retryCount == 5:
+	case 5:
 		delaySeconds = 10800
 	default:
 		delaySeconds = 21600

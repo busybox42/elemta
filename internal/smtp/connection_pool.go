@@ -470,8 +470,8 @@ func (p *ConnectionPool) performMaintenance() {
 }
 
 // GetStatistics returns pool statistics
-func (p *ConnectionPool) GetStatistics() PoolStatistics {
-	return p.stats
+func (p *ConnectionPool) GetStatistics() *PoolStatistics {
+	return &p.stats
 }
 
 // GetPoolInfo returns current pool information

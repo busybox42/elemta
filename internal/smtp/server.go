@@ -473,7 +473,6 @@ func (s *Server) Start() error {
 
 	// Start the new queue system if available
 	if s.queueManager != nil {
-
 		// The new queue system doesn't need explicit startup
 		s.slogger.Info("Starting unified queue system")
 		// The new queue system doesn't need explicit startup

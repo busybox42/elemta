@@ -63,7 +63,7 @@ func (rc *RedisClient) Close() error {
 // GetTokenBucket retrieves token bucket state from Valkey
 func (rc *RedisClient) GetTokenBucket(ctx context.Context, key string) (*TokenBucketState, error) {
 	if !rc.enabled {
-		return nil, fmt.Errorf("Valkey client not enabled")
+		return nil, fmt.Errorf("Valkey client not enabled") //nolint:staticcheck // Product name should be capitalized //nolint:staticcheck // Product name should be capitalized
 	}
 
 	fullKey := rc.keyPrefix + ":" + key
@@ -97,7 +97,7 @@ func (rc *RedisClient) GetTokenBucket(ctx context.Context, key string) (*TokenBu
 // SetTokenBucket stores token bucket state in Valkey
 func (rc *RedisClient) SetTokenBucket(ctx context.Context, key string, state *TokenBucketState, ttl time.Duration) error {
 	if !rc.enabled {
-		return fmt.Errorf("Valkey client not enabled")
+		return fmt.Errorf("Valkey client not enabled") //nolint:staticcheck // Product name should be capitalized //nolint:staticcheck // Product name should be capitalized
 	}
 
 	fullKey := rc.keyPrefix + ":" + key
@@ -120,7 +120,7 @@ func (rc *RedisClient) SetTokenBucket(ctx context.Context, key string, state *To
 // IncrementCounter increments a counter in Valkey
 func (rc *RedisClient) IncrementCounter(ctx context.Context, key string, ttl time.Duration) (int64, error) {
 	if !rc.enabled {
-		return 0, fmt.Errorf("Valkey client not enabled")
+		return 0, fmt.Errorf("Valkey client not enabled") //nolint:staticcheck // Product name should be capitalized
 	}
 
 	fullKey := rc.keyPrefix + ":" + key
@@ -143,7 +143,7 @@ func (rc *RedisClient) IncrementCounter(ctx context.Context, key string, ttl tim
 // GetCounter retrieves a counter value from Valkey
 func (rc *RedisClient) GetCounter(ctx context.Context, key string) (int64, error) {
 	if !rc.enabled {
-		return 0, fmt.Errorf("Valkey client not enabled")
+		return 0, fmt.Errorf("Valkey client not enabled") //nolint:staticcheck // Product name should be capitalized
 	}
 
 	fullKey := rc.keyPrefix + ":" + key
@@ -159,7 +159,7 @@ func (rc *RedisClient) GetCounter(ctx context.Context, key string) (int64, error
 // SetWhitelistItem adds an item to the whitelist in Valkey
 func (rc *RedisClient) SetWhitelistItem(ctx context.Context, item string) error {
 	if !rc.enabled {
-		return fmt.Errorf("Valkey client not enabled")
+		return fmt.Errorf("Valkey client not enabled") //nolint:staticcheck // Product name should be capitalized
 	}
 
 	key := rc.keyPrefix + ":whitelist:" + item
@@ -169,7 +169,7 @@ func (rc *RedisClient) SetWhitelistItem(ctx context.Context, item string) error 
 // SetBlacklistItem adds an item to the blacklist in Valkey
 func (rc *RedisClient) SetBlacklistItem(ctx context.Context, item string) error {
 	if !rc.enabled {
-		return fmt.Errorf("Valkey client not enabled")
+		return fmt.Errorf("Valkey client not enabled") //nolint:staticcheck // Product name should be capitalized
 	}
 
 	key := rc.keyPrefix + ":blacklist:" + item
@@ -179,7 +179,7 @@ func (rc *RedisClient) SetBlacklistItem(ctx context.Context, item string) error 
 // RemoveWhitelistItem removes an item from the whitelist in Valkey
 func (rc *RedisClient) RemoveWhitelistItem(ctx context.Context, item string) error {
 	if !rc.enabled {
-		return fmt.Errorf("Valkey client not enabled")
+		return fmt.Errorf("Valkey client not enabled") //nolint:staticcheck // Product name should be capitalized
 	}
 
 	key := rc.keyPrefix + ":whitelist:" + item
@@ -189,7 +189,7 @@ func (rc *RedisClient) RemoveWhitelistItem(ctx context.Context, item string) err
 // RemoveBlacklistItem removes an item from the blacklist in Valkey
 func (rc *RedisClient) RemoveBlacklistItem(ctx context.Context, item string) error {
 	if !rc.enabled {
-		return fmt.Errorf("Valkey client not enabled")
+		return fmt.Errorf("Valkey client not enabled") //nolint:staticcheck // Product name should be capitalized
 	}
 
 	key := rc.keyPrefix + ":blacklist:" + item
@@ -199,7 +199,7 @@ func (rc *RedisClient) RemoveBlacklistItem(ctx context.Context, item string) err
 // IsWhitelisted checks if an item is whitelisted in Valkey
 func (rc *RedisClient) IsWhitelisted(ctx context.Context, item string) (bool, error) {
 	if !rc.enabled {
-		return false, fmt.Errorf("Valkey client not enabled")
+		return false, fmt.Errorf("Valkey client not enabled") //nolint:staticcheck // Product name should be capitalized
 	}
 
 	key := rc.keyPrefix + ":whitelist:" + item
@@ -213,7 +213,7 @@ func (rc *RedisClient) IsWhitelisted(ctx context.Context, item string) (bool, er
 // IsBlacklisted checks if an item is blacklisted in Valkey
 func (rc *RedisClient) IsBlacklisted(ctx context.Context, item string) (bool, error) {
 	if !rc.enabled {
-		return false, fmt.Errorf("Valkey client not enabled")
+		return false, fmt.Errorf("Valkey client not enabled") //nolint:staticcheck // Product name should be capitalized
 	}
 
 	key := rc.keyPrefix + ":blacklist:" + item

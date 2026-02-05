@@ -256,10 +256,11 @@ func (dt *DeliveryTracker) AddAttempt(deliveryID string, attempt *DeliveryAttemp
 	tracked.Attempts = append(tracked.Attempts, attempt)
 	tracked.UpdatedAt = time.Now()
 
-	if attempt.Status == StatusFailed {
+	switch attempt.Status {
+	case StatusFailed:
 		tracked.ConsecutiveFailures++
 		tracked.LastError = attempt.Error
-	} else if attempt.Status == StatusCompleted {
+	case StatusCompleted:
 		tracked.ConsecutiveFailures = 0
 	}
 

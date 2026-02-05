@@ -843,6 +843,7 @@ func (dh *DataHandler) validateHeaderLine(ctx context.Context, line string) erro
 
 	// Check for valid header name characters (RFC 5322)
 	for _, char := range headerName {
+		//nolint:staticcheck // Readable as-is, De Morgan's law would make it less clear
 		if !((char >= 'A' && char <= 'Z') ||
 			(char >= 'a' && char <= 'z') ||
 			(char >= '0' && char <= '9') ||

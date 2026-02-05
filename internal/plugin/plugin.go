@@ -229,7 +229,7 @@ func (p *BuiltinPlugins) ScanForSpam(ctx context.Context, data []byte, messageID
 	for keyword, score := range spamKeywords {
 		if strings.Contains(lowercaseData, strings.ToLower(keyword)) {
 			spamScore += score
-			rules = append(rules, fmt.Sprintf("SPAM_KEYWORD_%s", strings.ToUpper(strings.Replace(keyword, " ", "_", -1))))
+			rules = append(rules, fmt.Sprintf("SPAM_KEYWORD_%s", strings.ToUpper(strings.ReplaceAll(keyword, " ", "_"))))
 		}
 	}
 
