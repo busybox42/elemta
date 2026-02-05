@@ -405,6 +405,7 @@ func TestRFC5321_Pipelining(t *testing.T) {
 		assert.Contains(t, response, "250", "Pipelined message should be accepted")
 	})
 }
+
 // TestRFC5321_LineEndings tests CRLF vs LF handling (RFC 5321 §2.3.7)
 func TestRFC5321_LineEndings(t *testing.T) {
 	server, conn, reader := setupTestServer(t)
@@ -637,7 +638,7 @@ func TestRFC5321_SizeParameter(t *testing.T) {
 
 	// Setup session
 	response := sendCommand(conn, reader, "EHLO test.example.com\r\n")
-	
+
 	t.Run("SIZE_Extension_Advertised", func(t *testing.T) {
 		// Server should advertise SIZE in EHLO response
 		assert.Contains(t, response, "SIZE", "Server should advertise SIZE extension")
@@ -650,7 +651,7 @@ func TestRFC5321_SizeParameter(t *testing.T) {
 		// Send appropriately sized message
 		sendCommand(conn, reader, "RCPT TO:<recipient@example.com>\r\n")
 		sendCommand(conn, reader, "DATA\r\n")
-		
+
 		message := "Subject: Size test\r\n\r\n" + strings.Repeat("a", 1000) + "\r\n.\r\n"
 		response = sendCommand(conn, reader, message)
 		assert.Contains(t, response, "250", "Message within declared size should be accepted")
@@ -677,7 +678,7 @@ func TestRFC5321_8BITMIME(t *testing.T) {
 
 	// Check if 8BITMIME is advertised
 	response := sendCommand(conn, reader, "EHLO test.example.com\r\n")
-	
+
 	t.Run("8BITMIME_Advertised", func(t *testing.T) {
 		assert.Contains(t, response, "8BITMIME", "Server should advertise 8BITMIME")
 	})
@@ -703,7 +704,7 @@ func TestRFC5321_SMTPUTF8(t *testing.T) {
 
 	// Check if SMTPUTF8 is advertised
 	response := sendCommand(conn, reader, "EHLO test.example.com\r\n")
-	
+
 	if strings.Contains(response, "SMTPUTF8") {
 		t.Run("SMTPUTF8_Support", func(t *testing.T) {
 			response := sendCommand(conn, reader, "MAIL FROM:<sender@example.com> SMTPUTF8\r\n")
@@ -723,7 +724,7 @@ func TestRFC5321_CommandSequence(t *testing.T) {
 	t.Run("DATA_Before_RCPT", func(t *testing.T) {
 		sendCommand(conn, reader, "EHLO test.example.com\r\n")
 		sendCommand(conn, reader, "MAIL FROM:<sender@example.com>\r\n")
-		
+
 		response := sendCommand(conn, reader, "DATA\r\n")
 		assert.Contains(t, response, "503", "DATA before RCPT should return 503")
 	})
@@ -738,7 +739,7 @@ func TestRFC5321_CommandSequence(t *testing.T) {
 
 	t.Run("MAIL_Before_EHLO", func(t *testing.T) {
 		sendCommand(conn, reader, "RSET\r\n")
-		
+
 		response := sendCommand(conn, reader, "MAIL FROM:<sender@example.com>\r\n")
 		// Should still work after RSET, or return 503 if strict
 		assert.True(t,
@@ -748,19 +749,19 @@ func TestRFC5321_CommandSequence(t *testing.T) {
 
 	t.Run("Valid_Sequence", func(t *testing.T) {
 		sendCommand(conn, reader, "RSET\r\n")
-		
+
 		response := sendCommand(conn, reader, "EHLO test.example.com\r\n")
 		assert.Contains(t, response, "250", "EHLO should succeed")
-		
+
 		response = sendCommand(conn, reader, "MAIL FROM:<sender@example.com>\r\n")
 		assert.Contains(t, response, "250", "MAIL should succeed after EHLO")
-		
+
 		response = sendCommand(conn, reader, "RCPT TO:<recipient@example.com>\r\n")
 		assert.Contains(t, response, "250", "RCPT should succeed after MAIL")
-		
+
 		response = sendCommand(conn, reader, "DATA\r\n")
 		assert.Contains(t, response, "354", "DATA should succeed after RCPT")
-		
+
 		message := "Subject: Valid sequence\r\n\r\nTest\r\n.\r\n"
 		response = sendCommand(conn, reader, message)
 		assert.Contains(t, response, "250", "Message should be accepted")
@@ -783,7 +784,7 @@ func TestRFC5321_ResponseCodes(t *testing.T) {
 		{"RSET_Success", "RSET\r\n", "250"},
 		{"NOOP_Success", "NOOP\r\n", "250"},
 		{"QUIT_Success", "QUIT\r\n", "221"},
-		
+
 		// Note: Cannot test more here without session setup
 	}
 

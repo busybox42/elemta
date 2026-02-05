@@ -291,7 +291,7 @@ func TestSMTP_MessageSize(t *testing.T) {
 
 		// Medium-sized message with proper line breaks (RFC 5321: max 1000 chars per line recommended)
 		line := strings.Repeat("This is a line of text. ", 40) + "\r\n" // ~960 chars per line
-		body := strings.Repeat(line, 10)                                 // 10 lines total
+		body := strings.Repeat(line, 10)                                // 10 lines total
 		message := fmt.Sprintf("Subject: Size Test\r\n\r\n%s.\r\n", body)
 
 		_, err = conn.Write([]byte(message))
