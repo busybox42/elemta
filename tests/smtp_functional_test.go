@@ -15,9 +15,13 @@ import (
 
 // createFunctionalTestConfig creates a test configuration matching the working tests
 func createFunctionalTestConfig(t *testing.T) *smtp.Config {
+	t.Helper()
+	queueDir := t.TempDir() // Create temporary queue directory
+
 	config := &smtp.Config{
 		Hostname:          "test.example.com",
-		ListenAddr:        ":2525",
+		ListenAddr:        ":0", // Use random available port
+		QueueDir:          queueDir,
 		LocalDomains:      []string{"test.example.com", "example.com"},
 		MaxSize:           1024 * 1024, // 1MB
 		StrictLineEndings: false,       // Match working tests
@@ -35,9 +39,30 @@ func setupFunctionalServer(t *testing.T) (*smtp.Server, net.Conn, *bufio.Reader)
 
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- server.Start() }()
-	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", "localhost:2525")
+	// Wait for server to start and get address
+	var addr net.Addr
+	for i := 0; i < 50; i++ { // Wait up to 500ms
+		// Check if server failed (non-blocking)
+		select {
+		case err := <-serverErr:
+			if err != nil {
+				t.Fatalf("Server failed to start: %v", err)
+			}
+		default:
+			// Server still running, check if address is available
+			time.Sleep(10 * time.Millisecond)
+			addr = server.Addr()
+			if addr != nil {
+				goto serverStarted
+			}
+		}
+	}
+	require.NotNil(t, addr, "Server address should not be nil after waiting")
+
+serverStarted:
+
+	conn, err := net.Dial("tcp", addr.String())
 	require.NoError(t, err)
 
 	reader := bufio.NewReader(conn)
