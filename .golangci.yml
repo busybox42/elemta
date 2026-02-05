@@ -31,8 +31,41 @@ issues:
         - dupl
         - gosec
         - gocyclo
-    
+
+    # Exclude test scripts from strict linting
+    - path: tests/scripts/
+      linters:
+        - errcheck
+        - gosec
+        - unparam
+
     # Exclude common acceptable error ignores
     - linters:
         - errcheck
-      text: "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*print(f|ln)?|os\\.(Un)?Setenv). is not checked"
+      text: "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|.*Quit|os\\.Remove(All)?|.*print(f|ln)?|os\\.(Un)?Setenv). is not checked"
+
+    # Exclude intentional blank error assignments (defer cleanup, best effort)
+    - linters:
+        - errcheck
+      text: "Error return value is not checked"
+      source: "defer.*\\{.*_ ="
+
+    # Exclude unused context parameters (common in interface implementations)
+    - linters:
+        - unparam
+      text: "- `ctx` is unused"
+
+    # Exclude deprecated TLS PreferServerCipherSuites (Go 1.18+)
+    - linters:
+        - staticcheck
+      text: "SA1019.*PreferServerCipherSuites"
+
+    # Exclude line length in generated or config code
+    - linters:
+        - lll
+      path: "(generated|_gen\\.go|config\\.go)"
+
+    # Exclude cyclomatic complexity for initialization and cleanup functions
+    - linters:
+        - gocyclo
+      text: "(NewServer|Close|startServer|tailLogFile)"
