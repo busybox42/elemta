@@ -124,6 +124,7 @@ func TestSession_ErrorHandling_MessageAcceptance(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read MAIL FROM response
+	var response string
 	response, err = reader.ReadString('\n')
 	require.NoError(t, err)
 	assert.Contains(t, response, "250")
