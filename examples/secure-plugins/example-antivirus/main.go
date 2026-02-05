@@ -125,7 +125,6 @@ func (p *ExampleAntivirusPlugin) ProcessMessage(ctx context.Context, input *Secu
 		output.Metadata["threat_detected"] = true
 		output.Metadata["threat_name"] = virusName
 		output.Metadata["scan_time"] = time.Now()
-
 	} else if suspiciousSubject {
 		log.Printf("SUSPICIOUS subject in message %s: %s", input.MessageID, input.Subject)
 
@@ -135,7 +134,6 @@ func (p *ExampleAntivirusPlugin) ProcessMessage(ctx context.Context, input *Secu
 		output.Headers["X-Antivirus-Status"] = "Suspicious"
 		output.Warnings = []string{"Suspicious subject pattern detected"}
 		output.Metadata["suspicious_subject"] = true
-
 	} else {
 		log.Printf("Message %s is clean", input.MessageID)
 

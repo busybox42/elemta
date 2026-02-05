@@ -107,13 +107,19 @@ func TestReadMessageDataLarge(t *testing.T) {
 	_, _ = conn.Write([]byte("DATA\r\n"))
 	_, _ = reader.ReadString('\n')
 
-	// Send large message (1MB)
-	largeBody := strings.Repeat("X", 1024*1024)
+	// Send large message (1MB) with proper line breaks to comply with RFC 5321
+	// Each line should be <= 2000 octets
+	var largeBodyBuilder strings.Builder
+	lineLength := 1000 // Safe length under RFC 5321 limit
+	for i := 0; i < 1024*1024/lineLength; i++ {
+		largeBodyBuilder.WriteString(strings.Repeat("X", lineLength))
+		largeBodyBuilder.WriteString("\r\n")
+	}
 	message := "From: sender@example.com\r\n" +
 		"To: user@localhost\r\n" +
 		"Subject: Large Message\r\n" +
 		"\r\n" +
-		largeBody + "\r\n" +
+		largeBodyBuilder.String() +
 		".\r\n"
 
 	_, err = conn.Write([]byte(message))

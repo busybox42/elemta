@@ -378,9 +378,10 @@ func (p *ARCImpl) generateARCHeaders(message []byte, instanceNum int, options *A
 	// Generate ARC-Seal
 	// The cv= tag indicates the validation state of the existing chain
 	cvTag := "none"
-	if chainValidation == ARCPass {
+	switch chainValidation {
+	case ARCPass:
 		cvTag = "pass"
-	} else if chainValidation == ARCFail {
+	case ARCFail:
 		cvTag = "fail"
 	}
 

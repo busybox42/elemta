@@ -252,7 +252,7 @@ func (em *EnhancedManager) loadAndInitializePlugin(pluginName string) error {
 	}
 
 	// Load the plugin using the existing manager
-	if err := em.Manager.LoadPlugin(pluginName); err != nil {
+	if err := em.LoadPlugin(pluginName); err != nil {
 		enhanced.State = PluginStateError
 		enhanced.LastError = err
 		em.plugins[pluginName] = enhanced
@@ -270,19 +270,19 @@ func (em *EnhancedManager) loadAndInitializePlugin(pluginName string) error {
 
 	// Try to get plugin from various registries
 	var plugin Plugin
-	if avPlugin, err := em.Manager.GetAntivirusPlugin(pluginName); err == nil {
+	if avPlugin, err := em.GetAntivirusPlugin(pluginName); err == nil {
 		plugin = avPlugin
-	} else if asPlugin, err := em.Manager.GetAntispamPlugin(pluginName); err == nil {
+	} else if asPlugin, err := em.GetAntispamPlugin(pluginName); err == nil {
 		plugin = asPlugin
-	} else if dkimPlugin, err := em.Manager.GetDKIMPlugin(pluginName); err == nil {
+	} else if dkimPlugin, err := em.GetDKIMPlugin(pluginName); err == nil {
 		plugin = dkimPlugin
-	} else if spfPlugin, err := em.Manager.GetSPFPlugin(pluginName); err == nil {
+	} else if spfPlugin, err := em.GetSPFPlugin(pluginName); err == nil {
 		plugin = spfPlugin
-	} else if dmarcPlugin, err := em.Manager.GetDMARCPlugin(pluginName); err == nil {
+	} else if dmarcPlugin, err := em.GetDMARCPlugin(pluginName); err == nil {
 		plugin = dmarcPlugin
-	} else if arcPlugin, err := em.Manager.GetARCPlugin(pluginName); err == nil {
+	} else if arcPlugin, err := em.GetARCPlugin(pluginName); err == nil {
 		plugin = arcPlugin
-	} else if rateLimitPlugin, err := em.Manager.GetRateLimitPlugin(pluginName); err == nil {
+	} else if rateLimitPlugin, err := em.GetRateLimitPlugin(pluginName); err == nil {
 		plugin = rateLimitPlugin
 	}
 

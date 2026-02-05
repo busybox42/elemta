@@ -456,6 +456,7 @@ func (ah *AuthHandler) validateBase64Input(input string) error {
 
 	// Check for valid base64 characters
 	for _, char := range input {
+		//nolint:staticcheck // Readable as-is, De Morgan's law would make it less clear
 		if !((char >= 'A' && char <= 'Z') ||
 			(char >= 'a' && char <= 'z') ||
 			(char >= '0' && char <= '9') ||

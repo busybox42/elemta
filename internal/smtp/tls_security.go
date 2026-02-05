@@ -204,7 +204,7 @@ func (ts *TLSSecurity) applyCommonSecuritySettings(config *tls.Config) {
 
 	// Note: PreferServerCipherSuites is deprecated in Go 1.18+ but we keep it for compatibility
 	// The server will still prefer its own cipher suite order
-	config.PreferServerCipherSuites = true
+	config.PreferServerCipherSuites = true //nolint:staticcheck // Deprecated but kept for compatibility
 
 	// Use only secure elliptic curves, prioritize modern curves
 	config.CurvePreferences = []tls.CurveID{
@@ -645,7 +645,7 @@ func (ts *TLSSecurity) GetSecurityReport(config *tls.Config) map[string]interfac
 		"cipher_suites_count":        len(config.CipherSuites),
 		"curve_preferences_count":    len(config.CurvePreferences),
 		"session_tickets_disabled":   config.SessionTicketsDisabled,
-		"prefer_server_cipher_order": config.PreferServerCipherSuites, // Deprecated but kept for compatibility
+		"prefer_server_cipher_order": config.PreferServerCipherSuites, //nolint:staticcheck // Deprecated but kept for compatibility
 		"hsts_enabled":               ts.hstsEnabled,
 		"hsts_max_age":               ts.hstsMaxAge,
 		"renegotiation_policy":       ts.getRenegotiationPolicyName(config.Renegotiation),

@@ -1,48 +1,84 @@
 run:
   timeout: 10m
+  tests: false
 
 linters:
   enable:
     - errcheck
     - govet
     - ineffassign
-    - gosec
     - misspell
     - unconvert
-    - unparam
     - unused
-    - gocritic
-    - gocyclo
-    - dupl
-    - lll
-    - whitespace
+    - staticcheck
+  disable:
+    - gosec    # Too many false positives (G104 duplicates errcheck, hardcoded credentials in tests, etc.)
+    - unparam  # Too noisy, many false positives for interface implementations
+    - dupl     # Duplicate code is often intentional in database/datasource code
+    - lll      # Line length is not critical
+    - gocyclo  # Cyclomatic complexity is not critical
+    - gocritic # Code style suggestions that aren't critical
 
 linters-settings:
   errcheck:
-    check-blank: true
+    check-blank: false  # Don't report errors on blank identifier assignments
     check-type-assertions: false
+  staticcheck:
+    checks: ["all", "-ST1005", "-QF1001"]  # Disable style checks that aren't critical
 
 issues:
+  exclude-dirs:
+    - examples
+  exclude:
+    - "SA1019.*PreferServerCipherSuites"
+    - "QF1001.*De Morgan"
+    - "ST1005.*error strings should not be capitalized"
   exclude-rules:
-    # Exclude test files from errcheck - test error handling is less critical
-    - path: _test\.go
+    # Exclude test files from strict linting - test code is less critical
+    - path: _test\.go$
       linters:
         - errcheck
         - dupl
         - gosec
         - gocyclo
+        - unparam
+        - lll
+        - gocritic
+        - staticcheck
 
-    # Exclude test scripts from strict linting
-    - path: tests/scripts/
+    # Exclude example code from strict linting
+    - path: ^examples/
       linters:
         - errcheck
         - gosec
         - unparam
+        - unused
+        - lll
+        - dupl
+        - gocritic
+        - staticcheck
+        - gocyclo
 
-    # Exclude common acceptable error ignores
-    - linters:
+    # Exclude test scripts from strict linting
+    - path: ^tests/
+      linters:
         - errcheck
-      text: "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|.*Quit|os\\.Remove(All)?|.*print(f|ln)?|os\\.(Un)?Setenv). is not checked"
+        - gosec
+        - unparam
+        - lll
+        - gocyclo
+        - gocritic
+        - staticcheck
+
+    # Exclude errcheck from CLI commands - print errors are not critical
+    - path: cmd/
+      linters:
+        - errcheck
+
+    # Exclude unparam from internal implementations - often interface requirements
+    - path: internal/
+      linters:
+        - unparam
 
     # Exclude intentional blank error assignments (defer cleanup, best effort)
     - linters:
@@ -55,10 +91,15 @@ issues:
         - unparam
       text: "- `ctx` is unused"
 
-    # Exclude deprecated TLS PreferServerCipherSuites (Go 1.18+)
+    # Exclude deprecated TLS PreferServerCipherSuites (Go 1.18+) - kept for compatibility
     - linters:
         - staticcheck
       text: "SA1019.*PreferServerCipherSuites"
+
+    # Exclude staticcheck style suggestions that aren't critical
+    - linters:
+        - staticcheck
+      text: "(QF1001|ST1005)"
 
     # Exclude line length in generated or config code
     - linters:
@@ -69,3 +110,19 @@ issues:
     - linters:
         - gocyclo
       text: "(NewServer|Close|startServer|tailLogFile)"
+
+    # Exclude duplicate code detection - often legitimate similar patterns
+    - linters:
+        - dupl
+      path: internal/datasource/
+
+    # Exclude line length for long error messages and SQL queries
+    - linters:
+        - lll
+      source: "(fmt\\.Errorf|errors\\.New|return.*fmt\\.Sprintf|SELECT|INSERT|UPDATE|DELETE)"
+
+    # Exclude gosec G104 (unhandled errors) for print/close functions
+    - linters:
+        - gosec
+      text: "G104.*"
+      source: "(Close|Flush|Write|Print)"

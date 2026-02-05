@@ -210,7 +210,7 @@ func NewDistributedTokenBucket(capacity, refillRate int64, redisClient *RedisCli
 // TryConsume attempts to consume the specified number of tokens from Redis
 func (dtb *DistributedTokenBucket) TryConsume(ctx context.Context, tokens int64) (bool, error) {
 	if dtb.redisClient == nil || !dtb.redisClient.enabled {
-		return false, fmt.Errorf("Redis client not available")
+		return false, fmt.Errorf("Redis client not available") //nolint:staticcheck // Product name should be capitalized //nolint:staticcheck // Product name should be capitalized
 	}
 
 	// Get current state from Redis

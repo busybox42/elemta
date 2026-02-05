@@ -48,9 +48,9 @@ type CommandSecurityConfig struct {
 // DefaultCommandSecurityConfig returns a secure default configuration
 func DefaultCommandSecurityConfig() *CommandSecurityConfig {
 	config := &CommandSecurityConfig{
-		MaxCommandLength:      512, // RFC 5321 limit
-		MaxParameterLength:    320, // RFC 5321 email address limit
-		AllowedCommandChars:   `^[A-Za-z0-9\-_]+$`,
+		MaxCommandLength:    512, // RFC 5321 limit
+		MaxParameterLength:  320, // RFC 5321 email address limit
+		AllowedCommandChars: `^[A-Za-z0-9\-_]+$`,
 		// RFC 5321 allows these characters in email local-part and parameters:
 		// Letters, digits, and special chars: ! # $ % & ' * + - / = ? ^ _ ` { | } ~ . @ : < > [ ]
 		AllowedParameterChars: "^[A-Za-z0-9\\-_@\\.:<>=\\s\\[\\]!#$%&'*\\+/?\\^`{|}~]+$",

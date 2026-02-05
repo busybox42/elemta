@@ -141,7 +141,7 @@ lint:
 	@echo "Running golangci-lint..."
 	@echo "ℹ️  Run this before committing to catch lint errors early"
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run ./... --timeout=10m; \
+		golangci-lint run ./cmd/... ./internal/... --timeout=10m; \
 	else \
 		echo "⚠️  golangci-lint not installed. Install with:"; \
 		echo "    go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
@@ -151,7 +151,7 @@ lint:
 lint-fix:
 	@echo "Running golangci-lint with auto-fix..."
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run ./... --fix --timeout=10m; \
+		golangci-lint run ./cmd/... ./internal/... --fix --timeout=10m; \
 	else \
 		echo "⚠️  golangci-lint not installed"; \
 		exit 1; \

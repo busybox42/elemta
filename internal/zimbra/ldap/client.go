@@ -75,7 +75,7 @@ func (c *Client) Connect(ctx context.Context) error {
 		select {
 		case c.pool <- conn:
 		default:
-			conn.Close()
+			_ = conn.Close()
 		}
 	}
 
@@ -101,7 +101,7 @@ func (c *Client) Close() error {
 	// Close all pooled connections
 	close(c.pool)
 	for conn := range c.pool {
-		conn.Close()
+		_ = conn.Close()
 	}
 
 	c.logger.Info("LDAP client shutdown complete")
@@ -122,7 +122,7 @@ func (c *Client) GetConnection(ctx context.Context) (*ldap.Conn, error) {
 		}
 
 		// Connection is unhealthy, close it and create new one
-		conn.Close()
+		_ = conn.Close()
 		return c.createConnection(ctx)
 
 	case <-ctx.Done():
@@ -142,7 +142,7 @@ func (c *Client) ReturnConnection(conn *ldap.Conn) {
 
 	// Check if connection is still healthy
 	if !c.isConnectionHealthy(conn) {
-		conn.Close()
+		_ = conn.Close()
 		return
 	}
 
@@ -151,7 +151,7 @@ func (c *Client) ReturnConnection(conn *ldap.Conn) {
 		// Successfully returned to pool
 	default:
 		// Pool is full, close the connection
-		conn.Close()
+		_ = conn.Close()
 	}
 }
 
@@ -196,7 +196,7 @@ func (c *Client) createConnection(ctx context.Context) (*ldap.Conn, error) {
 
 			err = conn.StartTLS(tlsConfig)
 			if err != nil {
-				conn.Close()
+				_ = conn.Close()
 				c.logger.Warn("Failed to start TLS on LDAP connection",
 					slog.String("server", server),
 					slog.String("error", err.Error()),
@@ -209,7 +209,7 @@ func (c *Client) createConnection(ctx context.Context) (*ldap.Conn, error) {
 		if c.config.BindDN != "" {
 			err = conn.Bind(c.config.BindDN, c.config.BindPass)
 			if err != nil {
-				conn.Close()
+				_ = conn.Close()
 				c.logger.Warn("Failed to bind to LDAP server",
 					slog.String("server", server),
 					slog.String("bind_dn", c.config.BindDN),
@@ -295,7 +295,7 @@ func (c *Client) checkPoolHealth() {
 			if c.isConnectionHealthy(conn) {
 				healthyConns = append(healthyConns, conn)
 			} else {
-				conn.Close()
+				_ = conn.Close()
 			}
 		default:
 			goto refill
@@ -308,7 +308,7 @@ refill:
 		select {
 		case c.pool <- conn:
 		default:
-			conn.Close()
+			_ = conn.Close()
 		}
 	}
 
