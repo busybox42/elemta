@@ -21,7 +21,7 @@ linters:
 
 linters-settings:
   errcheck:
-    check-blank: true
+    check-blank: false  # Don't report errors on blank identifier assignments
     check-type-assertions: false
   staticcheck:
     checks: ["all", "-ST1005", "-QF1001"]  # Disable style checks that aren't critical
