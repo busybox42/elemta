@@ -248,7 +248,7 @@ func (c *Client) makeRequest(ctx context.Context, url string, request interface{
 		c.recordFailure()
 		return fmt.Errorf("HTTP request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read response
 	respData, err := io.ReadAll(resp.Body)

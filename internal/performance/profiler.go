@@ -436,13 +436,13 @@ func (p *Profiler) Close() error {
 
 	if p.cpuProfile != nil {
 		pprof.StopCPUProfile()
-		p.cpuProfile.Close()
+		_ = p.cpuProfile.Close()
 		p.cpuProfile = nil
 	}
 
 	if p.traceFile != nil {
 		trace.Stop()
-		p.traceFile.Close()
+		_ = p.traceFile.Close()
 		p.traceFile = nil
 	}
 

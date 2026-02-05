@@ -183,15 +183,15 @@ Valid queue types: active, deferred, hold, failed, all`,
 // printMessages prints message information in a table
 func printMessages(messages []client.Message) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tFrom\tTo\tSubject\tQueue\tSize")
-	fmt.Fprintln(w, "------\t------\t------\t------\t------\t------")
+	_, _ = fmt.Fprintln(w, "ID\tFrom\tTo\tSubject\tQueue\tSize")
+	_, _ = fmt.Fprintln(w, "------\t------\t------\t------\t------\t------")
 
 	for _, msg := range messages {
 		to := ""
 		if len(msg.To) > 0 {
 			to = msg.To[0]
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\n",
 			msg.ID,
 			msg.From,
 			to,
@@ -199,5 +199,5 @@ func printMessages(messages []client.Message) {
 			msg.QueueType,
 			msg.Size)
 	}
-	w.Flush()
+	_ = w.Flush()
 }

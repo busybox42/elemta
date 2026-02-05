@@ -156,7 +156,7 @@ func (m *TLSManager) configureCertificates(tlsConfig *tls.Config) (*tls.Config, 
 		leTLSConfig.MaxVersion = tlsConfig.MaxVersion
 		leTLSConfig.CipherSuites = tlsConfig.CipherSuites
 		leTLSConfig.ClientAuth = tlsConfig.ClientAuth
-		leTLSConfig.PreferServerCipherSuites = tlsConfig.PreferServerCipherSuites
+		leTLSConfig.PreferServerCipherSuites = tlsConfig.PreferServerCipherSuites //nolint:staticcheck // Deprecated but kept for compatibility
 		leTLSConfig.CurvePreferences = tlsConfig.CurvePreferences
 		leTLSConfig.SessionTicketsDisabled = tlsConfig.SessionTicketsDisabled
 		leTLSConfig.Renegotiation = tlsConfig.Renegotiation
@@ -316,6 +316,8 @@ func parseTLSVersion(version string) (uint16, error) {
 
 // parseCipherSuites parses a list of cipher suite strings into uint16 values
 // with security validation to prevent weak cipher suites
+//
+//nolint:unused // Used in createTLSConfig and tested in tls_security_hardening_test.go
 func parseCipherSuites(ciphers []string) ([]uint16, error) {
 	// Map of cipher suite names to values - SECURE CIPHERS ONLY
 	cipherMap := map[string]uint16{
@@ -411,7 +413,7 @@ func (m *TLSManager) setupLetsEncrypt() (*tls.Config, error) {
 
 	// Validate configuration
 	if leConfig.Domain == "" {
-		return nil, fmt.Errorf("Let's Encrypt enabled but no domain provided")
+		return nil, fmt.Errorf("Let's Encrypt enabled but no domain provided") //nolint:staticcheck // Product name should be capitalized
 	}
 
 	// Create cache directory if it doesn't exist
@@ -801,7 +803,7 @@ func (m *TLSManager) RenewCertificates(ctx context.Context) error {
 	}
 
 	if m.config.TLS.LetsEncrypt == nil || !m.config.TLS.LetsEncrypt.Enabled {
-		return fmt.Errorf("Let's Encrypt not enabled")
+		return fmt.Errorf("Let's Encrypt not enabled") //nolint:staticcheck // Product name should be capitalized
 	}
 
 	if m.certManager == nil {
