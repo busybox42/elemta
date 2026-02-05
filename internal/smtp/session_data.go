@@ -814,16 +814,16 @@ func (dh *DataHandler) isInternalConnection() bool {
 
 // validateHeaderLine validates message header lines
 func (dh *DataHandler) validateHeaderLine(ctx context.Context, line string) error {
+	// Check for header continuation (starts with whitespace) BEFORE trimming
+	if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+		return nil // Valid header continuation
+	}
+
 	line = strings.TrimSpace(line)
 
 	// Empty lines are allowed in headers
 	if line == "" {
 		return nil
-	}
-
-	// Check for header continuation (starts with whitespace)
-	if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
-		return nil // Valid header continuation
 	}
 
 	// Check for valid header format: "Name: Value"
@@ -875,6 +875,11 @@ func (dh *DataHandler) validateSpecificHeader(ctx context.Context, name, value s
 
 // validateContentTypeHeader validates Content-Type headers
 func (dh *DataHandler) validateContentTypeHeader(value string) error {
+	// Reject empty content type
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("empty content type")
+	}
+
 	// Allow common content types and parameters
 	if strings.Contains(value, ";") {
 		// Handle parameters like charset, boundary
