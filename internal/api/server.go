@@ -298,20 +298,30 @@ func (s *Server) Start() error {
 		r.HandleFunc("/dashboard", s.handleDashboard).Methods("GET")
 	}
 
-	// Debug routes (no auth required for debugging)
-	r.HandleFunc("/debug/auth", s.handleDebugAuth).Methods("GET")
-
-	// pprof debugging routes (no auth required for debugging)
-	r.HandleFunc("/debug/pprof/", pprof.Index)
-	r.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	r.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	r.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	r.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	r.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
-	r.Handle("/debug/pprof/heap", pprof.Handler("heap"))
-	r.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
-	r.Handle("/debug/pprof/block", pprof.Handler("block"))
-	r.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
+	// pprof debugging routes (require auth when configured)
+	if s.authMiddleware != nil {
+		r.Handle("/debug/pprof/", s.authMiddleware.RequireAuth(http.HandlerFunc(pprof.Index)))
+		r.Handle("/debug/pprof/cmdline", s.authMiddleware.RequireAuth(http.HandlerFunc(pprof.Cmdline)))
+		r.Handle("/debug/pprof/profile", s.authMiddleware.RequireAuth(http.HandlerFunc(pprof.Profile)))
+		r.Handle("/debug/pprof/symbol", s.authMiddleware.RequireAuth(http.HandlerFunc(pprof.Symbol)))
+		r.Handle("/debug/pprof/trace", s.authMiddleware.RequireAuth(http.HandlerFunc(pprof.Trace)))
+		r.Handle("/debug/pprof/goroutine", s.authMiddleware.RequireAuth(pprof.Handler("goroutine")))
+		r.Handle("/debug/pprof/heap", s.authMiddleware.RequireAuth(pprof.Handler("heap")))
+		r.Handle("/debug/pprof/threadcreate", s.authMiddleware.RequireAuth(pprof.Handler("threadcreate")))
+		r.Handle("/debug/pprof/block", s.authMiddleware.RequireAuth(pprof.Handler("block")))
+		r.Handle("/debug/pprof/mutex", s.authMiddleware.RequireAuth(pprof.Handler("mutex")))
+	} else {
+		r.HandleFunc("/debug/pprof/", pprof.Index)
+		r.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		r.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		r.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		r.HandleFunc("/debug/pprof/trace", pprof.Trace)
+		r.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
+		r.Handle("/debug/pprof/heap", pprof.Handler("heap"))
+		r.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+		r.Handle("/debug/pprof/block", pprof.Handler("block"))
+		r.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
+	}
 
 	// Authentication routes (if auth is enabled)
 	if s.authMiddleware != nil {
@@ -414,7 +424,7 @@ func (s *Server) Start() error {
 	go func() {
 		log.Printf("Starting API server on %s", s.listenAddr)
 		if s.authMiddleware != nil {
-			log.Printf("Authentication enabled - default admin:password")
+			log.Printf("Authentication enabled")
 		}
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("API server error: %v", err)
@@ -1179,40 +1189,6 @@ func (s *Server) tailLogFile(filename string, limit int, eventTypeFilter, levelF
 	}
 
 	return messageLogs, nil
-}
-
-// handleDebugAuth provides authentication debugging information
-func (s *Server) handleDebugAuth(w http.ResponseWriter, r *http.Request) {
-	debug := map[string]interface{}{
-		"auth_enabled":       s.authSystem != nil,
-		"rbac_enabled":       s.rbac != nil,
-		"middleware_enabled": s.authMiddleware != nil,
-	}
-
-	if s.authSystem != nil {
-		debug["auth_type"] = "available"
-
-		// Test authentication with query parameters if provided
-		username := r.URL.Query().Get("user")
-		password := r.URL.Query().Get("pass")
-
-		if username != "" && password != "" {
-			ctx := context.Background()
-			authenticated, err := s.authSystem.Authenticate(ctx, username, password)
-			debug["test_auth"] = map[string]interface{}{
-				"username":      username,
-				"authenticated": authenticated,
-				"error":         err,
-			}
-
-			if authenticated && s.rbac != nil {
-				permissions, _ := s.rbac.GetUserPermissions(ctx, username)
-				debug["test_permissions"] = permissions
-			}
-		}
-	}
-
-	writeJSON(w, debug)
 }
 
 // Configuration management handlers

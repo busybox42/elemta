@@ -347,9 +347,10 @@ func (am *AuthMiddleware) CORS(next http.Handler) http.Handler {
 // RateLimitMiddleware provides basic rate limiting (simplified implementation)
 // RateLimitConfig holds rate limiting configuration
 type RateLimitConfig struct {
-	Enabled           bool    `toml:"enabled" json:"enabled"`
-	RequestsPerSecond float64 `toml:"requests_per_second" json:"requests_per_second"`
-	Burst             int     `toml:"burst" json:"burst"`
+	Enabled           bool     `toml:"enabled" json:"enabled"`
+	RequestsPerSecond float64  `toml:"requests_per_second" json:"requests_per_second"`
+	Burst             int      `toml:"burst" json:"burst"`
+	TrustedProxies    []string `toml:"trusted_proxies" json:"trusted_proxies"`
 }
 
 // RateLimitMiddleware provides per-IP rate limiting
@@ -361,6 +362,7 @@ type RateLimitMiddleware struct {
 	cleanupInterval time.Duration
 	enabled         bool
 	stopCleanup     chan struct{}
+	trustedProxies  []*net.IPNet
 }
 
 // NewRateLimitMiddleware creates a new rate limit middleware
@@ -379,6 +381,26 @@ func NewRateLimitMiddleware(config RateLimitConfig) *RateLimitMiddleware {
 		burst = 20
 	}
 
+	// Parse trusted proxy CIDRs
+	var trustedProxies []*net.IPNet
+	for _, proxy := range config.TrustedProxies {
+		if strings.Contains(proxy, "/") {
+			_, cidr, err := net.ParseCIDR(proxy)
+			if err == nil {
+				trustedProxies = append(trustedProxies, cidr)
+			}
+		} else {
+			ip := net.ParseIP(proxy)
+			if ip != nil {
+				mask := net.CIDRMask(128, 128)
+				if ip.To4() != nil {
+					mask = net.CIDRMask(32, 32)
+				}
+				trustedProxies = append(trustedProxies, &net.IPNet{IP: ip, Mask: mask})
+			}
+		}
+	}
+
 	rl := &RateLimitMiddleware{
 		limiters:        make(map[string]*rate.Limiter),
 		rate:            rate.Limit(requestsPerSecond),
@@ -386,6 +408,7 @@ func NewRateLimitMiddleware(config RateLimitConfig) *RateLimitMiddleware {
 		cleanupInterval: 5 * time.Minute,
 		enabled:         true,
 		stopCleanup:     make(chan struct{}),
+		trustedProxies:  trustedProxies,
 	}
 
 	go rl.cleanupLoop()
@@ -444,30 +467,52 @@ func (rl *RateLimitMiddleware) getLimiter(ip string) *rate.Limiter {
 	return limiter
 }
 
-// extractIP extracts the client IP from the request
-func extractIP(r *http.Request) string {
-	// Check X-Forwarded-For header first (for proxies)
-	forwarded := r.Header.Get("X-Forwarded-For")
-	if forwarded != "" {
-		// Take the first IP in the list
-		ips := strings.Split(forwarded, ",")
-		if len(ips) > 0 {
-			return strings.TrimSpace(ips[0])
+// extractIP extracts the client IP from the request.
+// It only trusts X-Forwarded-For and X-Real-IP headers when the direct
+// connection comes from a trusted proxy. When trusted, it returns the
+// rightmost untrusted IP from the X-Forwarded-For chain.
+func extractIP(r *http.Request, trustedProxies []*net.IPNet) string {
+	// Parse RemoteAddr to get the direct connection IP
+	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		remoteIP = r.RemoteAddr
+	}
+
+	// Only check forwarded headers if RemoteAddr is a trusted proxy
+	if len(trustedProxies) > 0 && isTrustedProxy(remoteIP, trustedProxies) {
+		// Check X-Forwarded-For: use the rightmost untrusted IP
+		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+			ips := strings.Split(forwarded, ",")
+			// Walk from the right to find the first IP not in trusted proxies
+			for i := len(ips) - 1; i >= 0; i-- {
+				candidate := strings.TrimSpace(ips[i])
+				if candidate != "" && !isTrustedProxy(candidate, trustedProxies) {
+					return candidate
+				}
+			}
+		}
+
+		// Check X-Real-IP as fallback
+		if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
+			return realIP
 		}
 	}
 
-	// Check X-Real-IP header
-	realIP := r.Header.Get("X-Real-IP")
-	if realIP != "" {
-		return realIP
-	}
+	return remoteIP
+}
 
-	// Fall back to RemoteAddr
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
+// isTrustedProxy checks if an IP is within any of the trusted proxy CIDRs
+func isTrustedProxy(ipStr string, trustedProxies []*net.IPNet) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
 	}
-	return ip
+	for _, cidr := range trustedProxies {
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // Limit applies rate limiting
@@ -478,7 +523,7 @@ func (rl *RateLimitMiddleware) Limit(next http.Handler) http.Handler {
 			return
 		}
 
-		ip := extractIP(r)
+		ip := extractIP(r, rl.trustedProxies)
 		limiter := rl.getLimiter(ip)
 
 		if !limiter.Allow() {

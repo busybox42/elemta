@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,12 +13,12 @@ import (
 
 func TestRateLimitMiddleware(t *testing.T) {
 	tests := []struct {
-		name              string
-		config            RateLimitConfig
-		requests          int
-		expectedAllowed   int
-		expectedBlocked   int
-		delayBetween      time.Duration
+		name            string
+		config          RateLimitConfig
+		requests        int
+		expectedAllowed int
+		expectedBlocked int
+		delayBetween    time.Duration
 	}{
 		{
 			name: "disabled rate limiting",
@@ -157,10 +158,11 @@ func TestRateLimitPerIP(t *testing.T) {
 
 func TestExtractIP(t *testing.T) {
 	tests := []struct {
-		name       string
-		remoteAddr string
-		headers    map[string]string
-		expected   string
+		name           string
+		remoteAddr     string
+		headers        map[string]string
+		trustedProxies []*net.IPNet
+		expected       string
 	}{
 		{
 			name:       "plain RemoteAddr",
@@ -168,42 +170,98 @@ func TestExtractIP(t *testing.T) {
 			expected:   "192.168.1.1",
 		},
 		{
-			name:       "X-Forwarded-For single IP",
+			name:       "RemoteAddr without port",
+			remoteAddr: "192.168.1.1",
+			expected:   "192.168.1.1",
+		},
+		{
+			name:       "no trusted proxies ignores X-Forwarded-For",
 			remoteAddr: "10.0.0.1:1234",
 			headers: map[string]string{
 				"X-Forwarded-For": "203.0.113.1",
 			},
-			expected: "203.0.113.1",
+			expected: "10.0.0.1",
 		},
 		{
-			name:       "X-Forwarded-For multiple IPs",
-			remoteAddr: "10.0.0.1:1234",
-			headers: map[string]string{
-				"X-Forwarded-For": "203.0.113.1, 198.51.100.1, 192.0.2.1",
-			},
-			expected: "203.0.113.1",
-		},
-		{
-			name:       "X-Real-IP header",
+			name:       "no trusted proxies ignores X-Real-IP",
 			remoteAddr: "10.0.0.1:1234",
 			headers: map[string]string{
 				"X-Real-IP": "203.0.113.5",
 			},
-			expected: "203.0.113.5",
+			expected: "10.0.0.1",
 		},
 		{
-			name:       "X-Forwarded-For takes precedence",
+			name:       "untrusted proxy ignored",
+			remoteAddr: "10.0.0.1:1234",
+			headers: map[string]string{
+				"X-Forwarded-For": "203.0.113.1",
+			},
+			trustedProxies: mustParseCIDRs("172.16.0.0/12"),
+			expected:       "10.0.0.1",
+		},
+		{
+			name:       "trusted proxy honors X-Forwarded-For single IP",
+			remoteAddr: "10.0.0.1:1234",
+			headers: map[string]string{
+				"X-Forwarded-For": "203.0.113.1",
+			},
+			trustedProxies: mustParseCIDRs("10.0.0.0/8"),
+			expected:       "203.0.113.1",
+		},
+		{
+			name:       "trusted proxy returns rightmost untrusted IP",
+			remoteAddr: "10.0.0.1:1234",
+			headers: map[string]string{
+				"X-Forwarded-For": "203.0.113.1, 198.51.100.1, 10.0.0.5",
+			},
+			trustedProxies: mustParseCIDRs("10.0.0.0/8"),
+			expected:       "198.51.100.1",
+		},
+		{
+			name:       "trusted proxy with X-Real-IP fallback",
+			remoteAddr: "10.0.0.1:1234",
+			headers: map[string]string{
+				"X-Real-IP": "203.0.113.5",
+			},
+			trustedProxies: mustParseCIDRs("10.0.0.0/8"),
+			expected:       "203.0.113.5",
+		},
+		{
+			name:       "trusted proxy X-Forwarded-For takes precedence over X-Real-IP",
 			remoteAddr: "10.0.0.1:1234",
 			headers: map[string]string{
 				"X-Forwarded-For": "203.0.113.1",
 				"X-Real-IP":       "203.0.113.5",
 			},
-			expected: "203.0.113.1",
+			trustedProxies: mustParseCIDRs("10.0.0.0/8"),
+			expected:       "203.0.113.1",
 		},
 		{
-			name:       "RemoteAddr without port",
-			remoteAddr: "192.168.1.1",
-			expected:   "192.168.1.1",
+			name:       "CIDR trusted proxy matches",
+			remoteAddr: "172.20.0.5:1234",
+			headers: map[string]string{
+				"X-Forwarded-For": "203.0.113.1",
+			},
+			trustedProxies: mustParseCIDRs("172.16.0.0/12"),
+			expected:       "203.0.113.1",
+		},
+		{
+			name:       "single IP trusted proxy",
+			remoteAddr: "192.168.1.100:1234",
+			headers: map[string]string{
+				"X-Forwarded-For": "203.0.113.1",
+			},
+			trustedProxies: mustParseCIDRs("192.168.1.100/32"),
+			expected:       "203.0.113.1",
+		},
+		{
+			name:       "all forwarded IPs are trusted returns RemoteAddr",
+			remoteAddr: "10.0.0.1:1234",
+			headers: map[string]string{
+				"X-Forwarded-For": "10.0.0.2, 10.0.0.3",
+			},
+			trustedProxies: mustParseCIDRs("10.0.0.0/8"),
+			expected:       "10.0.0.1",
 		},
 	}
 
@@ -216,12 +274,25 @@ func TestExtractIP(t *testing.T) {
 				req.Header.Set(k, v)
 			}
 
-			ip := extractIP(req)
+			ip := extractIP(req, tt.trustedProxies)
 			if ip != tt.expected {
 				t.Errorf("Expected IP %s, got %s", tt.expected, ip)
 			}
 		})
 	}
+}
+
+// mustParseCIDRs parses a comma-separated list of CIDRs for test setup
+func mustParseCIDRs(cidrs ...string) []*net.IPNet {
+	var result []*net.IPNet
+	for _, cidr := range cidrs {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			panic(fmt.Sprintf("invalid CIDR in test: %s: %v", cidr, err))
+		}
+		result = append(result, ipNet)
+	}
+	return result
 }
 
 func TestRateLimitCleanup(t *testing.T) {
