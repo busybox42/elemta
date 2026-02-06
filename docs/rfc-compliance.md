@@ -35,27 +35,61 @@ This document outlines the SMTP server's compliance with relevant RFC standards,
 
 | Feature | Implementation | Code Location |
 |---------|----------------|---------------|
-| SIZE parameter in MAIL FROM | ✅ Parsing and validation | `session_commands.go:751` |
-| Size limit enforcement | ✅ Message size checking | `session_data.go:170` |
-| Buffer optimization | ✅ Pre-allocation based on SIZE | `session_data.go:113` |
+| SIZE parameter in MAIL FROM | ✅ Parsing and validation | `session_commands.go` |
+| Size limit enforcement | ✅ Message size checking | `session_data.go` |
+| Buffer optimization | ✅ Pre-allocation based on SIZE | `session_data.go` |
+
+#### RFC 2034 - SMTP Service Extension for Returning Enhanced Error Codes
+**Status: ✅ Fully Implemented**
+
+| Feature | Implementation | Code Location |
+|---------|----------------|---------------|
+| ENHANCEDSTATUSCODES in EHLO | ✅ Advertised | `session_commands.go` |
+| Enhanced status codes in replies | ✅ All replies use `X.Y.Z` format | `session_commands.go` |
+
+#### RFC 3030 - SMTP Service Extension for Chunking (BDAT)
+**Status: ✅ Fully Implemented**
+
+| Feature | Implementation | Code Location |
+|---------|----------------|---------------|
+| CHUNKING in EHLO | ✅ Advertised | `session_commands.go` |
+| BDAT command handler | ✅ Single/multi-chunk transfer | `session_commands.go` |
+| BDAT LAST processing | ✅ Final chunk triggers delivery | `session_commands.go` |
+| BDAT 0 LAST (zero-size finalize) | ✅ Supported | `session_commands.go` |
+| MaxSize enforcement for BDAT | ✅ Accumulated size checking | `session_data.go` |
+| BDAT/DATA desync prevention | ✅ DATA rejected during BDAT | `session_state.go` |
+| RSET clears BDAT state | ✅ Buffer and counters reset | `session_data.go` |
+
+#### RFC 3461 - SMTP DSN (Delivery Status Notifications)
+**Status: 🔄 Partially Implemented (Parsing Only)**
+
+| Feature | Implementation | Code Location |
+|---------|----------------|---------------|
+| DSN in EHLO | ✅ Advertised | `session_commands.go` |
+| MAIL FROM RET=FULL\|HDRS | ✅ Parsed and stored | `session_commands.go` |
+| MAIL FROM ENVID | ✅ Parsed and stored | `session_commands.go` |
+| RCPT TO NOTIFY | ✅ Parsed and validated | `session_commands.go` |
+| RCPT TO ORCPT | ✅ Parsed and stored | `session_commands.go` |
+| DSN params stored as queue annotations | ✅ Via SetAnnotation | `session_data.go` |
+| Bounce generation | ❌ Deferred to future phase | - |
 
 #### RFC 6531 - SMTPUTF8 Extension
 **Status: 🔄 Partially Implemented**
 
 | Feature | Implementation | Code Location |
 |---------|----------------|---------------|
-| SMTPUTF8 parameter | ✅ Supported in EHLO | `session_commands.go:168` |
-| UTF-8 address handling | 🔄 Limited support | `session_commands.go:748` |
+| SMTPUTF8 parameter | ✅ Supported in EHLO | `session_commands.go` |
+| UTF-8 address handling | 🔄 Limited support | `session_commands.go` |
 | Internationalized headers | ❌ Not implemented | - |
 
 #### RFC 2920 - SMTP Service Extension for Command Pipelining
-**Status: 🔄 Partially Implemented**
+**Status: ✅ Fully Implemented**
 
 | Feature | Implementation | Code Location |
 |---------|----------------|---------------|
-| PIPELINING capability | ✅ Advertised in EHLO | `session_state.go` |
-| Command queuing | 🔄 Basic support | `session_commands.go` |
-| Pipelined error handling | ❌ Limited implementation | - |
+| PIPELINING in EHLO | ✅ Advertised | `session_commands.go` |
+| Response batching | ✅ Flush only when reader buffer empty | `session.go` |
+| Special command handling | ✅ STARTTLS/AUTH/QUIT/DATA flush immediately | `session_commands.go`, `session_auth.go` |
 
 ### Security and Authentication
 
@@ -76,6 +110,17 @@ This document outlines the SMTP server's compliance with relevant RFC standards,
 | STARTTLS command | ✅ TLS upgrade | `session_commands.go:414` |
 | Certificate validation | ✅ X.509 validation | `tls.go` |
 | Cipher suite configuration | ✅ Configurable ciphers | `tls.go:319` |
+
+#### RFC 8689 - SMTP REQUIRETLS Extension
+**Status: 🔄 Partially Implemented (Parsing Only)**
+
+| Feature | Implementation | Code Location |
+|---------|----------------|---------------|
+| REQUIRETLS in EHLO (TLS only) | ✅ Conditionally advertised | `session_commands.go` |
+| REQUIRETLS in MAIL FROM | ✅ Parsed and stored | `session_commands.go` |
+| TLS requirement enforcement (530 if no TLS) | ✅ Rejects without TLS | `session_commands.go` |
+| Stored as queue annotation | ✅ Via SetAnnotation | `session_data.go` |
+| Delivery-side TLS enforcement | ❌ Deferred to future phase | - |
 
 ### Network and Delivery
 
@@ -99,19 +144,18 @@ This document outlines the SMTP server's compliance with relevant RFC standards,
 
 ### Protocol Limitations
 
-1. **Limited Extended SMTP (ESMTP) Support**
-   - Some advanced ESMTP extensions not fully implemented
-   - DSN (Delivery Status Notifications) - RFC 3461 not supported
-   - 8BITMIME - RFC 6152 limited support
+1. **DSN Bounce Generation**
+   - DSN parameters (RET, ENVID, NOTIFY, ORCPT) are parsed and stored as queue annotations
+   - Actual bounce/notification message generation is not yet implemented
 
-2. **SMTPUTF8 Limitations**
+2. **REQUIRETLS Delivery Enforcement**
+   - REQUIRETLS is parsed at submission time and stored as a queue annotation
+   - Delivery-side enforcement (requiring TLS for outbound connections) is not yet implemented
+
+3. **SMTPUTF8 Limitations**
    - Internationalized email addresses have limited support
    - UTF-8 header validation not fully implemented
    - IDN (Internationalized Domain Names) limited support
-
-3. **Command Pipelining**
-   - Basic pipelining support but not fully optimized
-   - Error handling for pipelined commands needs improvement
 
 ### Security Considerations
 
@@ -125,41 +169,32 @@ This document outlines the SMTP server's compliance with relevant RFC standards,
 
 ## Planned Compliance Improvements
 
-### Short Term (Next 3 months)
+### Short Term
 
-1. **Complete SMTPUTF8 Implementation**
+1. **DSN Bounce Generation (RFC 3461)**
+   - Generate bounce/delay/success notification messages based on stored DSN parameters
+   - Deliver notifications to envelope sender
+
+2. **REQUIRETLS Delivery Enforcement (RFC 8689)**
+   - Check REQUIRETLS annotation before outbound delivery
+   - Require TLS for downstream connections when set
+
+3. **Complete SMTPUTF8 Implementation (RFC 6531)**
    - Full UTF-8 address validation
    - Internationalized header support
    - IDN (Internationalized Domain Names) support
 
-2. **Enhanced Command Pipelining**
-   - Full RFC 2920 compliance
-   - Improved error handling for pipelined commands
-   - Performance optimization for pipelined transactions
+### Medium Term
 
-3. **DSN Support (RFC 3461)**
-   - Delivery Status Notifications
-   - ENHANCEDSTATUSCODES extension
-   - Success/failure notification mechanisms
-
-### Medium Term (3-6 months)
-
-1. **8BITMIME Extension (RFC 6152)**
-   - Full 8-bit data support
-   - Binary MIME content handling
-   - Content transfer encoding optimization
-
-2. **Enhanced Security Extensions**
-   - REQUIRETLS (RFC 8689) support
+1. **Enhanced Security Extensions**
    - MTA-STS (RFC 8461) validation
    - DANE (RFC 7671) certificate validation
 
-3. **Advanced Message Handling**
+2. **Advanced Message Handling**
    - Message submission (RFC 6409) separation
    - BURL extension (RFC 4468) for message retrieval
-   - CHUNKING extension (RFC 3030) for large messages
 
-### Long Term (6+ months)
+### Long Term
 
 1. **Full Internationalization**
    - Complete SMTPUTF8 ecosystem
@@ -175,9 +210,11 @@ This document outlines the SMTP server's compliance with relevant RFC standards,
 
 ### Automated Testing
 
-- **Functional Tests**: `tests/smtp_functional_test.go` - Core protocol compliance
-- **RFC Tests**: `tests/rfc5321_test.go` - RFC-specific compliance testing
-- **Integration Tests**: `tests/integration/smtp_flow_test.go` - End-to-end validation
+- **SMTP Unit Tests**: `internal/smtp/*_test.go` - Core protocol compliance
+- **BDAT Tests**: `internal/smtp/session_bdat_test.go` - CHUNKING/BDAT compliance
+- **DSN Tests**: `internal/smtp/session_dsn_test.go` - DSN and REQUIRETLS compliance
+- **Pipelining Tests**: `internal/smtp/session_pipelining_test.go` - RFC 2920 pipelining compliance
+- **Integration Tests**: `tests/` - End-to-end validation via Docker
 
 ### Manual Testing
 
@@ -218,5 +255,5 @@ When contributing to the SMTP server:
 
 ---
 
-*Last Updated: 2026-02-03*
-*Version: 1.0*
+*Last Updated: 2026-02-06*
+*Version: 1.1*

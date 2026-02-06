@@ -163,10 +163,9 @@ func (ch *CommandHandler) HandleEHLO(ctx context.Context, args string) error {
 	}
 
 	// Send EHLO response with extensions
-	// Note: PIPELINING is NOT advertised because the server processes commands
-	// sequentially (one at a time) rather than batching pipelined commands.
-	// Per RFC 2920, servers MUST NOT advertise PIPELINING unless they can
-	// accept multiple commands before sending any responses.
+	// PIPELINING (RFC 2920) is supported: responses are buffered and flushed
+	// only when the reader has no more buffered data, allowing efficient
+	// batched processing of pipelined commands.
 	responses := []string{
 		fmt.Sprintf("250-%s Hello %s", ch.config.Hostname, args),
 		"250-SIZE " + strconv.FormatInt(ch.config.MaxSize, 10),
@@ -175,6 +174,7 @@ func (ch *CommandHandler) HandleEHLO(ctx context.Context, args string) error {
 		"250-ENHANCEDSTATUSCODES",
 		"250-CHUNKING",
 		"250-DSN",
+		"250-PIPELINING",
 	}
 
 	// Add STARTTLS if available and not already using TLS
@@ -365,9 +365,12 @@ func (ch *CommandHandler) HandleDATA(ctx context.Context) error {
 		return fmt.Errorf("503 5.5.1 Bad sequence of commands")
 	}
 
-	// Send data prompt
+	// Send data prompt and flush so the client sees it before sending data
 	if err := ch.session.write("354 Start mail input; end with <CRLF>.<CRLF>"); err != nil {
 		return fmt.Errorf("failed to write data prompt: %w", err)
+	}
+	if err := ch.session.flush(); err != nil {
+		return fmt.Errorf("failed to flush data prompt: %w", err)
 	}
 
 	ch.logger.InfoContext(ctx, "DATA command accepted, ready for message data",
@@ -481,8 +484,11 @@ func (ch *CommandHandler) HandleQUIT(ctx context.Context) error {
 
 	ch.logger.InfoContext(ctx, "Client initiated session termination")
 
-	// Send the goodbye message
+	// Send the goodbye message and flush immediately so the client sees it
 	if err := ch.session.write(fmt.Sprintf("221 2.0.0 %s closing connection", ch.config.Hostname)); err != nil {
+		return err
+	}
+	if err := ch.session.flush(); err != nil {
 		return err
 	}
 
@@ -511,9 +517,12 @@ func (ch *CommandHandler) HandleSTARTTLS(ctx context.Context) error {
 		return fmt.Errorf("454 4.7.0 TLS not available")
 	}
 
-	// Send TLS ready response
+	// Send TLS ready response and flush immediately before TLS handshake
 	if err := ch.session.write("220 2.0.0 Ready to start TLS"); err != nil {
 		return fmt.Errorf("failed to write TLS ready response: %w", err)
+	}
+	if err := ch.session.flush(); err != nil {
+		return fmt.Errorf("failed to flush TLS ready response: %w", err)
 	}
 
 	// Upgrade connection to TLS

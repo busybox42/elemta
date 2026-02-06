@@ -6,7 +6,7 @@ This guide covers all installation and deployment methods for Elemta.
 
 - **Docker & Docker Compose** (for containerized deployment)
 - **Kubernetes cluster** (for Kubernetes deployment)
-- **Go 1.23+** (for source builds)
+- **Go 1.24+** (for source builds)
 - **Git**
 
 ## Deployment Methods
@@ -80,7 +80,7 @@ Building from source is recommended for development and testing.
 
 #### Prerequisites
 
-- Go 1.23 or higher
+- Go 1.24 or higher
 - Git
 
 #### Build Steps

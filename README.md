@@ -63,7 +63,8 @@ go build -o elemta cmd/elemta/main.go
 - **[Queue Management](docs/queue_management.md)** - Queue operations and troubleshooting
 - **[CLI Tools](docs/cli.md)** - Command-line utilities
 
-### Development & Testing
+### Standards & Development
+- **[RFC Compliance](docs/rfc-compliance.md)** - SMTP RFC standards implementation status
 - **[Testing](docs/testing.md)** - Testing procedures and tools
 - **[Docker Deployment](docs/docker_deployment.md)** - Advanced Docker configuration
 - **[Logging](docs/logging.md)** - Log management and analysis
@@ -89,7 +90,7 @@ For detailed architecture information, see [Architecture Documentation](docs/smt
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)c
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 

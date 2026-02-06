@@ -218,6 +218,9 @@ func (s *Session) sendGreeting(ctx context.Context) error {
 	if err := s.write(greeting); err != nil {
 		return fmt.Errorf("failed to write greeting: %w", err)
 	}
+	if err := s.flush(); err != nil {
+		return fmt.Errorf("failed to flush greeting: %w", err)
+	}
 
 	s.logger.InfoContext(ctx, "SMTP greeting sent",
 		"greeting", greeting,
@@ -230,17 +233,13 @@ func (s *Session) sendGreeting(ctx context.Context) error {
 
 // processCommands processes SMTP commands in the main loop
 //
-// PIPELINING SUPPORT:
-// This implementation processes commands sequentially (read-process-respond loop).
-// RFC 2920 PIPELINING requires batching multiple commands before sending responses,
-// which is NOT currently implemented. Therefore, PIPELINING is not advertised in EHLO.
-//
-// To implement pipelining in the future:
-// 1. Check s.reader.Buffered() after each response
-// 2. If buffered data exists, accumulate commands and responses
-// 3. Send all responses together maintaining command order
-// 4. Handle errors mid-pipeline by sending responses up to error point
-// 5. Add tests for pipelined command sequences
+// PIPELINING SUPPORT (RFC 2920):
+// Commands are read and processed one at a time from the bufio.Reader.
+// After processing each command, responses are buffered (not flushed).
+// Responses are flushed only when reader.Buffered() == 0, meaning no
+// more pipelined commands are waiting. This batches responses efficiently.
+// Special commands (STARTTLS, AUTH, QUIT) flush explicitly before their
+// protocol-specific actions that require the client to have seen the response.
 func (s *Session) processCommands(ctx context.Context) error {
 	for {
 		select {
@@ -257,9 +256,17 @@ func (s *Session) processCommands(ctx context.Context) error {
 		// Handle special case for DATA phase - must check BEFORE reading line
 		// to prevent consuming message data in the command reader
 		if s.state.GetPhase() == PhaseData {
+			// Flush any buffered responses (the "354" prompt) before reading data
+			if err := s.flush(); err != nil {
+				return fmt.Errorf("failed to flush before DATA phase: %w", err)
+			}
 			if err := s.handleDataPhase(ctx); err != nil {
 				s.logger.ErrorContext(ctx, "Data phase handling failed", "error", err)
 				s.writeError(ctx, err)
+				// Flush the error response so the client sees it
+				if flushErr := s.flush(); flushErr != nil {
+					s.logger.ErrorContext(ctx, "Failed to flush after DATA error", "error", flushErr)
+				}
 
 				// Reset to INIT phase after DATA error so client can send QUIT or other commands
 				if resetErr := s.state.SetPhase(ctx, PhaseInit); resetErr != nil {
@@ -272,6 +279,9 @@ func (s *Session) processCommands(ctx context.Context) error {
 				s.logger.ErrorContext(ctx, "Failed to send message acceptance response",
 					"error", writeErr,
 					"client", s.remoteAddr)
+			}
+			if flushErr := s.flush(); flushErr != nil {
+				s.logger.ErrorContext(ctx, "Failed to flush after DATA", "error", flushErr)
 			}
 
 			// Reset to INIT phase after successful DATA processing
@@ -293,7 +303,7 @@ func (s *Session) processCommands(ctx context.Context) error {
 			s.logger.WarnContext(ctx, "Failed to set deadline", "error", err)
 		}
 
-		// Read command line (one at a time - no pipelining)
+		// Read command line
 		line, err := s.reader.ReadString('\n')
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -303,6 +313,7 @@ func (s *Session) processCommands(ctx context.Context) error {
 						"error", writeErr,
 						"client", s.remoteAddr)
 				}
+				_ = s.flush()
 				return fmt.Errorf("session timeout")
 			}
 
@@ -332,6 +343,14 @@ func (s *Session) processCommands(ctx context.Context) error {
 			if s.state.GetPhase() == PhaseQuit {
 				s.logger.InfoContext(ctx, "Session terminated by client")
 				return nil
+			}
+		}
+
+		// Flush responses if no more pipelined commands waiting (RFC 2920)
+		if s.reader.Buffered() == 0 {
+			if err := s.flush(); err != nil {
+				s.logger.ErrorContext(ctx, "Failed to flush response", "error", err)
+				return fmt.Errorf("failed to flush: %w", err)
 			}
 		}
 	}
@@ -377,7 +396,12 @@ func (s *Session) handleDataPhase(ctx context.Context) error {
 	return nil
 }
 
-// write writes a response to the client (thread-safe)
+// write buffers a response to the client without flushing (thread-safe).
+// Responses are flushed to the network by calling flush(), which happens
+// automatically in processCommands when no more pipelined commands are
+// waiting (reader.Buffered() == 0), or explicitly for commands that
+// require the client to see the response before proceeding (STARTTLS,
+// AUTH, QUIT, DATA).
 func (s *Session) write(msg string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -386,14 +410,17 @@ func (s *Session) write(msg string) error {
 		return fmt.Errorf("failed to write message: %w", err)
 	}
 
-	if err := s.writer.Flush(); err != nil {
-		return fmt.Errorf("failed to flush writer: %w", err)
-	}
-
 	// Update traffic statistics
 	s.state.AddBytesSent(context.Background(), int64(len(msg)+2))
 
 	return nil
+}
+
+// flush flushes buffered responses to the client (thread-safe).
+func (s *Session) flush() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.writer.Flush()
 }
 
 // writeWithLog writes a response with logging (thread-safe)

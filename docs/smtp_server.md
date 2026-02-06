@@ -4,27 +4,36 @@ Elemta provides a lightweight SMTP server for handling email traffic. This docum
 
 ## Configuration
 
-The SMTP server is configured using the configuration file located at `config/elemta.conf`:
+The SMTP server is configured using a YAML or TOML configuration file (see [Configuration Reference](configuration.md) for full details):
 
-```json
-{
-    "hostname": "mail.example.com",
-    "listen_addr": ":2525",
-    "queue_dir": "./queue",
-    "max_size": 26214400,
-    "dev_mode": true,
-    "allowed_relays": ["127.0.0.1", "::1", "192.168.65.1"],
-    "max_workers": 5,
-    "max_retries": 3,
-    "max_queue_time": 3600,
-    "retry_schedule": [60, 300, 900],
-    "auth": {
-        "enabled": true,
-        "required": false,
-        "datasource_type": "sqlite",
-        "datasource_path": "./auth.db"
-    }
-}
+```yaml
+hostname: "mail.example.com"
+listen_addr: ":2525"
+queue_dir: "./queue"
+max_message_size: 26214400
+dev_mode: true
+allowed_relays:
+  - "127.0.0.1"
+  - "::1"
+  - "192.168.65.1"
+
+auth:
+  enabled: true
+  required: false
+  methods:
+    - "plain"
+    - "login"
+
+tls:
+  enabled: true
+  cert_file: "/etc/elemta/certs/cert.pem"
+  key_file: "/etc/elemta/certs/key.pem"
+
+queue:
+  max_workers: 5
+  max_retries: 3
+  max_queue_time: 3600
+  retry_schedule: [60, 300, 900]
 ```
 
 ### Configuration Options
@@ -60,9 +69,11 @@ docker-compose up -d
 Elemta supports the following SMTP commands:
 
 - `HELO/EHLO`: Identify the client to the server
-- `MAIL FROM`: Specify the sender of the email
-- `RCPT TO`: Specify the recipient of the email
-- `DATA`: Send the email content
+- `MAIL FROM`: Specify the sender of the email (supports SIZE, DSN RET/ENVID, REQUIRETLS parameters)
+- `RCPT TO`: Specify the recipient of the email (supports DSN NOTIFY/ORCPT parameters)
+- `DATA`: Send the email content (dot-stuffed format)
+- `BDAT`: Send message data in chunks (RFC 3030 CHUNKING alternative to DATA)
+- `STARTTLS`: Upgrade connection to TLS
 - `QUIT`: End the session
 - `RSET`: Reset the session
 - `NOOP`: No operation (keep-alive)
@@ -79,26 +90,24 @@ Elemta supports SMTP authentication using the following methods:
 
 Authentication is configured in the `auth` section of the configuration file:
 
-```json
-"auth": {
-    "enabled": true,
-    "required": false,
-    "datasource_type": "sqlite",
-    "datasource_path": "./auth.db"
-}
+```yaml
+auth:
+  enabled: true
+  required: false
+  methods:
+    - "plain"
+    - "login"
+  backend: "file"
+  file_path: "/etc/elemta/users.json"
 ```
 
 ### Authentication Options
 
 - `enabled`: Enable or disable authentication
 - `required`: Require authentication for all connections
-- `datasource_type`: Type of datasource for authentication (sqlite, mysql, postgres)
-- `datasource_path`: Path to the datasource (for sqlite)
-- `datasource_host`: Host for the datasource (for mysql, postgres)
-- `datasource_port`: Port for the datasource (for mysql, postgres)
-- `datasource_db`: Database name (for mysql, postgres)
-- `datasource_user`: Username for the datasource (for mysql, postgres)
-- `datasource_pass`: Password for the datasource (for mysql, postgres)
+- `methods`: Authentication methods to offer (`plain`, `login`)
+- `backend`: Authentication backend (`file`, `ldap`, etc.)
+- `file_path`: Path to authentication data file
 
 ## Development Mode
 
@@ -128,27 +137,34 @@ Connected to localhost.
 Escape character is '^]'.
 220 elemta ESMTP ready
 EHLO example.com
-250-mail.example.com
+250-mail.example.com Hello example.com
 250-SIZE 26214400
 250-8BITMIME
-250-PIPELINING
+250-SMTPUTF8
 250-ENHANCEDSTATUSCODES
+250-CHUNKING
+250-DSN
+250-STARTTLS
 250 HELP
 MAIL FROM:<sender@example.com>
-250 Ok
+250 2.1.0 OK
 RCPT TO:<recipient@example.com>
-250 Ok
+250 2.1.5 OK
 DATA
 354 Start mail input; end with <CRLF>.<CRLF>
 Subject: Test Email
 
 This is a test email.
 .
-250 Ok: message queued
+250 2.0.0 Message accepted for delivery
 QUIT
-221 Bye
+221 2.0.0 Bye
 Connection closed by foreign host.
 ```
+
+**Note:** Additional extensions may appear depending on configuration:
+- `REQUIRETLS` — shown only when TLS is active (after STARTTLS)
+- `AUTH PLAIN LOGIN` — shown when authentication is enabled
 
 ### Using Python Scripts
 
@@ -166,10 +182,11 @@ python3 test_smtp_auth.py
 
 By default, Elemta only allows relaying from localhost (`127.0.0.1` and `::1`) and the Docker network. To allow relaying from other IP addresses, add them to the `allowed_relays` array in the configuration file:
 
-```json
-{
-    "allowed_relays": ["127.0.0.1", "::1", "192.168.1.100"]
-}
+```yaml
+allowed_relays:
+  - "127.0.0.1"
+  - "::1"
+  - "192.168.1.100"
 ```
 
 ## Debugging

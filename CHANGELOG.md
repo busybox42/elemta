@@ -1,6 +1,18 @@
 # Elemta Changelog
 
-## Latest Improvements (January 2026)
+## Latest Improvements (February 2026)
+
+### SMTP Protocol Extensions
+- **ENHANCEDSTATUSCODES (RFC 2034)**: Advertised in EHLO; all replies already use enhanced status codes
+- **CHUNKING/BDAT (RFC 3030)**: Full BDAT command handler with single/multi-chunk transfer, zero-size LAST, MaxSize enforcement, and DATA/BDAT desync prevention
+- **DSN (RFC 3461)**: Parsing of MAIL FROM RET/ENVID and RCPT TO NOTIFY/ORCPT parameters; stored as queue annotations for future bounce generation
+- **REQUIRETLS (RFC 8689)**: Conditionally advertised when TLS is active; parsed from MAIL FROM and stored as queue annotation for future delivery enforcement
+
+### Bug Fixes
+- **SMTP Write Deadline Fix**: Fixed stale write deadline causing client hangs after 30s by using `SetDeadline()` (both read+write) in the command processing loop
+- **Configurable Read Timeout**: Added `Resources.ReadTimeout` for tuning the command-loop deadline independently from the initial connection timeout
+
+## Previous Improvements (January 2026)
 
 ### Enhanced Logging & Monitoring
 - **Delivery IP Address Logging**: Added `delivery_ip` and `delivery_host` fields to message delivery logs for enhanced tracking

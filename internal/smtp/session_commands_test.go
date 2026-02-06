@@ -786,8 +786,8 @@ func TestRelayPermissions(t *testing.T) {
 	}
 }
 
-// TestEHLONoPipelining tests that PIPELINING is not advertised
-func TestEHLONoPipelining(t *testing.T) {
+// TestEHLOPipelining tests that PIPELINING is advertised (RFC 2920)
+func TestEHLOPipelining(t *testing.T) {
 	config := createTestConfig(t)
 	server, err := NewServer(config)
 	require.NoError(t, err)
@@ -824,10 +824,10 @@ func TestEHLONoPipelining(t *testing.T) {
 		}
 	}
 
-	// Verify PIPELINING is NOT advertised
+	// Verify PIPELINING is advertised
 	allResponses := strings.Join(responses, "")
-	assert.NotContains(t, allResponses, "PIPELINING",
-		"PIPELINING should not be advertised as it's not implemented")
+	assert.Contains(t, allResponses, "PIPELINING",
+		"PIPELINING should be advertised in EHLO response")
 
 	// Verify other extensions are present
 	assert.Contains(t, allResponses, "SIZE")

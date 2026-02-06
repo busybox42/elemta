@@ -217,6 +217,9 @@ func (ah *AuthHandler) handleAuthPlain(ctx context.Context, cmd string) error {
 		if err := ah.session.write("334 "); err != nil {
 			return fmt.Errorf("failed to write auth prompt: %w", err)
 		}
+		if err := ah.session.flush(); err != nil {
+			return fmt.Errorf("failed to flush auth prompt: %w", err)
+		}
 
 		line, _, err := ah.session.reader.ReadLine()
 		if err != nil {
@@ -258,9 +261,12 @@ func (ah *AuthHandler) handleAuthPlain(ctx context.Context, cmd string) error {
 func (ah *AuthHandler) handleAuthLogin(ctx context.Context) error {
 	ah.logger.DebugContext(ctx, "Processing LOGIN authentication")
 
-	// Send username prompt
+	// Send username prompt and flush so client sees it before we read
 	if err := ah.session.write("334 " + base64.StdEncoding.EncodeToString([]byte("Username:"))); err != nil {
 		return fmt.Errorf("failed to write username prompt: %w", err)
+	}
+	if err := ah.session.flush(); err != nil {
+		return fmt.Errorf("failed to flush username prompt: %w", err)
 	}
 
 	// Read username
@@ -283,9 +289,12 @@ func (ah *AuthHandler) handleAuthLogin(ctx context.Context) error {
 	}
 	username := string(usernameBytes)
 
-	// Send password prompt
+	// Send password prompt and flush so client sees it before we read
 	if err := ah.session.write("334 " + base64.StdEncoding.EncodeToString([]byte("Password:"))); err != nil {
 		return fmt.Errorf("failed to write password prompt: %w", err)
+	}
+	if err := ah.session.flush(); err != nil {
+		return fmt.Errorf("failed to flush password prompt: %w", err)
 	}
 
 	// Read password
@@ -397,9 +406,13 @@ func (ah *AuthHandler) performAuthentication(ctx context.Context, username, pass
 		"duration", duration,
 	)
 
-	// Send success response to client
+	// Send success response to client and flush so client sees it
 	if err := ah.session.write("235 2.7.0 Authentication successful"); err != nil {
 		ah.logger.ErrorContext(ctx, "Failed to send authentication success response", "error", err)
+		return fmt.Errorf("451 4.3.0 Internal server error")
+	}
+	if err := ah.session.flush(); err != nil {
+		ah.logger.ErrorContext(ctx, "Failed to flush authentication success response", "error", err)
 		return fmt.Errorf("451 4.3.0 Internal server error")
 	}
 

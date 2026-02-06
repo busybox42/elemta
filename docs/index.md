@@ -47,17 +47,21 @@ Welcome to the Elemta documentation. This guide will help you navigate through a
 
 - [Plugin Documentation](plugins/) - Documentation for developing Elemta plugins
 
+## Standards Compliance
+
+- [RFC Compliance](rfc-compliance.md) - SMTP RFC standards implementation status
+
 ## API Reference
 
-- *Coming soon*
+- [API Reference](api-reference.md) - Complete REST API documentation
 
 ## Troubleshooting
 
-- *Coming soon*
+- [Troubleshooting Guide](troubleshooting.md) - Common issues and solutions
 
 ## Contributing
 
-- *Coming soon*
+- See the project [README](../README.md) for contribution guidelines
 
 ---
 
