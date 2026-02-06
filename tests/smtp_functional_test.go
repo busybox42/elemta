@@ -74,8 +74,13 @@ serverStarted:
 	return server, conn, reader
 }
 
-// setupSMTPSession establishes a proper SMTP session like the working tests
+// setupSMTPSession establishes a proper SMTP session like the working tests.
+// Sends RSET first to reset any prior session state when reusing connections.
 func setupSMTPSession(t *testing.T, reader *bufio.Reader, conn net.Conn) {
+	// Send RSET to clear any prior session state (ignore response — may fail on first call)
+	_, _ = conn.Write([]byte("RSET\r\n"))
+	_, _ = reader.ReadString('\n')
+
 	// Send EHLO and read multi-line response
 	_, err := conn.Write([]byte("EHLO test.example.com\r\n"))
 	require.NoError(t, err)
@@ -139,10 +144,6 @@ func TestSMTP_BasicFunctionality(t *testing.T) {
 
 // TestSMTP_ErrorHandling tests error scenarios
 func TestSMTP_ErrorHandling(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping functional test in short mode - requires relay logic refinement")
-	}
-
 	server, conn, reader := setupFunctionalServer(t)
 	defer server.Close()
 	defer conn.Close()
@@ -154,7 +155,7 @@ func TestSMTP_ErrorHandling(t *testing.T) {
 		require.NoError(t, err)
 		response, err := reader.ReadString('\n')
 		require.NoError(t, err)
-		assert.Contains(t, response, "500", "Invalid command should return 500")
+		assert.Contains(t, response, "502", "Invalid command should return 502")
 	})
 
 	t.Run("Bad_Command_Sequence", func(t *testing.T) {
@@ -222,10 +223,6 @@ func TestSMTP_MultipleMessages(t *testing.T) {
 
 // TestSMTP_DomainHandling tests domain-specific behavior
 func TestSMTP_DomainHandling(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping functional test in short mode - requires relay logic refinement")
-	}
-
 	server, conn, reader := setupFunctionalServer(t)
 	defer server.Close()
 	defer conn.Close()

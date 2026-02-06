@@ -446,8 +446,9 @@ func (m *TLSManager) setupLetsEncrypt() (*tls.Config, error) {
 	// Start HTTP server for ACME HTTP-01 challenge
 	// This is needed for domain ownership validation
 	httpServer := &http.Server{
-		Addr:    ":http",
-		Handler: m.certManager.HTTPHandler(nil),
+		Addr:              ":http",
+		Handler:           m.certManager.HTTPHandler(nil),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	go func() {

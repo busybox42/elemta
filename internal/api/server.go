@@ -414,10 +414,11 @@ func (s *Server) Start() error {
 
 	// Create HTTP server
 	s.httpServer = &http.Server{
-		Addr:         s.listenAddr,
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:              s.listenAddr,
+		Handler:           r,
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      15 * time.Second,
 	}
 
 	// Start server in a goroutine
