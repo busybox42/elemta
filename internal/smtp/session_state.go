@@ -73,26 +73,29 @@ func (m DataTransferMode) String() string {
 
 // SessionState manages the state of an SMTP session with thread safety
 type SessionState struct {
-	mu               sync.RWMutex
-	phase            SMTPPhase
-	authenticated    bool
-	username         string
-	mailFrom         string
-	rcptTo           []string
-	dataSize         int64
-	declaredSize     int64 // SIZE parameter from MAIL FROM command (RFC 1870)
-	tlsActive        bool
-	smtputf8         bool
-	authAttempts     int
-	lastAuthAttempt  time.Time
-	sessionStartTime time.Time
-	lastActivityTime time.Time
-	messageCount     int64
-	bytesSent        int64
-	bytesReceived    int64
-	errors           []error
-	logger           *slog.Logger
-	dataTransferMode DataTransferMode // Track data transfer mode to prevent desynchronization attacks
+	mu                 sync.RWMutex
+	phase              SMTPPhase
+	authenticated      bool
+	username           string
+	mailFrom           string
+	rcptTo             []string
+	dataSize           int64
+	declaredSize       int64 // SIZE parameter from MAIL FROM command (RFC 1870)
+	tlsActive          bool
+	smtputf8           bool
+	authAttempts       int
+	lastAuthAttempt    time.Time
+	sessionStartTime   time.Time
+	lastActivityTime   time.Time
+	messageCount       int64
+	bytesSent          int64
+	bytesReceived      int64
+	errors             []error
+	logger             *slog.Logger
+	dataTransferMode   DataTransferMode // Track data transfer mode to prevent desynchronization attacks
+	dsnParams          *DSNParams
+	dsnRecipientParams map[string]*DSNRecipientParams
+	requireTLS         bool
 }
 
 // NewSessionState creates a new session state manager
@@ -466,6 +469,9 @@ func (ss *SessionState) Reset(ctx context.Context) {
 	ss.declaredSize = 0 // Clear declared size for new transaction
 	ss.smtputf8 = false
 	ss.dataTransferMode = DataModeNone // Clear data transfer mode on reset
+	ss.dsnParams = nil
+	ss.dsnRecipientParams = nil
+	ss.requireTLS = false
 	ss.lastActivityTime = time.Now()
 
 	ss.logger.DebugContext(ctx, "Session state reset for new transaction")
@@ -531,11 +537,23 @@ func (ss *SessionState) CanAcceptCommand(ctx context.Context, command string) bo
 	allowedCommands := map[SMTPPhase][]string{
 		PhaseInit: {"HELO", "EHLO", "QUIT", "RSET", "NOOP", "HELP", "AUTH", "STARTTLS", "VRFY", "EXPN", "XDEBUG"},
 		PhaseMail: {"MAIL", "AUTH", "STARTTLS", "QUIT", "RSET", "NOOP", "HELP", "VRFY", "EXPN", "XDEBUG"}, // Allow AUTH after EHLO
-		PhaseRcpt: {"RCPT", "QUIT", "RSET", "NOOP", "HELP", "DATA", "VRFY", "EXPN", "XDEBUG"},
+		PhaseRcpt: {"RCPT", "QUIT", "RSET", "NOOP", "HELP", "DATA", "BDAT", "VRFY", "EXPN", "XDEBUG"},
 		PhaseData: {"QUIT", "RSET", "NOOP", "HELP", "XDEBUG"},
 		PhaseAuth: {"AUTH", "QUIT", "RSET", "NOOP", "HELP", "XDEBUG"},
 		PhaseTLS:  {"HELO", "EHLO", "QUIT", "RSET", "NOOP", "HELP", "AUTH", "MAIL", "VRFY", "EXPN", "XDEBUG"},
 		PhaseQuit: {}, // No commands allowed after QUIT
+	}
+
+	// When in BDAT transfer mode, only allow BDAT, RSET, QUIT, NOOP
+	// to prevent mixing commands mid-chunked-transfer
+	command = strings.ToUpper(strings.TrimSpace(command))
+	if ss.dataTransferMode == DataModeBDAT {
+		switch command {
+		case "BDAT", "RSET", "QUIT", "NOOP":
+			return true
+		default:
+			return false
+		}
 	}
 
 	allowed, exists := allowedCommands[ss.phase]
@@ -543,7 +561,6 @@ func (ss *SessionState) CanAcceptCommand(ctx context.Context, command string) bo
 		return false
 	}
 
-	command = strings.ToUpper(strings.TrimSpace(command))
 	for _, allowedCmd := range allowed {
 		if allowedCmd == command {
 			return true
@@ -646,4 +663,79 @@ func (ss *SessionState) ClearDataTransferMode(ctx context.Context) {
 	ss.lastActivityTime = time.Now()
 
 	ss.logger.DebugContext(ctx, "Data transfer mode cleared")
+}
+
+// SetDSNParams sets the DSN envelope parameters (thread-safe)
+func (ss *SessionState) SetDSNParams(ctx context.Context, params *DSNParams) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	ss.dsnParams = params
+	ss.lastActivityTime = time.Now()
+
+	ss.logger.DebugContext(ctx, "DSN params set",
+		"return", string(params.Return),
+		"envid", params.EnvID,
+	)
+}
+
+// GetDSNParams returns the DSN envelope parameters (thread-safe)
+func (ss *SessionState) GetDSNParams() *DSNParams {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	return ss.dsnParams
+}
+
+// SetDSNRecipientParams sets DSN parameters for a specific recipient (thread-safe)
+func (ss *SessionState) SetDSNRecipientParams(ctx context.Context, addr string, params *DSNRecipientParams) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	if ss.dsnRecipientParams == nil {
+		ss.dsnRecipientParams = make(map[string]*DSNRecipientParams)
+	}
+	ss.dsnRecipientParams[addr] = params
+	ss.lastActivityTime = time.Now()
+
+	ss.logger.DebugContext(ctx, "DSN recipient params set",
+		"recipient", addr,
+		"notify", params.Notify,
+		"orcpt", params.ORCPT,
+	)
+}
+
+// GetAllDSNRecipientParams returns all per-recipient DSN parameters (thread-safe)
+func (ss *SessionState) GetAllDSNRecipientParams() map[string]*DSNRecipientParams {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+
+	if ss.dsnRecipientParams == nil {
+		return nil
+	}
+	// Return a copy
+	result := make(map[string]*DSNRecipientParams, len(ss.dsnRecipientParams))
+	for k, v := range ss.dsnRecipientParams {
+		result[k] = v
+	}
+	return result
+}
+
+// SetRequireTLS sets the REQUIRETLS flag (thread-safe)
+func (ss *SessionState) SetRequireTLS(ctx context.Context, required bool) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	ss.requireTLS = required
+	ss.lastActivityTime = time.Now()
+
+	ss.logger.DebugContext(ctx, "REQUIRETLS set",
+		"require_tls", required,
+	)
+}
+
+// IsRequireTLS returns whether REQUIRETLS is set for this transaction (thread-safe)
+func (ss *SessionState) IsRequireTLS() bool {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	return ss.requireTLS
 }

@@ -65,6 +65,9 @@ type DataHandler struct {
 	enhancedValidator *EnhancedValidator
 	msgLogger         *logging.MessageLogger
 	receptionTime     time.Time
+	bdatBuffer        bytes.Buffer // Accumulated BDAT chunk data
+	bdatBytesReceived int64        // Total bytes across all chunks
+	bdatChunkCount    int          // Chunks received in current transaction
 }
 
 // NewDataHandler creates a new data handler
@@ -313,6 +316,60 @@ func (dh *DataHandler) ReadData(ctx context.Context) ([]byte, error) {
 	)
 
 	return data, nil
+}
+
+// ReadBDATChunk reads exactly size bytes from the connection for a BDAT chunk
+func (dh *DataHandler) ReadBDATChunk(ctx context.Context, size int64) error {
+	// Check total accumulated + new chunk against max size
+	if dh.bdatBytesReceived+size > dh.config.MaxSize {
+		return fmt.Errorf("552 5.3.4 Message size exceeds maximum allowed (%d bytes)", dh.config.MaxSize)
+	}
+
+	// Check per-session memory limit
+	sessionMemoryLimit := int64(50 * 1024 * 1024)
+	if dh.session.resourceManager != nil && dh.session.resourceManager.memoryManager != nil {
+		sessionMemoryLimit = dh.session.resourceManager.memoryManager.config.PerConnectionMemoryLimit
+	}
+	if dh.bdatBytesReceived+size > sessionMemoryLimit {
+		return fmt.Errorf("552 5.3.4 Session memory limit exceeded")
+	}
+
+	// Read exactly size bytes
+	chunk := make([]byte, size)
+	_, err := io.ReadFull(dh.reader, chunk)
+	if err != nil {
+		dh.logger.ErrorContext(ctx, "Failed to read BDAT chunk", "error", err, "expected_size", size)
+		return fmt.Errorf("451 4.3.0 Error reading chunk data: %w", err)
+	}
+
+	dh.bdatBuffer.Write(chunk)
+	dh.bdatBytesReceived += size
+	dh.bdatChunkCount++
+
+	dh.logger.DebugContext(ctx, "BDAT chunk received",
+		"chunk_size", size,
+		"total_received", dh.bdatBytesReceived,
+		"chunk_count", dh.bdatChunkCount,
+	)
+
+	return nil
+}
+
+// ProcessBDATMessage processes the accumulated BDAT data as a complete message
+func (dh *DataHandler) ProcessBDATMessage(ctx context.Context) error {
+	data := dh.bdatBuffer.Bytes()
+	dh.state.SetDataSize(ctx, int64(len(data)))
+
+	err := dh.ProcessMessage(ctx, data)
+	dh.ResetBDAT()
+	return err
+}
+
+// ResetBDAT clears the BDAT buffer and counters
+func (dh *DataHandler) ResetBDAT() {
+	dh.bdatBuffer.Reset()
+	dh.bdatBytesReceived = 0
+	dh.bdatChunkCount = 0
 }
 
 // ProcessMessage processes the complete message with security scanning and validation
@@ -1624,7 +1681,7 @@ func (dh *DataHandler) saveMessage(ctx context.Context, data []byte, metadata *M
 	// Process the message
 
 	// Enqueue message for delivery
-	_, err := dh.queueManager.EnqueueMessage(
+	msgID, err := dh.queueManager.EnqueueMessage(
 		metadata.From,
 		metadata.To,
 		metadata.Subject,
@@ -1637,7 +1694,9 @@ func (dh *DataHandler) saveMessage(ctx context.Context, data []byte, metadata *M
 		return fmt.Errorf("failed to save message: %w", err)
 	}
 
-	// Log message reception
+	// Store DSN and REQUIRETLS annotations on the queued message
+	// TODO: REQUIRETLS delivery enforcement (RFC 8689)
+	dh.saveDSNAnnotations(ctx, msgID)
 
 	// Log message reception with timing
 	dh.msgLogger.LogReception(logging.MessageContext{
@@ -1659,4 +1718,54 @@ func (dh *DataHandler) saveMessage(ctx context.Context, data []byte, metadata *M
 	// Note: Queue integration processing would be handled by the queue manager
 
 	return nil
+}
+
+// saveDSNAnnotations stores DSN and REQUIRETLS annotations on a queued message
+func (dh *DataHandler) saveDSNAnnotations(ctx context.Context, msgID string) {
+	if dh.queueManager == nil {
+		return
+	}
+
+	// Store DSN envelope params
+	if dsnParams := dh.state.GetDSNParams(); dsnParams != nil {
+		if dsnParams.Return != "" {
+			if err := dh.queueManager.SetAnnotation(msgID, "dsn_return", string(dsnParams.Return)); err != nil {
+				dh.logger.WarnContext(ctx, "Failed to set dsn_return annotation", "error", err)
+			}
+		}
+		if dsnParams.EnvID != "" {
+			if err := dh.queueManager.SetAnnotation(msgID, "dsn_envid", dsnParams.EnvID); err != nil {
+				dh.logger.WarnContext(ctx, "Failed to set dsn_envid annotation", "error", err)
+			}
+		}
+	}
+
+	// Store per-recipient DSN params
+	if rcptParams := dh.state.GetAllDSNRecipientParams(); rcptParams != nil {
+		for addr, params := range rcptParams {
+			if len(params.Notify) > 0 {
+				notifyStrs := make([]string, len(params.Notify))
+				for i, n := range params.Notify {
+					notifyStrs[i] = string(n)
+				}
+				key := "dsn_notify:" + addr
+				if err := dh.queueManager.SetAnnotation(msgID, key, strings.Join(notifyStrs, ",")); err != nil {
+					dh.logger.WarnContext(ctx, "Failed to set dsn_notify annotation", "error", err, "recipient", addr)
+				}
+			}
+			if params.ORCPT != "" {
+				key := "dsn_orcpt:" + addr
+				if err := dh.queueManager.SetAnnotation(msgID, key, params.ORCPT); err != nil {
+					dh.logger.WarnContext(ctx, "Failed to set dsn_orcpt annotation", "error", err, "recipient", addr)
+				}
+			}
+		}
+	}
+
+	// Store REQUIRETLS flag
+	if dh.state.IsRequireTLS() {
+		if err := dh.queueManager.SetAnnotation(msgID, "require_tls", "true"); err != nil {
+			dh.logger.WarnContext(ctx, "Failed to set require_tls annotation", "error", err)
+		}
+	}
 }

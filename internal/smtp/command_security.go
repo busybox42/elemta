@@ -289,6 +289,7 @@ func (csm *CommandSecurityManager) validateCommandName(ctx context.Context, cmd 
 		"MAIL":     true,
 		"RCPT":     true,
 		"DATA":     true,
+		"BDAT":     true,
 		"RSET":     true,
 		"NOOP":     true,
 		"QUIT":     true,

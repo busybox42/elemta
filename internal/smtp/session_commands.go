@@ -84,6 +84,8 @@ func (ch *CommandHandler) ProcessCommand(ctx context.Context, line string) error
 		err = ch.HandleRCPT(ctx, args)
 	case "DATA":
 		err = ch.HandleDATA(ctx)
+	case "BDAT":
+		err = ch.HandleBDAT(ctx, args)
 	case "RSET":
 		err = ch.HandleRSET(ctx)
 	case "NOOP":
@@ -170,11 +172,19 @@ func (ch *CommandHandler) HandleEHLO(ctx context.Context, args string) error {
 		"250-SIZE " + strconv.FormatInt(ch.config.MaxSize, 10),
 		"250-8BITMIME",
 		"250-SMTPUTF8",
+		"250-ENHANCEDSTATUSCODES",
+		"250-CHUNKING",
+		"250-DSN",
 	}
 
 	// Add STARTTLS if available and not already using TLS
 	if ch.tlsManager != nil && !ch.state.IsTLSActive() {
 		responses = append(responses, "250-STARTTLS")
+	}
+
+	// Add REQUIRETLS only when TLS is active (RFC 8689)
+	if ch.state.IsTLSActive() {
+		responses = append(responses, "250-REQUIRETLS")
 	}
 
 	// Add AUTH methods if authentication is enabled
@@ -369,12 +379,85 @@ func (ch *CommandHandler) HandleDATA(ctx context.Context) error {
 	return nil
 }
 
+// HandleBDAT processes the BDAT command (RFC 3030 CHUNKING extension)
+func (ch *CommandHandler) HandleBDAT(ctx context.Context, args string) error {
+	ch.logger.DebugContext(ctx, "Processing BDAT command", "args", args)
+
+	// Check if we have recipients
+	if ch.state.GetRecipientCount() == 0 {
+		return fmt.Errorf("503 5.5.1 RCPT first")
+	}
+
+	// Parse args: "<size> [LAST]"
+	parts := strings.Fields(args)
+	if len(parts) == 0 || len(parts) > 2 {
+		return fmt.Errorf("501 5.5.4 Syntax: BDAT <chunk-size> [LAST]")
+	}
+
+	size, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || size < 0 {
+		return fmt.Errorf("501 5.5.4 Invalid chunk size")
+	}
+
+	isLast := len(parts) == 2 && strings.EqualFold(parts[1], "LAST")
+	if len(parts) == 2 && !isLast {
+		return fmt.Errorf("501 5.5.4 Syntax: BDAT <chunk-size> [LAST]")
+	}
+
+	// Validate data command acceptance to prevent desynchronization attacks
+	if !ch.state.CanAcceptDataCommand(ctx, "BDAT") {
+		ch.logger.WarnContext(ctx, "BDAT command rejected - mode conflict or invalid phase",
+			"event_type", "desynchronization_attempt",
+			"current_mode", ch.state.GetDataTransferMode().String(),
+			"current_phase", ch.state.GetPhase().String(),
+		)
+		return fmt.Errorf("503 5.5.1 Bad sequence of commands")
+	}
+
+	// First chunk: set data transfer mode to BDAT
+	if ch.state.GetDataTransferMode() == DataModeNone {
+		if err := ch.state.SetDataTransferMode(ctx, DataModeBDAT); err != nil {
+			return fmt.Errorf("503 5.5.1 Bad sequence of commands")
+		}
+	}
+
+	// Read the chunk data
+	if err := ch.session.dataHandler.ReadBDATChunk(ctx, size); err != nil {
+		// On error, reset BDAT state
+		ch.session.dataHandler.ResetBDAT()
+		ch.state.ClearDataTransferMode(ctx)
+		return err
+	}
+
+	if isLast {
+		// Process the complete message
+		if err := ch.session.dataHandler.ProcessBDATMessage(ctx); err != nil {
+			ch.state.ClearDataTransferMode(ctx)
+			return err
+		}
+
+		if err := ch.session.write("250 2.0.0 Message accepted for delivery"); err != nil {
+			return fmt.Errorf("failed to write BDAT response: %w", err)
+		}
+		return nil
+	}
+
+	// Intermediate chunk: acknowledge receipt
+	if err := ch.session.write(fmt.Sprintf("250 2.0.0 %d bytes received", size)); err != nil {
+		return fmt.Errorf("failed to write BDAT response: %w", err)
+	}
+	return nil
+}
+
 // HandleRSET processes the RSET command
 func (ch *CommandHandler) HandleRSET(ctx context.Context) error {
 	ch.logger.DebugContext(ctx, "Processing RSET command")
 
 	// Reset session state
 	ch.state.Reset(ctx)
+
+	// Clear any in-progress BDAT data
+	ch.session.dataHandler.ResetBDAT()
 
 	ch.logger.InfoContext(ctx, "Session state reset")
 
@@ -722,7 +805,7 @@ func (ch *CommandHandler) parseMailFrom(ctx context.Context, args string) (strin
 		}
 	}
 
-	// Parse ESMTP parameters (RFC 1870 SIZE, RFC 6531 SMTPUTF8, etc.)
+	// Parse ESMTP parameters (RFC 1870 SIZE, RFC 6531 SMTPUTF8, RFC 3461 DSN, RFC 8689 REQUIRETLS)
 	var declaredSize int64 = 0
 
 	if params != "" {
@@ -783,12 +866,62 @@ func (ch *CommandHandler) parseMailFrom(ctx context.Context, args string) (strin
 				)
 			}
 		}
+
+		// Parse DSN parameters (RFC 3461)
+		dsnParams := &DSNParams{}
+		hasDSN := false
+
+		// Parse RET parameter (RFC 3461 Section 4.3)
+		if strings.Contains(upperParams, "RET=") {
+			retIdx := strings.Index(upperParams, "RET=")
+			retParam := upperParams[retIdx+4:]
+			if spaceIdx := strings.Index(retParam, " "); spaceIdx > 0 {
+				retParam = retParam[:spaceIdx]
+			}
+			switch retParam {
+			case "FULL":
+				dsnParams.Return = DSNReturnFull
+				hasDSN = true
+			case "HDRS":
+				dsnParams.Return = DSNReturnHeaders
+				hasDSN = true
+			default:
+				return "", 0, fmt.Errorf("501 5.5.4 Invalid RET parameter: must be FULL or HDRS")
+			}
+		}
+
+		// Parse ENVID parameter (RFC 3461 Section 4.4)
+		if strings.Contains(upperParams, "ENVID=") {
+			envIdx := strings.Index(upperParams, "ENVID=")
+			envParam := params[envIdx+6:] // Use original case for ENVID value
+			if spaceIdx := strings.Index(envParam, " "); spaceIdx > 0 {
+				envParam = envParam[:spaceIdx]
+			}
+			if len(envParam) > 100 {
+				return "", 0, fmt.Errorf("501 5.5.4 ENVID parameter too long (max 100 characters)")
+			}
+			dsnParams.EnvID = envParam
+			hasDSN = true
+		}
+
+		if hasDSN {
+			ch.state.SetDSNParams(ctx, dsnParams)
+		}
+
+		// Parse REQUIRETLS parameter (RFC 8689)
+		if strings.Contains(upperParams, "REQUIRETLS") {
+			if !ch.state.IsTLSActive() {
+				return "", 0, fmt.Errorf("530 5.7.4 REQUIRETLS requires an active TLS connection")
+			}
+			ch.state.SetRequireTLS(ctx, true)
+			ch.logger.DebugContext(ctx, "REQUIRETLS requested for this message")
+		}
 	}
 
 	return addr, declaredSize, nil
 }
 
-// parseRcptTo parses the RCPT TO command
+// parseRcptTo parses the RCPT TO command with DSN parameters (RFC 3461)
 func (ch *CommandHandler) parseRcptTo(ctx context.Context, args string) (string, error) {
 	if args == "" {
 		return "", fmt.Errorf("501 5.5.4 Syntax: RCPT TO:<address>")
@@ -803,9 +936,80 @@ func (ch *CommandHandler) parseRcptTo(ctx context.Context, args string) (string,
 	addr := args[3:] // Skip "TO:" or "to:" or any case variation (already validated above)
 	addr = strings.TrimSpace(addr)
 
-	// Remove angle brackets if present
-	if strings.HasPrefix(addr, "<") && strings.HasSuffix(addr, ">") {
-		addr = addr[1 : len(addr)-1]
+	// Extract ESMTP parameters after closing bracket
+	var params string
+	if strings.HasPrefix(addr, "<") {
+		endBracket := strings.Index(addr, ">")
+		if endBracket > 0 {
+			if endBracket+1 < len(addr) {
+				params = strings.TrimSpace(addr[endBracket+1:])
+			}
+			addr = addr[1:endBracket]
+		} else {
+			addr = strings.TrimPrefix(addr, "<")
+		}
+	} else {
+		if spaceIdx := strings.Index(addr, " "); spaceIdx > 0 {
+			params = strings.TrimSpace(addr[spaceIdx+1:])
+			addr = addr[:spaceIdx]
+		}
+	}
+
+	// Parse DSN recipient parameters (RFC 3461)
+	if params != "" {
+		upperParams := strings.ToUpper(params)
+		rcptDSN := &DSNRecipientParams{}
+		hasDSN := false
+
+		// Parse NOTIFY parameter (RFC 3461 Section 4.1)
+		if strings.Contains(upperParams, "NOTIFY=") {
+			notifyIdx := strings.Index(upperParams, "NOTIFY=")
+			notifyParam := upperParams[notifyIdx+7:]
+			if spaceIdx := strings.Index(notifyParam, " "); spaceIdx > 0 {
+				notifyParam = notifyParam[:spaceIdx]
+			}
+
+			notifyValues := strings.Split(notifyParam, ",")
+			var notifyTypes []DSNNotifyType
+			hasNever := false
+			for _, v := range notifyValues {
+				v = strings.TrimSpace(v)
+				switch v {
+				case "NEVER":
+					hasNever = true
+					notifyTypes = append(notifyTypes, DSNNotifyNever)
+				case "SUCCESS":
+					notifyTypes = append(notifyTypes, DSNNotifySuccess)
+				case "FAILURE":
+					notifyTypes = append(notifyTypes, DSNNotifyFailure)
+				case "DELAY":
+					notifyTypes = append(notifyTypes, DSNNotifyDelay)
+				default:
+					return "", fmt.Errorf("501 5.5.4 Invalid NOTIFY value: %s", v)
+				}
+			}
+			// NEVER must be used alone
+			if hasNever && len(notifyTypes) > 1 {
+				return "", fmt.Errorf("501 5.5.4 NOTIFY=NEVER must not be combined with other values")
+			}
+			rcptDSN.Notify = notifyTypes
+			hasDSN = true
+		}
+
+		// Parse ORCPT parameter (RFC 3461 Section 4.2)
+		if strings.Contains(upperParams, "ORCPT=") {
+			orcptIdx := strings.Index(upperParams, "ORCPT=")
+			orcptParam := params[orcptIdx+6:] // Use original case
+			if spaceIdx := strings.Index(orcptParam, " "); spaceIdx > 0 {
+				orcptParam = orcptParam[:spaceIdx]
+			}
+			rcptDSN.ORCPT = orcptParam
+			hasDSN = true
+		}
+
+		if hasDSN {
+			ch.state.SetDSNRecipientParams(ctx, addr, rcptDSN)
+		}
 	}
 
 	return addr, nil
