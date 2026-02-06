@@ -16,6 +16,7 @@ config/test.key
 config/examples/elemta-fixed.conf
 # AI-related files
 .cursor*
+.windsurf/
 .notes/
 TODAYS_WORK.md
 *_WORK.md
