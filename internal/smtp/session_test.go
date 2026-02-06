@@ -14,7 +14,8 @@ import (
 func TestSession_ErrorHandling_TimeoutResponse(t *testing.T) {
 	// Create test server with real dependencies
 	config := createTestConfig(t)
-	config.Resources.ConnectionTimeout = 1 // Very short timeout for testing
+	config.Resources.ConnectionTimeout = 5 // Allow time for greeting and EHLO
+	config.Resources.ReadTimeout = 1       // Short idle timeout to trigger 421 quickly
 
 	server, err := NewServer(config)
 	require.NoError(t, err)

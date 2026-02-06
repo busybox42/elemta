@@ -690,6 +690,7 @@ func TestXDEBUGCommands(t *testing.T) {
 		{"XDEBUG STATE in dev mode", "XDEBUG STATE", true, "214"},
 		{"XDEBUG CONTEXT in dev mode", "XDEBUG CONTEXT", true, "214"},
 		{"XDEBUG in production mode", "XDEBUG STATE", false, "502"},
+		{"XDEBUG removed subcommand", "XDEBUG CONFIG", true, "214 Unknown XDEBUG command"},
 	}
 
 	for _, tt := range tests {

@@ -281,9 +281,16 @@ func (s *Session) processCommands(ctx context.Context) error {
 			continue
 		}
 
-		// Set read timeout
-		if err := s.conn.SetReadDeadline(time.Now().Add(5 * time.Minute)); err != nil {
-			s.logger.WarnContext(ctx, "Failed to set read deadline", "error", err)
+		// Reset both read and write deadlines for command processing.
+		// The initial conn.SetDeadline(30s) from AcceptConnection only covers
+		// the greeting phase. Each command iteration must refresh both deadlines,
+		// otherwise the write deadline expires and responses silently fail.
+		commandTimeout := 5 * time.Minute
+		if s.config.Resources != nil && s.config.Resources.ReadTimeout > 0 {
+			commandTimeout = time.Duration(s.config.Resources.ReadTimeout) * time.Second
+		}
+		if err := s.conn.SetDeadline(time.Now().Add(commandTimeout)); err != nil {
+			s.logger.WarnContext(ctx, "Failed to set deadline", "error", err)
 		}
 
 		// Read command line (one at a time - no pipelining)
