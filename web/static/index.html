@@ -762,23 +762,22 @@ If you received this message, your mail server is working correctly!</textarea>
 
             <!-- Settings View -->
             <section class="view" id="view-settings">
-                <!-- Simple Settings - All inline styles for guaranteed visibility -->
-                <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; border-bottom: 1px solid #333; padding-bottom: 0;">
-                    <button class="settings-tab active" data-tab="ui" style="padding: 0.75rem 1rem; background: none; border: none; color: #888; cursor: pointer; border-bottom: 2px solid transparent;">UI Settings</button>
-                    <button class="settings-tab" data-tab="server" style="padding: 0.75rem 1rem; background: none; border: none; color: #888; cursor: pointer; border-bottom: 2px solid transparent;">Server Config</button>
-                    <button class="settings-tab" data-tab="plugins" style="padding: 0.75rem 1rem; background: none; border: none; color: #888; cursor: pointer; border-bottom: 2px solid transparent;">Plugins</button>
-                    <button class="settings-tab" data-tab="rate-limiting" style="padding: 0.75rem 1rem; background: none; border: none; color: #888; cursor: pointer; border-bottom: 2px solid transparent;">Rate Limiting</button>
-                    <button class="settings-tab" data-tab="system" style="padding: 0.75rem 1rem; background: none; border: none; color: #888; cursor: pointer; border-bottom: 2px solid transparent;">System</button>
+                <div class="settings-tabs">
+                    <button class="settings-tab active" data-tab="ui">UI Settings</button>
+                    <button class="settings-tab" data-tab="server">Server Config</button>
+                    <button class="settings-tab" data-tab="plugins">Plugins</button>
+                    <button class="settings-tab" data-tab="rate-limiting">Rate Limiting</button>
+                    <button class="settings-tab" data-tab="system">System</button>
                 </div>
 
                 <!-- UI Settings Panel -->
-                <div id="settings-ui" style="display: block;">
+                <div class="settings-panel active" id="settings-ui">
                     <div class="card" style="margin-bottom: 1.5rem;">
                         <div class="card-header"><h3>Interface Settings</h3></div>
                         <div class="card-body">
-                            <div style="margin-bottom: 1rem;">
-                                <label style="display: block; margin-bottom: 0.5rem;">Auto Refresh Interval</label>
-                                <select id="refresh-interval" onchange="updateRefreshInterval()" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;">
+                            <div class="form-group">
+                                <label for="refresh-interval">Auto Refresh Interval</label>
+                                <select id="refresh-interval" onchange="updateRefreshInterval()">
                                     <option value="10000">10 seconds</option>
                                     <option value="30000" selected>30 seconds</option>
                                     <option value="60000">1 minute</option>
@@ -786,9 +785,9 @@ If you received this message, your mail server is working correctly!</textarea>
                                     <option value="0">Disabled</option>
                                 </select>
                             </div>
-                            <div style="margin-bottom: 1rem;">
-                                <label style="display: block; margin-bottom: 0.5rem;">Default Page Size</label>
-                                <select id="default-page-size" onchange="updateDefaultPageSize()" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;">
+                            <div class="form-group">
+                                <label for="default-page-size">Default Page Size</label>
+                                <select id="default-page-size" onchange="updateDefaultPageSize()">
                                     <option value="25">25 messages</option>
                                     <option value="50">50 messages</option>
                                     <option value="100">100 messages</option>
@@ -799,119 +798,171 @@ If you received this message, your mail server is working correctly!</textarea>
                     <div class="card">
                         <div class="card-header"><h3>Appearance</h3></div>
                         <div class="card-body">
-                            <label style="display: block; margin-bottom: 0.5rem;">Theme</label>
-                            <div style="display: flex; gap: 1rem;">
-                                <button class="btn btn-secondary" onclick="setTheme('dark')" style="flex: 1;">Dark</button>
-                                <button class="btn btn-secondary" onclick="setTheme('light')" style="flex: 1;">Light</button>
+                            <div class="form-group">
+                                <label>Theme</label>
+                                <div class="theme-buttons">
+                                    <button class="btn btn-secondary" onclick="setTheme('dark')">Dark</button>
+                                    <button class="btn btn-secondary" onclick="setTheme('light')">Light</button>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Server Config Panel -->
-                <div id="settings-server" style="display: none;">
+                <div class="settings-panel" id="settings-server">
                     <div class="card">
                         <div class="card-header">
                             <h3>Server Information</h3>
                             <button class="btn btn-primary btn-sm" onclick="refreshServerConfig()">Refresh</button>
                         </div>
                         <div class="card-body">
-                            <div id="server-config-loading" style="text-align: center; padding: 2rem;">Loading server configuration...</div>
+                            <div id="server-config-loading" class="loading-placeholder">Loading server configuration...</div>
                             <div id="server-config-content" style="display: none;">
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Hostname</label><input type="text" id="config-hostname" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Listen Address</label><input type="text" id="config-listen-addr" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Queue Directory</label><input type="text" id="config-queue-dir" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Max Message Size</label><input type="text" id="config-max-size" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Max Workers</label><input type="number" id="config-max-workers" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Failed Queue Retention (hours)</label><input type="number" id="config-failed-retention" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
+                                <div class="config-grid">
+                                    <div class="config-item">
+                                        <label for="config-hostname">Hostname</label>
+                                        <input type="text" id="config-hostname">
+                                    </div>
+                                    <div class="config-item">
+                                        <label for="config-listen-addr">Listen Address</label>
+                                        <input type="text" id="config-listen-addr">
+                                    </div>
+                                    <div class="config-item">
+                                        <label for="config-queue-dir">Queue Directory</label>
+                                        <input type="text" id="config-queue-dir">
+                                    </div>
+                                    <div class="config-item">
+                                        <label for="config-max-size">Max Message Size</label>
+                                        <input type="text" id="config-max-size">
+                                    </div>
+                                    <div class="config-item">
+                                        <label for="config-max-workers">Max Workers</label>
+                                        <input type="number" id="config-max-workers">
+                                    </div>
+                                    <div class="config-item">
+                                        <label for="config-failed-retention">Failed Queue Retention (hours)</label>
+                                        <input type="number" id="config-failed-retention">
+                                    </div>
                                 </div>
-                                <div style="margin-top: 1.5rem;"><button class="btn btn-primary" onclick="saveServerConfig()">Save Configuration</button> <span id="server-config-status"></span></div>
+                                <div class="settings-form-actions">
+                                    <button class="btn btn-primary" onclick="saveServerConfig()">Save Configuration</button>
+                                    <span id="server-config-status"></span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Plugins Panel -->
-                <div id="settings-plugins" style="display: none;">
+                <div class="settings-panel" id="settings-plugins">
                     <div class="card">
                         <div class="card-header">
                             <h3>Plugin Management</h3>
                             <button class="btn btn-primary btn-sm" onclick="refreshPlugins()">Refresh</button>
                         </div>
                         <div class="card-body">
-                            <div id="plugins-loading" style="text-align: center; padding: 2rem;">Loading plugins...</div>
+                            <div id="plugins-loading" class="loading-placeholder">Loading plugins...</div>
                             <div id="plugins-content" style="display: none;"><div id="plugins-list"></div></div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Rate Limiting Panel -->
-                <div id="settings-rate-limiting" style="display: none;">
+                <div class="settings-panel" id="settings-rate-limiting">
                     <div class="card">
                         <div class="card-header">
                             <h3>Rate Limiting</h3>
                             <button class="btn btn-primary btn-sm" onclick="refreshRateLimiting()">Refresh</button>
                         </div>
                         <div class="card-body">
-                            <div id="rate-limiting-loading" style="text-align: center; padding: 2rem;">Loading rate limiting configuration...</div>
+                            <div id="rate-limiting-loading" class="loading-placeholder">Loading rate limiting configuration...</div>
                             <div id="rate-limiting-content" style="display: none;">
-                                <h4 style="margin-bottom: 1rem;">Connection Limits</h4>
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Max Connections per IP</label><input type="number" id="rate-max-connections-ip" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Connection Rate per Minute</label><input type="number" id="rate-connections-per-minute" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Connection Burst Size</label><input type="number" id="rate-connection-burst" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Connection Timeout</label><input type="text" id="rate-connection-timeout" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
+                                <div class="config-section">
+                                    <h4>Connection Limits</h4>
+                                    <div class="config-grid">
+                                        <div class="config-item">
+                                            <label for="rate-max-connections-ip">Max Connections per IP</label>
+                                            <input type="number" id="rate-max-connections-ip">
+                                        </div>
+                                        <div class="config-item">
+                                            <label for="rate-connections-per-minute">Connection Rate per Minute</label>
+                                            <input type="number" id="rate-connections-per-minute">
+                                        </div>
+                                        <div class="config-item">
+                                            <label for="rate-connection-burst">Connection Burst Size</label>
+                                            <input type="number" id="rate-connection-burst">
+                                        </div>
+                                        <div class="config-item">
+                                            <label for="rate-connection-timeout">Connection Timeout</label>
+                                            <input type="text" id="rate-connection-timeout">
+                                        </div>
+                                    </div>
                                 </div>
-                                <h4 style="margin-bottom: 1rem;">Message Limits</h4>
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Max Messages per Minute</label><input type="number" id="rate-messages-per-minute" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Max Messages per Hour</label><input type="number" id="rate-messages-per-hour" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Max Recipients per Message</label><input type="number" id="rate-recipients-per-message" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
-                                    <div><label style="display: block; margin-bottom: 0.5rem;">Max Message Size</label><input type="text" id="rate-max-message-size" style="width: 100%; padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;"></div>
+                                <div class="config-section">
+                                    <h4>Message Limits</h4>
+                                    <div class="config-grid">
+                                        <div class="config-item">
+                                            <label for="rate-messages-per-minute">Max Messages per Minute</label>
+                                            <input type="number" id="rate-messages-per-minute">
+                                        </div>
+                                        <div class="config-item">
+                                            <label for="rate-messages-per-hour">Max Messages per Hour</label>
+                                            <input type="number" id="rate-messages-per-hour">
+                                        </div>
+                                        <div class="config-item">
+                                            <label for="rate-recipients-per-message">Max Recipients per Message</label>
+                                            <input type="number" id="rate-recipients-per-message">
+                                        </div>
+                                        <div class="config-item">
+                                            <label for="rate-max-message-size">Max Message Size</label>
+                                            <input type="text" id="rate-max-message-size">
+                                        </div>
+                                    </div>
                                 </div>
-                                <button class="btn btn-primary" onclick="saveRateLimiting()">Save Rate Limiting</button> <span id="rate-limiting-status"></span>
+                                <div class="settings-form-actions">
+                                    <button class="btn btn-primary" onclick="saveRateLimiting()">Save Rate Limiting</button>
+                                    <span id="rate-limiting-status"></span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- System Panel -->
-                <div id="settings-system" style="display: none;">
+                <div class="settings-panel" id="settings-system">
+                    <div class="card" style="margin-bottom: 1.5rem;">
+                        <div class="card-header">
+                            <h3>System Management</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="system-actions">
+                                <div class="action-item">
+                                    <div class="action-info">
+                                        <h4>Restart Server</h4>
+                                        <p>Gracefully restart the Elemta server. This will terminate all active connections.</p>
+                                    </div>
+                                    <button class="btn btn-danger" onclick="restartServer()">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                                            <polyline points="16 6 12 2 8 6" />
+                                            <line x1="12" y1="2" x2="12" y2="15" />
+                                        </svg>
+                                        Restart Server
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="system-status" class="system-status"></div>
+                        </div>
+                    </div>
                     <div class="card">
                         <div class="card-header">
-                                    <h3>System Management</h3>
-                                </div>
-                                <div class="card-body">
-                                    <div class="system-actions">
-                                        <div class="action-item">
-                                            <div class="action-info">
-                                                <h4>Restart Server</h4>
-                                                <p>Gracefully restart the Elemta server. This will terminate all active connections.</p>
-                                            </div>
-                                            <button class="btn btn-danger" onclick="restartServer()">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-                                                    <polyline points="16 6 12 2 8 6" />
-                                                    <line x1="12" y1="2" x2="12" y2="15" />
-                                                </svg>
-                                                Restart Server
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div id="system-status" class="system-status"></div>
-                                </div>
-                            </div>
-                            <div class="card">
-                                <div class="card-header">
-                                    <h3>About</h3>
-                                </div>
-                                <div class="card-body about-info">
-                                    <p><strong>Elemta Mail Transfer Agent</strong></p>
-                                    <p>A modern, high-performance MTA built with Go</p>
-                                    <p class="version">Version 1.0.0</p>
-                                </div>
-                            </div>
+                            <h3>About</h3>
+                        </div>
+                        <div class="card-body about-info">
+                            <p><strong>Elemta Mail Transfer Agent</strong></p>
+                            <p>A modern, high-performance MTA built with Go</p>
+                            <p class="version">Version 1.0.0</p>
                         </div>
                     </div>
                 </div>
@@ -966,11 +1017,11 @@ If you received this message, your mail server is working correctly!</textarea>
                 <form id="login-form" onsubmit="handleLogin(event)">
                     <div class="form-group">
                         <label for="login-username">Username</label>
-                        <input type="text" id="login-username" placeholder="admin" required autocomplete="username">
+                        <input type="text" id="login-username" placeholder="Username" required autocomplete="username">
                     </div>
                     <div class="form-group">
                         <label for="login-password">Password</label>
-                        <input type="password" id="login-password" placeholder="password" required
+                        <input type="password" id="login-password" placeholder="Password" required
                             autocomplete="current-password">
                     </div>
                     <div class="form-error" id="login-error" style="display: none;"></div>

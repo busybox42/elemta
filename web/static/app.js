@@ -89,7 +89,6 @@ function initializeNavigation() {
         const settingsTab = e.target.closest('.settings-tab[data-tab]');
         if (settingsTab) {
             e.preventDefault();
-            console.log('Settings tab clicked:', settingsTab.dataset.tab);
             switchSettingsTab(settingsTab.dataset.tab);
         }
     });
@@ -167,47 +166,7 @@ function switchView(viewName) {
         loadQueue(state.currentQueue);
     } else if (viewName === 'logs') {
         refreshLogs();
-    } else if (viewName === 'settings') {
-        // Apply layout fixes for settings view
-        applySettingsLayoutFixes();
     }
-}
-
-function applySettingsLayoutFixes() {
-    const mainContent = document.querySelector('.main-content');
-    const settingsView = document.getElementById('view-settings');
-    const settingsContent = document.querySelector('.settings-content');
-    const settingsPanels = document.querySelectorAll('.settings-panel');
-    const settingsGrids = document.querySelectorAll('.settings-grid');
-    
-    if (mainContent) {
-        mainContent.style.width = '100%';
-        mainContent.style.minWidth = '800px';
-    }
-    
-    if (settingsView) {
-        settingsView.style.width = '100%';
-        settingsView.style.minWidth = '800px';
-    }
-    
-    if (settingsContent) {
-        settingsContent.style.width = '100%';
-        settingsContent.style.minWidth = '700px';
-        settingsContent.style.setProperty('display', 'block', 'important');
-    }
-    
-    settingsPanels.forEach(panel => {
-        panel.style.width = '100%';
-        panel.style.minWidth = '600px';
-    });
-    
-    settingsGrids.forEach(grid => {
-        grid.style.width = '100%';
-        grid.style.minWidth = '500px';
-        grid.style.setProperty('display', 'block', 'important');
-    });
-    
-    console.log('Settings layout fixes applied');
 }
 
 // ============================================================================
@@ -1415,26 +1374,14 @@ document.addEventListener('click', (e) => {
 // Settings Tabs
 // ============================================================================
 function switchSettingsTab(tabName) {
-    console.log('switchSettingsTab called with:', tabName);
-    
     // Update tab buttons
     document.querySelectorAll('.settings-tab').forEach(tab => {
-        if (tab.dataset.tab === tabName) {
-            tab.style.color = '#3b82f6';
-            tab.style.borderBottomColor = '#3b82f6';
-        } else {
-            tab.style.color = '#888';
-            tab.style.borderBottomColor = 'transparent';
-        }
+        tab.classList.toggle('active', tab.dataset.tab === tabName);
     });
 
-    // Simple panel switching - just show/hide by ID
-    const panelIds = ['settings-ui', 'settings-server', 'settings-plugins', 'settings-rate-limiting', 'settings-system'];
-    panelIds.forEach(id => {
-        const panel = document.getElementById(id);
-        if (panel) {
-            panel.style.display = (id === `settings-${tabName}`) ? 'block' : 'none';
-        }
+    // Toggle panel visibility
+    document.querySelectorAll('.settings-panel').forEach(panel => {
+        panel.classList.toggle('active', panel.id === `settings-${tabName}`);
     });
 
     // Load data for specific tabs

@@ -981,7 +981,7 @@ body {
 .settings-tab.active {
     color: var(--accent-primary);
     border-bottom-color: var(--accent-primary);
-    background: var(--bg-card);
+    background: var(--bg-secondary);
 }
 
 .settings-tab svg {
@@ -1000,17 +1000,33 @@ body {
 }
 
 .settings-panel {
-    display: none !important;
+    display: none;
 }
 
 .settings-panel.active {
-    display: block !important;
+    display: block;
     animation: fadeIn 0.2s ease-in-out;
     width: 100%;
     min-width: 600px;
     min-height: 400px;
     position: relative;
     z-index: 2;
+}
+
+.settings-form-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.theme-buttons {
+    display: flex;
+    gap: 1rem;
+}
+
+.theme-buttons .btn {
+    flex: 1;
 }
 
 .settings-grid {
@@ -1823,7 +1839,7 @@ body.hide-failed-queue .failed-health-stat {
     padding: 0.5rem;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
-    background: var(--bg-input);
+    background: var(--bg-tertiary);
     color: var(--text-primary);
     font-size: 0.875rem;
 }
@@ -1875,7 +1891,7 @@ body.hide-failed-queue .failed-health-stat {
     border-radius: var(--radius-md);
     padding: 1.5rem;
     margin-bottom: 1rem;
-    background: var(--bg-card);
+    background: var(--bg-secondary);
 }
 
 .plugin-header {
@@ -1973,7 +1989,7 @@ input:checked + .plugin-slider:before {
     padding: 1.5rem;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    background: var(--bg-card);
+    background: var(--bg-secondary);
 }
 
 .action-info h4 {
