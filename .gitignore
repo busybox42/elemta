@@ -17,6 +17,8 @@ config/examples/elemta-fixed.conf
 # AI-related files
 .cursor*
 .windsurf/
+.claude/
+claude
 .notes/
 TODAYS_WORK.md
 *_WORK.md
