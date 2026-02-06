@@ -8,14 +8,14 @@ import (
 
 func TestCORSMiddleware(t *testing.T) {
 	tests := []struct {
-		name                  string
-		config                CORSConfig
-		origin                string
-		method                string
-		expectedStatus        int
-		expectedAllowOrigin   string
-		expectedAllowCreds    string
-		expectedAllowMethods  string
+		name                 string
+		config               CORSConfig
+		origin               string
+		method               string
+		expectedStatus       int
+		expectedAllowOrigin  string
+		expectedAllowCreds   string
+		expectedAllowMethods string
 	}{
 		{
 			name: "disabled CORS - no headers set",
