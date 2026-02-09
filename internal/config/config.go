@@ -394,86 +394,90 @@ func (c *Config) EnsureQueueDirectory() error {
 
 // SaveConfig saves the configuration to a file in TOML format
 func (c *Config) SaveConfig(configPath string) error {
-	// Create proper TOML format manually since marshaling has issues with nested structs
-	tomlContent := fmt.Sprintf(`# Elemta SMTP Server Configuration
+	var b strings.Builder
 
-[server]
-hostname = "%s"
-listen = "%s"
-tls = %t
-cert_file = "%s"
-key_file = "%s"
+	b.WriteString("# Elemta SMTP Server Configuration\n\n")
 
-[queue]
-dir = "%s"
+	// Top-level settings (used by web UI)
+	b.WriteString(fmt.Sprintf("hostname = %q\n", c.Hostname))
+	b.WriteString(fmt.Sprintf("listen_addr = %q\n", c.ListenAddr))
+	b.WriteString(fmt.Sprintf("queue_dir = %q\n", c.QueueDir))
+	b.WriteString(fmt.Sprintf("max_size = %d\n", c.MaxSize))
+	b.WriteString(fmt.Sprintf("max_workers = %d\n", c.MaxWorkers))
+	b.WriteString(fmt.Sprintf("max_retries = %d\n", c.MaxRetries))
+	b.WriteString(fmt.Sprintf("max_queue_time = %d\n", c.MaxQueueTime))
+	b.WriteString(fmt.Sprintf("failed_queue_retention_hours = %d\n", c.FailedQueueRetentionHours))
+	if len(c.LocalDomains) > 0 {
+		b.WriteString("local_domains = [")
+		for i, d := range c.LocalDomains {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(fmt.Sprintf("%q", d))
+		}
+		b.WriteString("]\n")
+	}
+	b.WriteString("\n")
 
-[logging]
-level = "%s"
-format = "%s"
-file = "%s"
+	// Legacy server section (kept for backwards compatibility with SMTP server process)
+	b.WriteString("[server]\n")
+	b.WriteString(fmt.Sprintf("hostname = %q\n", c.Server.Hostname))
+	b.WriteString(fmt.Sprintf("listen = %q\n", c.Server.Listen))
+	b.WriteString(fmt.Sprintf("tls = %t\n", c.Server.TLS))
+	if c.Server.CertFile != "" {
+		b.WriteString(fmt.Sprintf("cert_file = %q\n", c.Server.CertFile))
+	}
+	if c.Server.KeyFile != "" {
+		b.WriteString(fmt.Sprintf("key_file = %q\n", c.Server.KeyFile))
+	}
+	b.WriteString("\n")
 
-[plugins]
-directory = "%s"
-enabled = []
+	b.WriteString("[queue]\n")
+	b.WriteString(fmt.Sprintf("dir = %q\n\n", c.Queue.Dir))
 
-[queue_processor]
-enabled = %t
-interval = %d
-workers = %d
-debug = %t
+	b.WriteString("[logging]\n")
+	b.WriteString(fmt.Sprintf("level = %q\n", c.Logging.Level))
+	b.WriteString(fmt.Sprintf("format = %q\n", c.Logging.Format))
+	if c.Logging.File != "" {
+		b.WriteString(fmt.Sprintf("file = %q\n", c.Logging.File))
+	}
+	b.WriteString("\n")
 
-# TLS Configuration (uncomment and configure as needed)
-# [tls]
-# enabled = false
-# enable_starttls = true
+	b.WriteString("[plugins]\n")
+	b.WriteString(fmt.Sprintf("directory = %q\n", c.Plugins.Directory))
+	b.WriteString("enabled = []\n\n")
 
-# Authentication Configuration (uncomment and configure as needed)
-# [auth] 
-# enabled = true
-# required = false
-# datasource_type = "file"       # Options: file, ldap, mysql, postgres, sqlite
-# datasource_path = "/app/config/users.txt"
+	b.WriteString("[queue_processor]\n")
+	b.WriteString(fmt.Sprintf("enabled = %t\n", c.QueueProcessor.Enabled))
+	b.WriteString(fmt.Sprintf("interval = %d\n", c.QueueProcessor.Interval))
+	b.WriteString(fmt.Sprintf("workers = %d\n", c.QueueProcessor.Workers))
+	b.WriteString(fmt.Sprintf("debug = %t\n\n", c.QueueProcessor.Debug))
 
-# For LDAP authentication:
-# [auth]
-# enabled = true
-# datasource_type = "ldap"
-# datasource_host = "localhost" 
-# datasource_port = 1389
-# datasource_user = "cn=admin,dc=example,dc=com"
-# datasource_pass = "admin"
+	// Rate limiter section
+	if c.RateLimiter != nil {
+		b.WriteString("[rate_limiter]\n")
+		b.WriteString(fmt.Sprintf("enabled = %t\n", c.RateLimiter.Enabled))
+		b.WriteString(fmt.Sprintf("max_connections_per_ip = %d\n", c.RateLimiter.MaxConnectionsPerIP))
+		b.WriteString(fmt.Sprintf("connection_rate_per_minute = %d\n", c.RateLimiter.ConnectionRatePerMinute))
+		b.WriteString(fmt.Sprintf("connection_burst_size = %d\n", c.RateLimiter.ConnectionBurstSize))
+		b.WriteString(fmt.Sprintf("connection_timeout = %q\n", c.RateLimiter.ConnectionTimeout))
+		b.WriteString(fmt.Sprintf("max_messages_per_minute = %d\n", c.RateLimiter.MaxMessagesPerMinute))
+		b.WriteString(fmt.Sprintf("max_messages_per_hour = %d\n", c.RateLimiter.MaxMessagesPerHour))
+		b.WriteString(fmt.Sprintf("max_recipients_per_message = %d\n", c.RateLimiter.MaxRecipientsPerMessage))
+		b.WriteString(fmt.Sprintf("max_message_size = %q\n", c.RateLimiter.MaxMessageSize))
+		b.WriteString("\n")
+	}
 
-# Delivery Configuration (uncomment and configure as needed)
-# [delivery]
-# mode = "smtp"
-# timeout = 30
-`,
-		c.Server.Hostname,
-		c.Server.Listen,
-		c.Server.TLS,
-		c.Server.CertFile,
-		c.Server.KeyFile,
-		c.Queue.Dir,
-		c.Logging.Level,
-		c.Logging.Format,
-		c.Logging.File,
-		c.Plugins.Directory,
-		c.QueueProcessor.Enabled,
-		c.QueueProcessor.Interval,
-		c.QueueProcessor.Workers,
-		c.QueueProcessor.Debug,
-	)
+	tomlContent := b.String()
 
 	// Use secure file creation
 	fileSecurity := NewConfigFileSecurity()
 
-	// Check if config contains sensitive data (it might, depending on the content)
 	containsSensitiveData := strings.Contains(strings.ToLower(tomlContent), "password") ||
 		strings.Contains(strings.ToLower(tomlContent), "secret") ||
 		strings.Contains(strings.ToLower(tomlContent), "key") ||
 		strings.Contains(strings.ToLower(tomlContent), "token")
 
-	// Create secure config file
 	if err := fileSecurity.CreateSecureConfigFile(configPath, []byte(tomlContent), containsSensitiveData); err != nil {
 		return fmt.Errorf("failed to create secure config file: %w", err)
 	}

@@ -63,7 +63,7 @@ func TestServerCreation(t *testing.T) {
 
 	queueDir := t.TempDir()
 
-	server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0) // Tests use immediate deletion
+	server, err := NewServer(config, (*MainConfig)(nil), queueDir, 0, "") // Tests use immediate deletion
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

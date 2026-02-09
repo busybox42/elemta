@@ -88,6 +88,9 @@ func runWeb(cmd *cobra.Command, args []string) {
 		cfg = config.DefaultConfig()
 	}
 
+	// Find config file path for persistence
+	configPath, _ := config.FindConfigFile("")
+
 	// Create API config
 	apiConfig := &api.Config{
 		Enabled:     true,
@@ -98,7 +101,7 @@ func runWeb(cmd *cobra.Command, args []string) {
 	}
 
 	// Create and start API server
-	server, err := api.NewServer(apiConfig, convertToAPIMainConfig(cfg), webQueueDir, cfg.FailedQueueRetentionHours)
+	server, err := api.NewServer(apiConfig, convertToAPIMainConfig(cfg), webQueueDir, cfg.FailedQueueRetentionHours, configPath)
 	if err != nil {
 		log.Fatalf("Failed to create API server: %v", err)
 	}

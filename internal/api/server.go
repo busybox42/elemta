@@ -10,6 +10,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"path/filepath"
+	"syscall"
 	"regexp"
 	"strconv"
 	"strings"
@@ -44,6 +45,7 @@ type MainConfig struct {
 type Server struct {
 	config         *Config
 	mainConfig     *MainConfig // Main application configuration
+	configPath     string      // Path to config file for persistence
 	httpServer     *http.Server
 	queueMgr       *queue.Manager
 	listenAddr     string
@@ -95,7 +97,7 @@ type Config struct {
 }
 
 // NewServer creates a new API server
-func NewServer(config *Config, mainConfig *MainConfig, queueDir string, failedQueueRetentionHours int) (*Server, error) {
+func NewServer(config *Config, mainConfig *MainConfig, queueDir string, failedQueueRetentionHours int, configPath string) (*Server, error) {
 	if !config.Enabled {
 		return nil, fmt.Errorf("API server disabled in configuration")
 	}
@@ -115,6 +117,7 @@ func NewServer(config *Config, mainConfig *MainConfig, queueDir string, failedQu
 	server := &Server{
 		config:     config,
 		mainConfig: mainConfig,
+		configPath: configPath,
 		queueMgr:   queueMgr,
 		listenAddr: listenAddr,
 		webRoot:    webRoot,
@@ -1319,7 +1322,7 @@ func (s *Server) handleGetPlugins(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleUpdateConfig updates configuration (stub implementation for now)
+// handleUpdateConfig updates configuration and persists to disk
 func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	if s.mainConfig == nil {
 		http.Error(w, "Configuration not available", http.StatusServiceUnavailable)
@@ -1332,14 +1335,127 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement actual config updates
-	// For now, just return success to validate UI flow
+	requiresRestart := false
+
+	// Apply server config fields
+	if v, ok := configUpdate["hostname"].(string); ok && v != s.mainConfig.Hostname {
+		s.mainConfig.Hostname = v
+		requiresRestart = true
+	}
+	if v, ok := configUpdate["listen_addr"].(string); ok && v != s.mainConfig.ListenAddr {
+		s.mainConfig.ListenAddr = v
+		requiresRestart = true
+	}
+	if v, ok := configUpdate["queue_dir"].(string); ok && v != s.mainConfig.QueueDir {
+		s.mainConfig.QueueDir = v
+		requiresRestart = true
+	}
+	if v, ok := configUpdate["max_size"].(float64); ok {
+		s.mainConfig.MaxSize = int64(v)
+	}
+	if v, ok := configUpdate["max_workers"].(float64); ok {
+		s.mainConfig.MaxWorkers = int(v)
+	}
+	if v, ok := configUpdate["failed_queue_retention_hours"].(float64); ok {
+		s.mainConfig.FailedQueueRetentionHours = int(v)
+	}
+
+	// Apply rate limiter config if present
+	if rl, ok := configUpdate["rate_limiter"].(map[string]interface{}); ok {
+		s.applyRateLimiterUpdate(rl)
+	}
+
+	// Persist to disk
+	if s.configPath != "" {
+		if err := s.persistConfig(); err != nil {
+			slog.Error("Failed to persist configuration", "error", err)
+			http.Error(w, fmt.Sprintf("Failed to save configuration: %v", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	msg := "Configuration saved"
+	if requiresRestart {
+		msg = "Configuration saved (restart required for some changes to take effect)"
+	}
+
 	writeJSON(w, map[string]interface{}{
 		"status":           "success",
-		"message":          "Configuration updated (restart required for persistence)",
-		"requires_restart": true,
-		"applied_changes":  configUpdate,
+		"message":          msg,
+		"requires_restart": requiresRestart,
 	})
+}
+
+// applyRateLimiterUpdate applies rate limiter fields from a map to the in-memory config
+func (s *Server) applyRateLimiterUpdate(rl map[string]interface{}) {
+	var rateCfg *config.RateLimiterPluginConfig
+	if s.mainConfig.RateLimiterPluginConfig != nil {
+		if rc, ok := s.mainConfig.RateLimiterPluginConfig.(*config.RateLimiterPluginConfig); ok {
+			rateCfg = rc
+		}
+	}
+	if rateCfg == nil {
+		rateCfg = config.DefaultRateLimiterPluginConfig()
+		s.mainConfig.RateLimiterPluginConfig = rateCfg
+	}
+
+	if v, ok := rl["enabled"].(bool); ok {
+		rateCfg.Enabled = v
+	}
+	if v, ok := rl["max_connections_per_ip"].(float64); ok {
+		rateCfg.MaxConnectionsPerIP = int(v)
+	}
+	if v, ok := rl["connection_rate_per_minute"].(float64); ok {
+		rateCfg.ConnectionRatePerMinute = int(v)
+	}
+	if v, ok := rl["connection_burst_size"].(float64); ok {
+		rateCfg.ConnectionBurstSize = int(v)
+	}
+	if v, ok := rl["connection_timeout"].(string); ok {
+		rateCfg.ConnectionTimeout = v
+	}
+	if v, ok := rl["max_messages_per_minute"].(float64); ok {
+		rateCfg.MaxMessagesPerMinute = int(v)
+	}
+	if v, ok := rl["max_messages_per_hour"].(float64); ok {
+		rateCfg.MaxMessagesPerHour = int(v)
+	}
+	if v, ok := rl["max_recipients_per_message"].(float64); ok {
+		rateCfg.MaxRecipientsPerMessage = int(v)
+	}
+	if v, ok := rl["max_message_size"].(string); ok {
+		rateCfg.MaxMessageSize = v
+	}
+}
+
+// persistConfig builds a config.Config from the current mainConfig and saves to disk
+func (s *Server) persistConfig() error {
+	cfg := config.DefaultConfig()
+
+	// Map mainConfig fields to both top-level and nested server fields
+	cfg.Hostname = s.mainConfig.Hostname
+	cfg.ListenAddr = s.mainConfig.ListenAddr
+	cfg.QueueDir = s.mainConfig.QueueDir
+	cfg.MaxSize = s.mainConfig.MaxSize
+	cfg.MaxWorkers = s.mainConfig.MaxWorkers
+	cfg.MaxRetries = s.mainConfig.MaxRetries
+	cfg.MaxQueueTime = s.mainConfig.MaxQueueTime
+	cfg.FailedQueueRetentionHours = s.mainConfig.FailedQueueRetentionHours
+	cfg.LocalDomains = s.mainConfig.LocalDomains
+
+	// Keep legacy server section in sync
+	cfg.Server.Hostname = s.mainConfig.Hostname
+	cfg.Server.Listen = s.mainConfig.ListenAddr
+	cfg.Server.MaxSize = s.mainConfig.MaxSize
+
+	// Apply rate limiter config
+	if s.mainConfig.RateLimiterPluginConfig != nil {
+		if rc, ok := s.mainConfig.RateLimiterPluginConfig.(*config.RateLimiterPluginConfig); ok {
+			cfg.RateLimiter = rc
+		}
+	}
+
+	return cfg.SaveConfig(s.configPath)
 }
 
 // handleUpdatePlugin enables/disables plugins (runtime-only for now)
@@ -1365,16 +1481,20 @@ func (s *Server) handleUpdatePlugin(w http.ResponseWriter, r *http.Request) {
 	// Handle rate limiter plugin specifically
 	if pluginName == "rate_limiter" {
 		if enabled, ok := pluginUpdate["enabled"].(bool); ok {
-			// Actually update the configuration
 			if s.mainConfig.RateLimiterPluginConfig != nil {
-				// Type assertion to access the config struct
 				if rateLimiterConfig, ok := s.mainConfig.RateLimiterPluginConfig.(*config.RateLimiterPluginConfig); ok {
 					rateLimiterConfig.Enabled = enabled
 				}
 			} else {
-				// Create the config if it doesn't exist
 				s.mainConfig.RateLimiterPluginConfig = &config.RateLimiterPluginConfig{
 					Enabled: enabled,
+				}
+			}
+
+			// Persist change to disk
+			if s.configPath != "" {
+				if err := s.persistConfig(); err != nil {
+					slog.Warn("Failed to persist plugin config change", "error", err)
 				}
 			}
 
@@ -1383,7 +1503,7 @@ func (s *Server) handleUpdatePlugin(w http.ResponseWriter, r *http.Request) {
 				"message":          fmt.Sprintf("Rate limiter plugin %s", map[bool]string{true: "enabled", false: "disabled"}[enabled]),
 				"plugin":           pluginName,
 				"enabled":          enabled,
-				"requires_restart": false, // Runtime change
+				"requires_restart": false,
 			})
 			return
 		}
@@ -1392,15 +1512,27 @@ func (s *Server) handleUpdatePlugin(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Unknown plugin or invalid update", http.StatusBadRequest)
 }
 
-// handleServerRestart initiates a graceful server restart
+// handleServerRestart initiates a graceful server shutdown via SIGTERM
 func (s *Server) handleServerRestart(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement graceful restart mechanism
-	// For now, just return success to validate UI flow
 	writeJSON(w, map[string]interface{}{
 		"status":  "success",
-		"message": "Server restart initiated",
-		"warning": "This will terminate all active connections",
+		"message": "Server shutdown initiated. Restart via your process manager (Docker, systemd, etc.)",
+		"warning": "This will terminate the web interface process",
 	})
+
+	// Flush response before shutting down
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+
+	// Send SIGTERM to self after a short delay so the response is delivered
+	go func() {
+		time.Sleep(1 * time.Second)
+		slog.Info("Restart requested via web UI, sending SIGTERM to self")
+		if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+			slog.Error("Failed to send SIGTERM to self", "error", err)
+		}
+	}()
 }
 
 // Helper functions
