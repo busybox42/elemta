@@ -191,6 +191,7 @@ func (c *Client) createConnection(ctx context.Context) (*ldap.Conn, error) {
 			if tlsConfig == nil {
 				tlsConfig = &tls.Config{
 					ServerName: server,
+					MinVersion: tls.VersionTLS12,
 				}
 			}
 

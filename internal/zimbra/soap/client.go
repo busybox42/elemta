@@ -106,7 +106,7 @@ func NewClient(config *zimbra.SOAPConfig, logger *slog.Logger) *Client {
 
 	if config.SkipTLSVerify {
 		if transport.TLSClientConfig == nil {
-			transport.TLSClientConfig = &tls.Config{}
+			transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 		}
 		transport.TLSClientConfig.InsecureSkipVerify = true
 	}

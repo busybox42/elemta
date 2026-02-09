@@ -265,62 +265,6 @@ func ComparePasswordsSecure(hashedPassword, plainPassword string) error {
 	return result
 }
 
-// ComparePasswords compares a hashed password with a plain-text password (legacy function)
-func ComparePasswords(hashedPassword, plainPassword string) error {
-	if strings.HasPrefix(hashedPassword, "$2") {
-		// bcrypt
-		return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
-	}
-	if strings.HasPrefix(hashedPassword, "{SHA}") {
-		// OpenLDAP SHA-1
-		hash := sha1.Sum([]byte(plainPassword))
-		b64 := base64.StdEncoding.EncodeToString(hash[:])
-		if hashedPassword == "{SHA}"+b64 {
-			return nil
-		}
-		return ErrInvalidCredentials
-	}
-	if strings.HasPrefix(hashedPassword, "{SHA256}") {
-		// OpenLDAP SHA-256
-		hash := sha256.Sum256([]byte(plainPassword))
-		b64 := base64.StdEncoding.EncodeToString(hash[:])
-		if hashedPassword == "{SHA256}"+b64 {
-			return nil
-		}
-		return ErrInvalidCredentials
-	}
-	if strings.HasPrefix(hashedPassword, "{SHA512}") {
-		// OpenLDAP SHA-512
-		hash := sha512.Sum512([]byte(plainPassword))
-		b64 := base64.StdEncoding.EncodeToString(hash[:])
-		if hashedPassword == "{SHA512}"+b64 {
-			return nil
-		}
-		return ErrInvalidCredentials
-	}
-	if strings.HasPrefix(hashedPassword, "{SSHA}") {
-		// OpenLDAP SSHA (SHA-1 + salt)
-		b, err := base64.StdEncoding.DecodeString(hashedPassword[6:])
-		if err != nil || len(b) < 20 {
-			return ErrInvalidCredentials
-		}
-		hash := b[:20]
-		salt := b[20:]
-		h := sha1.New()
-		h.Write([]byte(plainPassword))
-		h.Write(salt)
-		if string(h.Sum(nil)) == string(hash) {
-			return nil
-		}
-		return ErrInvalidCredentials
-	}
-	// fallback: plain text
-	if hashedPassword == plainPassword {
-		return nil
-	}
-	return ErrInvalidCredentials
-}
-
 // Authenticate verifies a username and password with constant-time comparison
 func (a *Auth) Authenticate(ctx context.Context, username, password string) (bool, error) {
 	startTime := time.Now()
