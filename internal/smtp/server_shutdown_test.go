@@ -214,7 +214,8 @@ func TestConnectionDraining(t *testing.T) {
 		time.Sleep(100 * time.Millisecond) // Give shutdown time to close listener
 
 		// Try to establish new connection
-		conn, err := net.DialTimeout("tcp", server.config.ListenAddr, 1*time.Second)
+		addr := server.Addr()
+		conn, err := net.DialTimeout("tcp", addr.String(), 1*time.Second)
 		if err == nil {
 			conn.Close()
 			t.Log("⚠ New connection was accepted during shutdown (expected behavior: should reject)")
@@ -479,7 +480,7 @@ func TestKubernetesTermination(t *testing.T) {
 		// Create active connection
 		connActive := make(chan bool)
 		go func() {
-			conn, err := net.DialTimeout("tcp", server.config.ListenAddr, 2*time.Second)
+			conn, err := net.DialTimeout("tcp", server.Addr().String(), 2*time.Second)
 			if err != nil {
 				t.Logf("Failed to dial: %v", err)
 				return
