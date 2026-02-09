@@ -59,7 +59,7 @@ func (m *Message) GetHeader(name string) string {
 func (m *Message) Save(queueDir string) error {
 	// Save message data
 	msgPath := filepath.Join(queueDir, m.ID)
-	if err := os.WriteFile(msgPath, m.Data, 0644); err != nil {
+	if err := os.WriteFile(msgPath, m.Data, 0600); err != nil {
 		return err
 	}
 
@@ -89,5 +89,5 @@ func (m *Message) Save(queueDir string) error {
 	}
 
 	metaPath := filepath.Join(queueDir, m.ID+".json")
-	return os.WriteFile(metaPath, metaData, 0644)
+	return os.WriteFile(metaPath, metaData, 0600)
 }
