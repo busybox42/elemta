@@ -506,14 +506,8 @@ func createTLSConfig(config *Config) (*tls.Config, error) {
 		InsecureSkipVerify: config.TLSInsecureSkipVerify,
 	}
 
-	// Set minimum TLS version
+	// Set minimum TLS version (TLS 1.2 is the enforced minimum)
 	switch config.TLSMinVersion {
-	case "1.0":
-		tlsConfig.MinVersion = tls.VersionTLS10
-	case "1.1":
-		tlsConfig.MinVersion = tls.VersionTLS11
-	case "1.2":
-		tlsConfig.MinVersion = tls.VersionTLS12
 	case "1.3":
 		tlsConfig.MinVersion = tls.VersionTLS13
 	default:
